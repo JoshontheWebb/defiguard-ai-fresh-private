@@ -345,5 +345,7 @@ def handle_tool_call(tool_call):
 # === MAIN EXECUTION ===
 if __name__ == "__main__":
     import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
     # Removed hardcoded port to rely on Render's $PORT via Start Command
     # Force port reset comment retained for documentation
