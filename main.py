@@ -16,6 +16,8 @@ import platform
 import sys
 from datetime import datetime, timedelta  # Updated for tier change timing
 import time  # Added for retry backoff
+from tenacity import retry, stop_after_attempt, wait_fixed  # Added for retry logic
+from fastapi.middleware.cors import CORSMiddleware  # Added for CORS
 
 # === ENVIRONMENT AND LOGGING ===
 load_dotenv()
@@ -107,11 +109,6 @@ STARTER_LIMIT = 10
 PRO_LIMIT = float('inf')  # Unlimited
 
 # === CLIENT INITIALIZATION ===
-from tenacity import retry, stop_after_attempt, wait_fixed
-import logging
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -124,8 +121,17 @@ def initialize_client():
         client = OpenAI(api_key=GROK_API_KEY, base_url="https://api.x.ai/v1", timeout=30)
         infura_url = f"https://mainnet.infura.io/v3/{INFURA_PROJECT_ID}"
         w3 = Web3(Web3.HTTPProvider(infura_url))
-        if not w3.is_connected():
-            raise ConnectionError("Failed to connect to Ethereum via Infura. Check INFURA_PROJECT_ID.")
+        connected = False
+        for attempt in range(3):
+            if w3.is_connected():
+                connected = True
+                break
+            logger.warning(f"Infura connection attempt {attempt + 1} failed, retrying...")
+            time.sleep(2)
+        if not connected:
+            logger.error("Failed to connect to Ethereum via Infura after retries. Proceeding with limited functionality.")
+        else:
+            logger.info("Infura connection successful.")
         return client, w3
     except Exception as e:
         logger.error(f"Client initialization failed: {str(e)}")
@@ -198,146 +204,3 @@ class AuditReport(BaseModel):
 class AuditResponse(BaseModel):
     report: AuditReport
     risk_score: Union[str, int]
-
-# === JSON SCHEMA ===
-AUDIT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "risk_score": {"type": "integer", "minimum": 0, "maximum": 100},
-        "issues": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "type": {"type": "string"},
-                    "severity": {"type": "string", "enum": ["Low", "Med", "High"]},
-                    "fix": {"type": "string"}
-                },
-                "required": ["type", "severity", "fix"]
-            }
-        },
-        "predictions": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "scenario": {"type": "string"},
-                    "impact": {"type": "string", "enum": ["Low", "Med", "High"]}
-                },
-                "required": ["scenario", "impact"]
-            }
-        },
-        "recommendations": {"type": "array", "items": {"type": "string"}}
-    },
-    "required": ["risk_score", "issues", "predictions", "recommendations"]
-}
-
-# === PROMPT TEMPLATE ===
-PROMPT_TEMPLATE = """
-Analyze this Solidity code for vulnerabilities and 2025 regulations (MiCA, SEC FIT21).
-Context: {context}.
-Code: {code}.
-Protocol Details: {details}.
-Return the analysis in the exact JSON schema provided.
-"""
-
-# === AUDIT ENDPOINT ===
-@app.post("/audit", response_model=AuditResponse)
-async def audit_contract(file: UploadFile = File(...), contract_address: str = None):
-    # === USAGE ENFORCEMENT ===
-    current_count = usage_tracker.increment()
-    current_tier = os.getenv("TIER", "free")
-    logger.info(f"Audit request {current_count} processed for contract {contract_address} with tier {current_tier}")
-
-    raw_response = None  # Initialize to avoid UnboundLocalError
-    # Log raw response immediately with timestamp
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open('debug.log', 'a') as f:  # 'a' ensures append
-        f.write(f"[{timestamp}] Raw response logging attempt\n")
-    try:
-        # Read uploaded file (Solidity code)
-        code_bytes = await file.read()
-        code_str = code_bytes.decode('utf-8')
-        if not code_str.strip():
-            raise HTTPException(status_code=400, detail="Empty file uploaded.")
-
-        # Step 1: Pre-scan with Slither (Windows-compatible)
-        with NamedTemporaryFile(delete=False, suffix=".sol", dir=os.getcwd()) as temp_file:
-            temp_file.write(code_bytes)
-            temp_path = temp_file.name
-            if platform.system() == "Windows":
-                temp_path = temp_path.replace("/", "\\")
-        try:
-            slither = Slither(temp_path)
-            findings = []
-            for contract in slither.contracts:
-                for detector in slither.detectors:
-                    findings.extend(detector.detect())
-            context = json.dumps([finding.to_json() for finding in findings]).replace('"', '\\"') if findings else "No static issues found"
-        except SlitherError as e:
-            logger.warning(f"Slither error: {e}")
-            context = "Slither analysis failed; proceeding with raw code"
-        finally:
-            os.unlink(temp_path)  # Clean up
-
-        # Step 2: Blockchain context if address provided
-        details = "Uploaded Solidity code for analysis."
-        if contract_address:
-            if not w3.is_address(contract_address):
-                raise HTTPException(status_code=400, detail="Invalid Ethereum address.")
-            onchain_code = w3.eth.get_code(contract_address)
-            if onchain_code:
-                details += f" On-chain code fetched for {contract_address} (bytecode length: {len(onchain_code)})."
-            else:
-                details += f" No deployed code found at {contract_address}."
-
-        # Step 3: Call Grok API with Structured Output
-        prompt = PROMPT_TEMPLATE.format(context=context, code=code_str, details=details)
-        response = client.chat.completions.create(
-            model="grok-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,
-            response_format={
-                "type": "json_schema",
-                "json_schema": {"schema": AUDIT_SCHEMA},
-                "strict": True
-            }
-        )
-
-        # Step 4: Handle response (structured output is always JSON)
-        if response.choices and response.choices[0].message.content:
-            raw_response = response.choices[0].message.content
-            print(f"DEBUG: Raw Grok Response: {raw_response}", file=sys.stdout, flush=True)
-            with open('debug.log', 'a') as f:
-                f.write(f"[{timestamp}] DEBUG: Raw Grok Response: {raw_response}\n")
-            logger.info(f"Raw Grok Response: {raw_response}")
-            # Structured output is valid JSON, so direct parsing
-            try:
-                audit_json = json.loads(raw_response)
-                return {"report": audit_json, "risk_score": str(audit_json.get("risk_score", "N/A"))}
-            except json.JSONDecodeError as e:
-                logger.error(f"JSON Decode Error: {e} - Raw response: {raw_response}")
-                raise HTTPException(status_code=500, detail=f"Invalid JSON from Grok API: {raw_response}")
-        else:
-            raise HTTPException(status_code=500, detail="No response from Grok API")
-
-    except Exception as e:
-        if raw_response is not None:
-            print(f"DEBUG: Error Raw Response: {raw_response}", file=sys.stdout, flush=True)
-            with open('debug.log', 'a') as f:
-                f.write(f"[{timestamp}] DEBUG: Error Raw Response: {raw_response}\n")
-            logger.error(f"Error Raw Grok Response: {raw_response}")
-        logger.error(f"Audit error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-
-# === TOOL HANDLING ===
-def handle_tool_call(tool_call):
-    if tool_call.function.name == "fetch_reg":
-        return {"result": "Sample reg data: SEC FIT21 requires custody audits."}
-    return {"error": "Unknown tool"}
-
-# === MAIN EXECUTION ===
-if __name__ == "__main__":
-    import uvicorn
-    # Removed hardcoded port to rely on Render's $PORT via Start Command
-    # Force port reset comment retained for documentation
