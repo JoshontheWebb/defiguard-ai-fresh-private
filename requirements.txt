@@ -4,3 +4,4 @@ openai
 python-dotenv
 web3
 slither-analyzer
+python-multipart
