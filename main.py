@@ -115,6 +115,23 @@ if not w3.is_connected():
 
 app = FastAPI(title="DeFiGuard AI", description="Predictive DeFi Compliance Auditor")
 
+from fastapi.responses import HTMLResponse
+
+@app.get("/ui", response_class=HTMLResponse)
+async def read_ui():
+    html_content = """
+    <html>
+        <body>
+            <h1>DeFiGuard AI</h1>
+            <form action="/audit" method="post" enctype="multipart/form-data">
+                <input type="text" name="contract_address" placeholder="Contract Address">
+                <input type="file" name="file">
+                <button type="submit">Audit</button>
+            </form>
+        </body>
+    </html>
+    """
+    return HTMLResponse(content=html_content)
 @app.get("/")
 async def read_root():
     return {"message": "DeFiGuard AI - Predictive DeFi Compliance Auditor"}
