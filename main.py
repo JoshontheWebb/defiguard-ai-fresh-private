@@ -115,6 +115,10 @@ if not w3.is_connected():
 
 app = FastAPI(title="DeFiGuard AI", description="Predictive DeFi Compliance Auditor")
 
+@app.get("/")
+async def read_root():
+    return {"message": "DeFiGuard AI - Predictive DeFi Compliance Auditor"}
+
 # === RESPONSE MODELS ===
 class AuditReport(BaseModel):
     risk_score: int = Field(..., ge=0, le=100)
