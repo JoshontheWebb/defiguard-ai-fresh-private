@@ -107,50 +107,98 @@ STARTER_LIMIT = 10
 PRO_LIMIT = float('inf')  # Unlimited
 
 # === CLIENT INITIALIZATION ===
-client = OpenAI(api_key=GROK_API_KEY, base_url="https://api.x.ai/v1")
-infura_url = f"https://mainnet.infura.io/v3/{INFURA_PROJECT_ID}"
-w3 = Web3(Web3.HTTPProvider(infura_url))
-if not w3.is_connected():
-    raise ConnectionError("Failed to connect to Ethereum via Infura. Check INFURA_PROJECT_ID.")
+from tenacity import retry, stop_after_attempt, wait_fixed
+import logging
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+@retry(stop_after_attempt(3), wait=wait_fixed(2))
+def initialize_client():
+    try:
+        if not GROK_API_KEY or not INFURA_PROJECT_ID:
+            raise ValueError("Missing API keys in .env file. Please set GROK_API_KEY and INFURA_PROJECT_ID.")
+        client = OpenAI(api_key=GROK_API_KEY, base_url="https://api.x.ai/v1", timeout=30)
+        infura_url = f"https://mainnet.infura.io/v3/{INFURA_PROJECT_ID}"
+        w3 = Web3(Web3.HTTPProvider(infura_url))
+        if not w3.is_connected():
+            raise ConnectionError("Failed to connect to Ethereum via Infura. Check INFURA_PROJECT_ID.")
+        return client, w3
+    except Exception as e:
+        logger.error(f"Client initialization failed: {str(e)}")
+        raise
+
+client, w3 = initialize_client()
 
 app = FastAPI(title="DeFiGuard AI", description="Predictive DeFi Compliance Auditor")
-
-from fastapi.responses import HTMLResponse
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/ui", response_class=HTMLResponse)
 async def read_ui():
     html_content = """
     <html>
-        <body>
-            <h1>DeFiGuard AI</h1>
-            <form action="/audit" method="post" enctype="multipart/form-data">
-                <input type="text" name="contract_address" placeholder="Contract Address">
-                <input type="file" name="file">
-                <button type="submit">Audit</button>
+        <body style="font-family: Arial, sans-serif; margin: 20px;">
+            <h1 style="color: #2c3e50;">DeFiGuard AI - Predictive DeFi Compliance Auditor</h1>
+            <form action="/audit" method="post" enctype="multipart/form-data" style="max-width: 400px;">
+                <label for="contract_address">Contract Address (Optional):</label><br>
+                <input type="text" name="contract_address" placeholder="e.g., 0xC02aaA39..." style="width: 100%; padding: 8px; margin: 5px 0;"><br>
+                <label for="file">Upload .sol File:</label><br>
+                <input type="file" name="file" accept=".sol" required style="width: 100%; padding: 8px; margin: 5px 0;"><br>
+                <button type="submit" style="background-color: #3498db; color: white; padding: 10px 20px; border: none; cursor: pointer;">Audit Contract</button>
             </form>
+            <p style="color: #e74c3c;" id="error" hidden></p>
+            <script>
+                document.querySelector('form').onsubmit = function(e) {
+                    const fileInput = document.querySelector('input[name="file"]');
+                    if (!fileInput.files.length) {
+                        e.preventDefault();
+                        document.getElementById('error').innerText = 'Please select a .sol file.';
+                        document.getElementById('error').hidden = false;
+                    }
+                };
+            </script>
         </body>
     </html>
     """
     return HTMLResponse(content=html_content)
+
 @app.get("/", include_in_schema=False)
 @app.head("/", include_in_schema=False)
 async def read_root():
     return {"message": "DeFiGuard AI - Predictive DeFi Compliance Auditor"}
 
 # === RESPONSE MODELS ===
+from pydantic import BaseModel, Field
+from typing import List, Dict, Union
+
+class Issue(BaseModel):
+    type: str
+    severity: str = Field(..., regex="^(Low|Med|High)$")
+    fix: str
+
+class Prediction(BaseModel):
+    scenario: str
+    impact: str = Field(..., regex="^(Low|Med|High)$")
+
 class AuditReport(BaseModel):
     risk_score: int = Field(..., ge=0, le=100)
-    issues: list[dict] = Field(..., min_length=1)
-    predictions: list[dict] = Field(..., min_length=1)
-    recommendations: list[str] = Field(..., min_length=1)
+    issues: List[Issue]
+    predictions: List[Prediction]
+    recommendations: List[str]
 
 class AuditResponse(BaseModel):
     report: AuditReport
-    risk_score: str | int
-
-class AuditRequest(BaseModel):
-    contract_address: str = None  # Optional: For on-chain queries
-
+    risk_score: Union[str, int]
+        
 # === JSON SCHEMA ===
 AUDIT_SCHEMA = {
     "type": "object",
