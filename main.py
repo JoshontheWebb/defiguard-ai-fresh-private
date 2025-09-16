@@ -132,7 +132,8 @@ async def read_ui():
     </html>
     """
     return HTMLResponse(content=html_content)
-@app.get("/")
+@app.get("/", include_in_schema=False)
+@app.head("/", include_in_schema=False)
 async def read_root():
     return {"message": "DeFiGuard AI - Predictive DeFi Compliance Auditor"}
 
