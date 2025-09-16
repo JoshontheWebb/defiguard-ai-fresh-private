@@ -109,6 +109,11 @@ STARTER_LIMIT = 10
 PRO_LIMIT = float('inf')  # Unlimited
 
 # === CLIENT INITIALIZATION ===
+from tenacity import retry, stop_after_attempt, wait_fixed
+import logging
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
