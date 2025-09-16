@@ -27,7 +27,7 @@ if not GROK_API_KEY or not INFURA_PROJECT_ID:
 
 try:
     with open('debug.log', 'a') as f:
-        f.write("Logging initialized at " + str(os.times()) + "\n")
+        f.write("Logging initialized at " + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n")
 except Exception as e:
     print(f"Error initializing log file: {e}", file=sys.stderr)
 logging.basicConfig(level=logging.INFO, filename='debug.log', filemode='a')
@@ -339,6 +339,5 @@ def handle_tool_call(tool_call):
 # === MAIN EXECUTION ===
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
-    # Force port reset
+    # Removed hardcoded port to rely on Render's $PORT via Start Command
+    # Force port reset comment retained for documentation
