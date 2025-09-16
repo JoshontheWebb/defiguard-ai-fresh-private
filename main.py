@@ -198,7 +198,7 @@ class AuditReport(BaseModel):
 class AuditResponse(BaseModel):
     report: AuditReport
     risk_score: Union[str, int]
-        
+
 # === JSON SCHEMA ===
 AUDIT_SCHEMA = {
     "type": "object",
@@ -340,3 +340,5 @@ def handle_tool_call(tool_call):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    # Force port reset
