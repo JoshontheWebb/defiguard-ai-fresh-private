@@ -452,7 +452,7 @@ async def get_csrf(request: Request):
 @app.post("/signup/{username}")
 async def signup(username: str, request: Request, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
-    if not re.match(r"^[a-zA-Z0-9_]{3,20}$", username):
+    if not re.match(r"^[a-zA-F0-9_]{3,20}$", username):
         raise HTTPException(status_code=400, detail="Username must be 3-20 alphanumeric characters or underscores")
     data = await request.json()
     email = data.get("email")
@@ -733,7 +733,7 @@ async def complete_diamond_audit(session_id: str = Query(...), temp_id: str = Qu
                 file = UploadFile(filename="temp.sol", file=f)
                 result = await audit_contract(file, None, username, db, None)
             os.unlink(temp_path)
-            logger.info(f"Diamond audit completed for {username} after payment")
+            logger.info(f" Diamond audit completed for {username} after payment")
             return result
         else:
             raise HTTPException(status_code=400, detail="Payment not completed")
