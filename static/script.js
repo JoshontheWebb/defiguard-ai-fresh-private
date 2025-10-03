@@ -40,8 +40,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(`Failed to fetch CSRF token: ${errorData.detail || response.statusText}`);
             }
             const data = await response.json();
-            localStorage.setItem('csrfToken', data.csrf_token); // Store in localStorage
-            console.log(`[DEBUG] CSRF token fetched and stored: {data.csrf_token}, time=${new Date().toISOString()}`);
+            if (!data.csrf_token || data.csrf_token === 'undefined') {
+                throw new Error('Invalid CSRF token received');
+            }
+            localStorage.setItem('csrfToken', data.csrf_token);
+            console.log(`[DEBUG] CSRF token fetched and stored: ${data.csrf_token}, time=${new Date().toISOString()}`);
             return data.csrf_token;
         } catch (error) {
             console.error(`[ERROR] CSRF token fetch error (attempt ${attempt}/${maxAttempts}): ${error.message}`);
@@ -59,15 +62,35 @@ document.addEventListener('DOMContentLoaded', () => {
     // Wrapper to ensure CSRF token is available
     const withCsrfToken = async (fetchFn) => {
         let token = localStorage.getItem('csrfToken');
-        if (!token) {
-            console.log(`[DEBUG] No CSRF token in localStorage, fetching new token, time=${new Date().toISOString()}`);
+        if (!token || token === 'undefined') {
+            console.log(`[DEBUG] No valid CSRF token in localStorage, fetching new token, time=${new Date().toISOString()}`);
             token = await fetchCsrfToken();
         }
         return fetchFn(token);
     };
 
-    // Initialize CSRF token
+    // Calculate Diamond audit price
+    const calculateDiamondPrice = (file) => {
+        if (!file) {
+            document.getElementById('diamond-price').style.display = 'none';
+            return;
+        }
+        const size = file.size;
+        const price = size < 10 * 1024 ? 5000 : size < 50 * 1024 ? 10000 : size < 100 * 1024 ? 15000 : 25000;
+        const priceElement = document.getElementById('diamond-price');
+        priceElement.textContent = `Diamond Audit Cost: $${price} for ${(size / 1024 / 1024).toFixed(2)}MB`;
+        priceElement.style.display = 'block';
+        console.log(`[DEBUG] Diamond price calculated: $${price} for ${size} bytes, time=${new Date().toISOString()}`);
+    };
+
+    // Fetch CSRF token
     fetchCsrfToken();
+
+    // File input listener for price calculation
+    document.getElementById('file').addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        calculateDiamondPrice(file);
+    });
 
     // Hamburger menu initialization
     console.log(`[DEBUG] Initializing hamburger menu: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent.marginLeft=${mainContent?.style.marginLeft || 'unknown'}, time=${new Date().toISOString()}`);
@@ -228,12 +251,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Tier update listener
-    window.addEventListener('tierUpdate', () => {
-        console.log('[DEBUG] Custom tierUpdate event detected, re-running fetchTierData');
-        fetchTierData();
-    });
-
     // Fetch tier data
     const fetchTierData = async () => {
         try {
@@ -244,17 +261,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await response.json();
             const { tier, size_limit, feature_flags, api_key } = data;
             tierInfo.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)} (${size_limit === 'Unlimited' ? 'Unlimited audits' : 'Limited audits'})`;
-            tierDescription.textContent = `${tier.charAt(0).toUpperCase() + tier.slice(1)} Tier: ${tier === 'diamond' ? 'Unlimited file size, full Diamond audits, fuzzing' : tier === 'pro' ? 'Unlimited audits, Diamond previews, fuzzing' : tier === 'beginner' ? 'Up to 10 audits, 1MB file size' : 'Up to 3 audits, 1MB file size'}`;
+            tierDescription.textContent = `${tier.charAt(0).toUpperCase() + tier.slice(1)} Tier: ${tier === 'diamond' ? 'Unlimited file size, full Diamond audits, fuzzing' : tier === 'pro' ? 'Unlimited audits, Diamond audit access, fuzzing' : tier === 'beginner' ? 'Up to 10 audits, 1MB file size' : 'Up to 3 audits, 1MB file size'}`;
             sizeLimit.textContent = `Max file size: ${size_limit}`;
-            features.textContent = `Features: ${feature_flags.diamond ? 'Diamond Pattern previews' : 'Standard audit features'}${feature_flags.predictions ? ', AI predictions' : ''}${feature_flags.onchain ? ', on-chain analysis' : ''}${feature_flags.reports ? ', exportable reports' : ''}${feature_flags.fuzzing ? ', fuzzing analysis' : ''}`;
+            features.textContent = `Features: ${feature_flags.diamond ? 'Diamond audit access, Diamond Pattern previews' : 'Standard audit features'}${feature_flags.predictions ? ', AI predictions' : ''}${feature_flags.onchain ? ', on-chain analysis' : ''}${feature_flags.reports ? ', exportable reports' : ''}${feature_flags.fuzzing ? ', fuzzing analysis' : ''}`;
             upgradeLink.style.display = tier !== 'diamond' ? 'inline-block' : 'none';
             maxFileSize = size_limit === 'Unlimited' ? Infinity : parseFloat(size_limit) * 1024 * 1024;
             document.querySelector('#file-help').textContent = `Max size: ${size_limit}. Ensure code is valid Solidity.`;
             document.querySelectorAll('.pro-diamond-only').forEach(el => el.style.display = tier === 'pro' || tier === 'diamond' ? 'block' : 'none');
             customReportInput.style.display = tier === 'pro' || tier === 'diamond' ? 'block' : 'none';
             downloadReportButton.style.display = feature_flags.reports ? 'block' : 'none';
-            diamondAuditButton.style.display = tier === 'diamond' ? 'block' : 'none';
-            document.querySelector('.diamond-only').style.display = tier === 'diamond' ? 'block' : 'none';
+            document.querySelectorAll('.diamond-only').forEach(el => el.style.display = feature_flags.diamond ? 'block' : 'none');
             document.querySelector('.remediation-placeholder').style.display = tier === 'diamond' ? 'block' : 'none';
             document.querySelector('.fuzzing-placeholder').style.display = feature_flags.fuzzing ? 'block' : 'none';
             document.querySelector('.priority-support').style.display = tier === 'beginner' || tier === 'pro' || tier === 'diamond' ? 'block' : 'none';
@@ -311,7 +327,7 @@ document.addEventListener('DOMContentLoaded', () => {
             formData.append('file', file);
             formData.append('username', localStorage.getItem('username') || '');
             try {
-                const response = await fetch('/diamond-audit', {
+                const response = await fetch(`/diamond-audit?username=${localStorage.getItem('username')}`, {
                     method: 'POST',
                     headers: { 'X-CSRF-Token': token },
                     body: formData
@@ -321,7 +337,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error(errorData.detail || 'Diamond audit request failed');
                 }
                 const data = await response.json();
-                handleAuditResponse(data);
+                alert(`Diamond audit purchased for $${data.price}`);
+                handleAuditResponse(data.audit_result);
             } catch (error) {
                 usageWarning.textContent = `Error: ${error.message}`;
                 usageWarning.classList.add('error');
@@ -416,7 +433,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 formData.append('username', username);
             }
             try {
-                const response = await fetch('/audit', {
+                const response = await fetch(`/audit?username=${username || ''}`, {
                     method: 'POST',
                     headers: { 'X-CSRF-Token': token },
                     body: formData
@@ -429,7 +446,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 handleAuditResponse(data);
             } catch (error) {
                 loading.classList.remove('show');
-                usageWarning.textContent = `Error: ${error.message}`;
+                usageWarning.textContent = error.message || 'Audit request failed';
                 usageWarning.classList.add('error');
                 console.error('Audit error:', error);
             }
