@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeFiGuard AI - Authentication</title>
+    <link rel="stylesheet" href="/static/auth.css">
+    <style>
+        body { font-family: Arial, sans-serif; background: #f0f2f5; color: #2c3e50; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
+        .section { padding: 2rem 0; }
+        .title { font-size: 2rem; font-weight: bold; color: #1a252f; text-align: center; }
+        .subtitle { font-size: 1.2rem; color: #2c3e50; text-align: center; }
+        .box { background: #ffffff; border-radius: 0.5rem; padding: 1.5rem; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
+        .tabs ul { display: flex; justify-content: center; list-style: none; border-bottom: 1px solid #dbdbdb; }
+        .tabs li { flex: 1; max-width: 150px; text-align: center; cursor: pointer; }
+        .tabs li.is-active a { border-bottom: 2px solid #00d1b2; color: #00d1b2; }
+        .tabs a { padding: 0.5rem 0; color: #2c3e50; text-decoration: none; }
+        .tabs a:hover { color: #00d1b2; }
+        .button { padding: 12px; background: #00d1b2; color: #ffffff; border: none; border-radius: 6px; cursor: pointer; }
+        .button:hover { background: #009688; }
+        .button.is-danger { background: #ef4444; }
+        .button.is-danger:hover { background: #dc2626; }
+        .field { margin-bottom: 1rem; }
+        .label { font-weight: bold; color: #2c3e50; }
+        .input { padding: 12px; border: 2px solid #e0e0e0; border-radius: 6px; width: 100%; }
+        .input:focus { border-color: #00d1b2; outline: none; }
+        .notification { padding: 1rem; border-radius: 4px; margin-top: 1rem; }
+        .is-success { background: #d1fae5; color: #065f46; }
+        .is-danger { background: #fee2e2; color: #991b1b; }
+        .is-hidden { display: none; }
+        footer { text-align: center; padding: 1rem; background: #1a252f; color: #ffffff; position: fixed; bottom: 0; width: 100%; }
+        #auth-forms { visibility: hidden; opacity: 0; transition: opacity 0.3s ease, visibility 0.3s ease; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">DeFiGuard AI</div>
+    </header>
+    <div class="container">
+        <section class="section">
+            <h1 class="title has-text-centered">Welcome to DeFiGuard AI</h1>
+            <h2 class="subtitle has-text-centered">Secure Your DeFi Future</h2>
+            <div class="box" style="max-width: 500px; margin: auto;">
+                <button class="button is-primary cta-button" id="auth-toggle" aria-label="Toggle authentication forms">Sign In or Create Account</button>
+                <div id="auth-forms">
+                    <div class="tabs is-centered">
+                        <ul>
+                            <li class="is-active" data-tab="signin"><a>Sign In</a></li>
+                            <li data-tab="signup"><a>Create Account</a></li>
+                        </ul>
+                    </div>
+                    <div id="signin" class="tab-content active">
+                        <form id="signin-form">
+                            <div class="field">
+                                <label class="label">Username</label>
+                                <div class="control">
+                                    <input class="input" type="text" id="signin-username" placeholder="Enter username" required autofocus aria-label="Username">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Password</label>
+                                <div class="control has-icons-right">
+                                    <input class="input" type="password" id="signin-password" placeholder="Enter password" required aria-label="Password">
+                                    <span class="icon is-right is-clickable" id="toggle-signin-password">
+                                        <i class="fas fa-eye"></i>
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <div class="control">
+                                    <button class="button is-primary" type="submit" aria-label="Submit sign-in form">Sign In</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <div id="signup" class="tab-content">
+                        <form id="signup-form">
+                            <div class="field">
+                                <label class="label">Email</label>
+                                <div class="control">
+                                    <input class="input" type="email" id="signup-email" placeholder="Enter email" required autofocus aria-label="Email">
+                                </div>
+                                <p class="help is-danger" id="email-error" style="display: none;"></p>
+                            </div>
+                            <div class="field">
+                                <label class="label">Username</label>
+                                <div class="control">
+                                    <input class="input" type="text" id="signup-username" placeholder="Enter username" required aria-label="Username">
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Password</label>
+                                <div class="control has-icons-right">
+                                    <input class="input" type="password" id="signup-password" placeholder="Enter password" required aria-label="Password">
+                                    <span class="icon is-right is-clickable" id="toggle-signup-password">
+                                        <i class="fas fa-eye"></i>
+                                    </span>
+                                </div>
+                                <p class="help is-danger" id="password-error" style="display: none;"></p>
+                            </div>
+                            <div class="field">
+                                <label class="label">Confirm Password</label>
+                                <div class="control has-icons-right">
+                                    <input class="input" type="password" id="signup-confirm-password" placeholder="Confirm password" required aria-label="Confirm Password">
+                                    <span class="icon is-right is-clickable" id="toggle-confirm-password">
+                                        <i class="fas fa-eye"></i>
+                                    </span>
+                                </div>
+                                <p class="help is-danger" id="confirm-error" style="display: none;"></p>
+                            </div>
+                            <div class="field">
+                                <div class="control">
+                                    <button class="button is-primary" type="submit" aria-label="Submit create account form">Create Account</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="auth-message notification is-hidden"></div>
+                    <div class="field" id="logout-section" style="display: none;">
+                        <div class="control">
+                            <button class="button is-danger" id="logout-button" aria-label="Log out">Log Out</button>
+                        </div>
+                    </div>
+                    <div class="notification" id="tab-debug" style="display: none;"></div>
+                    <div class="notification is-danger" id="css-debug" style="display: none;">CSS loading failed. Check /static/auth.css.</div>
+                </div>
+                <div class="has-text-centered">
+                    <a href="/ui" class="cta-button">Back to Home</a>
+                </div>
+            </div>
+        </section>
+    </div>
+    <footer>
+        <p>&copy; 2025 DeFiGuard AI. Built with FastAPI & Grok. <a href="https://x.ai/api">API Docs</a></p>
+    </footer>
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    <script src="/static/auth.js?_=${Date.now()}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const cssLink = document.querySelector('link[href="/static/auth.css"]');
+            cssLink.addEventListener('error', () => {
+                console.error('[ERROR] Failed to load /static/auth.css');
+                const cssDebug = document.getElementById('css-debug');
+                if (cssDebug) cssDebug.style.display = 'block';
+            });
+            cssLink.addEventListener('load', () => {
+                console.log('[DEBUG] Successfully loaded /static/auth.css, time=' + new Date().toISOString());
+            });
+        });
+    </script>
+</body>
+</html>

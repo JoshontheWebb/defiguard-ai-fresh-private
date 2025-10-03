@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeFiGuard AI - Predictive DeFi Compliance Auditor</title>
+    <meta name="description" content="Advanced AI-powered smart contract audits for DeFi protocols, outperforming industry standards with real-time insights and 2025 regulatory compliance.">
+    <link rel="stylesheet" href="/static/styles.css?_=${Date.now()}">
+</head>
+<body>
+    <!-- Hamburger Menu -->
+    <div class="hamburger" id="hamburger">
+        <div class="bar1"></div>
+        <div class="bar2"></div>
+        <div class="bar3"></div>
+    </div>
+
+    <!-- Header -->
+    <header>
+        <div class="logo">DeFiGuard AI</div>
+    </header>
+
+    <!-- Sidebar Navigation -->
+    <div class="sidebar" id="sidebar">
+        <ul>
+            <li><a href="#home">Home</a></li>
+            <li><a href="#audit">Audit Contract</a></li>
+            <li><a href="#results">Results Dashboard</a></li>
+            <li><a href="#settings">Settings</a></li>
+            <li id="auth-status"><a href="/auth">Sign In / Create Account</a></li>
+            <li id="logout-button"></li>
+            <li><a href="https://discord.gg/defiguard" target="_blank">Community Support</a></li>
+            <li class="priority-support" style="display: none;"><a href="mailto:support@defiguard.ai">Priority Support (Beginner/Pro)</a></li>
+        </ul>
+        <div class="tier-info" aria-live="polite">
+            <span>Tier: Free (Limited audits)</span>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Hero Section -->
+        <section id="home" class="hero">
+            <h2>Secure Your DeFi Future with AI-Driven Audits</h2>
+            <p>Outshine competitors: Analyze Solidity code against MiCA/SEC FIT21 regs, predict risks, and get actionable fixes faster and smarter than CertiK or ConsenSys.</p>
+            <a href="#audit" class="cta-button">Start Audit Now</a>
+        </section>
+
+        <!-- Progress Tracker -->
+        <section id="progress" class="progress-tracker" aria-label="Audit progress steps">
+            <h3>Audit Workflow</h3>
+            <ol>
+                <li>Upload Contract (Solidity File)</li>
+                <li>Optional: Add Contract Address</li>
+                <li>AI Analysis (Slither + Grok)</li>
+                <li>View Report & Recommendations</li>
+            </ol>
+        </section>
+
+        <!-- Audit Submission Form -->
+        <section id="audit" class="audit-section">
+            <h2>Submit for Audit</h2>
+            <form action="/audit" method="post" enctype="multipart/form-data">
+                <label for="file">Upload Solidity File (.sol):</label>
+                <input type="file" id="file" name="file" accept=".sol" required aria-describedby="file-help">
+                <small id="file-help">Max size: Loading...</small>
+
+                <label for="contract_address" class="pro-diamond-only" style="display: none;">Ethereum Contract Address (Optional):</label>
+                <input type="text" id="contract_address" name="contract_address" placeholder="0x..." pattern="^0x[a-fA-F0-9]{40}$" style="display: none;">
+                <small class="pro-diamond-only" style="display: none;">Fetch on-chain bytecode for deeper analysis (Pro/Diamond).</small>
+
+                <label for="custom_report" class="pro-diamond-only" style="display: none;">Custom Compliance Report:</label>
+                <textarea id="custom_report" name="custom_report" placeholder="Specify compliance requirements (Pro/Diamond)" style="display: none;"></textarea>
+
+                <button type="submit">Audit Contract</button>
+                <button type="button" id="diamond-audit" class="diamond-only" style="display: none;">Request Diamond Audit</button>
+                <p id="diamond-price" class="diamond-only" style="display: none;">Diamond Audit Cost: Loading...</p>
+            </form>
+            <div class="usage-warning" aria-live="assertive">
+                <p>Free tier: Limited audits.</p>
+            </div>
+            <div class="tier-benefits" aria-live="polite">
+                <h3>Tier Benefits</h3>
+                <p id="tier-description">Loading tier information...</p>
+                <p id="size-limit">Max file size: Loading...</p>
+                <p id="features">Features: Loading...</p>
+                <div class="upgrade-prompt">
+                    <h4>Upgrade Your Plan</h4>
+                    <select id="tier-select" aria-label="Select subscription tier">
+                        <option value="beginner">Beginner ($50/mo)</option>
+                        <option value="pro">Pro ($199/mo)</option>
+                        <option value="diamond">Diamond ($5k-$25k one-off)</option>
+                    </select>
+                    <button id="tier-switch">Upgrade Tier</button>
+                    <a id="upgrade-link" href="/upgrade">Upgrade for more features!</a>
+                </div>
+            </div>
+            <div id="facet-preview" class="box pro-diamond-only" style="display: none;"></div>
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Analyzing...</p>
+            </div>
+            <div class="results">
+                <p>Audit Results: (JSON response will appear here)</p>
+                <button id="download-report" style="display: none;">Download Report (Beginner/Pro)</button>
+            </div>
+        </section>
+
+        <!-- Results Dashboard -->
+        <section id="results" class="results-dashboard" aria-label="Audit results">
+            <h3>Audit Results</h3>
+            <div class="risk-score-placeholder">
+                <p>Risk Score: <span id="risk-score">N/A</span>/100</p>
+            </div>
+
+            <div class="issues-table-placeholder">
+                <h4>Identified Issues</h4>
+                <table role="table" aria-describedby="issues-desc">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Severity</th>
+                            <th>Description</th>
+                            <th>Fix</th>
+                        </tr>
+                    </thead>
+                    <tbody id="issues-body">
+                        <tr><td colspan="4">No issues yet submit an audit to see results.</td></tr>
+                    </tbody>
+                </table>
+                <small id="issues-desc">Vulnerabilities classified by severity (Low/Med/High).</small>
+            </div>
+
+            <div class="predictions-placeholder">
+                <h4>Risk Predictions</h4>
+                <ul id="predictions-list">
+                    <li>No predictions yet.</li>
+                </ul>
+            </div>
+
+            <div class="recommendations-placeholder">
+                <h4>Recommendations</h4>
+                <ul id="recommendations-list">
+                    <li>No recommendations yet.</li>
+                </ul>
+            </div>
+
+            <div class="fuzzing-placeholder pro-diamond-only" style="display: none;">
+                <h4>Fuzzing Results</h4>
+                <ul id="fuzzing-list">
+                    <li>No fuzzing results yet.</li>
+                </ul>
+            </div>
+
+            <div class="remediation-placeholder diamond-only" style="display: none;">
+                <h4>Remediation Roadmap</h4>
+                <p id="remediation-roadmap">No roadmap yet.</p>
+            </div>
+        </section>
+
+        <!-- Settings Section -->
+        <section id="settings">
+            <h3>Account Settings</h3>
+            <ul>
+                <li>Upgrade Tier: <a href="/upgrade">Beginner ($50/mo), Pro ($199/mo), Diamond ($5k-$25k)</a></li>
+                <li>View Usage History</li>
+                <li id="api-key" style="display: none;">API Key: <span id="api-key-value">Loading...</span> (Pro only)</li>
+            </ul>
+        </section>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2025 DeFiGuard AI. Built with FastAPI & Grok. <a href="https://x.ai/api">API Docs</a></p>
+        <p>Upgrade for unlimited audits: <a href="/upgrade">Details</a></p>
+    </footer>
+
+    <script src="/static/script.js?_=${Date.now()}"></script>
+</body>
+</html>

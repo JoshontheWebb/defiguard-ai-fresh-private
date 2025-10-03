@@ -1,0 +1,259 @@
+{
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+:root {
+    --primary: #1a252f;
+    --accent: #00d1b2;
+    --bg-light: #f0f2f5;
+    --bg-section: #ffffff;
+    --text-dark: #2c3e50;
+    --text-light: #ffffff;
+    --error: #ef4444;
+    --gradient: linear-gradient(45deg, #1a252f, #3b82f6);
+    --focus-outline: #3b82f6;
+}
+
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: var(--bg-light);
+    color: var(--text-dark);
+    line-height: 1.6;
+    font-size: 16px;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+
+header {
+    position: sticky;
+    top: 0;
+    background-color: var(--primary);
+    color: var(--text-light);
+    padding: 1.5rem;
+    text-align: center;
+    z-index: 100;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.logo {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1rem;
+}
+
+.section {
+    padding: 2rem 0;
+}
+
+.title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.subtitle {
+    font-size: 1.2rem;
+    color: var(--text-dark);
+}
+
+.tabs {
+    margin-bottom: 1rem;
+}
+
+.tabs ul {
+    border-bottom: 1px solid #dbdbdb;
+    display: flex;
+    justify-content: center;
+    list-style: none;
+}
+
+.tabs li {
+    flex: 1;
+    max-width: 150px;
+    text-align: center;
+    cursor: pointer;
+}
+
+.tabs li.is-active a {
+    border-bottom: 2px solid var(--accent);
+    color: var(--accent);
+}
+
+.tabs a {
+    display: block;
+    padding: 0.5rem 0;
+    color: var(--text-dark);
+    text-decoration: none;
+    transition: color 0.3s, border-bottom-color 0.3s;
+    font-size: 1rem;
+}
+
+.tabs a:hover {
+    color: var(--accent);
+}
+
+.box {
+    background-color: var(--bg-section);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    padding: 1.5rem;
+    transition: box-shadow 0.3s ease, transform 0.2s ease;
+}
+
+.box:hover {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+    transform: translateY(-2px);
+}
+
+.field {
+    margin-bottom: 1rem;
+}
+
+.label {
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.control {
+    position: relative;
+}
+
+.input {
+    padding: 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 1rem;
+    transition: border-color 0.3s, box-shadow 0.3s;
+    width: 100%;
+}
+
+.input:focus {
+    border-color: var(--accent);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(0, 209, 178, 0.2);
+}
+
+.button {
+    padding: 12px;
+    background-color: var(--accent);
+    color: var(--text-light);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    transition: background-color 0.3s, transform 0.2s;
+}
+
+.button:hover {
+    background-color: #009688;
+    transform: translateY(-2px);
+}
+
+.button.is-primary {
+    background-color: var(--accent);
+}
+
+.button.is-danger {
+    background-color: #ef4444;
+}
+
+.button.is-danger:hover {
+    background-color: #dc2626;
+    transform: translateY(-2px);
+}
+
+.cta-button {
+    display: inline-block;
+    padding: 0.75rem 1.5rem;
+    background: var(--accent);
+    color: var(--text-light);
+    text-decoration: none;
+    border-radius: 0.25rem;
+    font-weight: 600;
+    transition: background-color 0.3s, transform 0.2s;
+}
+
+.cta-button:hover {
+    background: #009688;
+    transform: translateY(-2px);
+}
+
+.notification {
+    padding: 1rem;
+    border-radius: 4px;
+    margin-top: 1rem;
+    transition: opacity 0.3s ease;
+}
+
+.is-success {
+    background-color: #d1fae5;
+    color: #065f46;
+}
+
+.is-danger {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.is-hidden {
+    display: none;
+}
+
+.icon {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+    cursor: pointer;
+    color: #a0a0a0;
+    transition: color 0.3s;
+}
+
+.icon:hover {
+    color: var(--text-dark);
+}
+
+.help {
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+}
+
+.has-text-centered {
+    text-align: center;
+}
+
+footer {
+    text-align: center;
+    padding: 1rem;
+    background: var(--primary);
+    color: var(--text-light);
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+}
+
+footer a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: color 0.3s;
+}
+
+footer a:hover {
+    color: #009688;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
