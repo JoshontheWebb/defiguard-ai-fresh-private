@@ -77,22 +77,34 @@ class User(Base):
 def migrate_database():
     conn = sqlite3.connect('users.db')
     cursor = conn.cursor()
-    cursor.execute("PRAGMA table_info(users)")
-    columns = [info[1] for info in cursor.fetchall()]
-    if 'api_key' not in columns or 'audit_history' not in columns:
-        logger.info("Migrating users table to add api_key and audit_history columns")
-        cursor.execute("SELECT id, username, email, password_hash, tier, last_reset FROM users")
-        old_data = cursor.fetchall()
-        cursor.execute("DROP TABLE IF EXISTS users")
+    try:
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+        if cursor.fetchone() is None:
+            logger.info("No users table found; creating new table")
+            Base.metadata.create_all(bind=engine)
+            logger.info("Database table created")
+            return
+        cursor.execute("PRAGMA table_info(users)")
+        columns = [info[1] for info in cursor.fetchall()]
+        if 'api_key' not in columns or 'audit_history' not in columns:
+            logger.info("Migrating users table to add api_key and audit_history columns")
+            cursor.execute("SELECT id, username, email, password_hash, tier, last_reset FROM users")
+            old_data = cursor.fetchall()
+            cursor.execute("DROP TABLE IF EXISTS users")
+            Base.metadata.create_all(bind=engine)
+            for row in old_data:
+                cursor.execute(
+                    "INSERT INTO users (id, username, email, password_hash, tier, last_reset, api_key, audit_history) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    row + (None, "[]")
+                )
+            conn.commit()
+            logger.info("Database migration completed")
+    except Exception as e:
+        logger.error(f"Migration error: {str(e)}")
+        # Ensure table is created on error
         Base.metadata.create_all(bind=engine)
-        for row in old_data:
-            cursor.execute(
-                "INSERT INTO users (id, username, email, password_hash, tier, last_reset, api_key, audit_history) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                row + (None, "[]")
-            )
-        conn.commit()
-        logger.info("Database migration completed")
-    conn.close()
+    finally:
+        conn.close()
 
 migrate_database()
 
@@ -136,6 +148,17 @@ class UsageTracker:
             "pro": {"diamond": True, "predictions": True, "onchain": True, "reports": True, "fuzzing": True},
             "diamond": {"diamond": True, "predictions": True, "onchain": True, "reports": True, "fuzzing": True}
         }
+
+    def calculate_diamond_price(self, file_size):
+        """Calculate price for Diamond audit based on file size."""
+        if file_size < 10 * 1024:  # <10KB
+            return 5000
+        elif file_size < 50 * 1024:  # 10-50KB
+            return 10000
+        elif file_size < 100 * 1024:  # 50-100KB
+            return 15000
+        else:  # >100KB
+            return 25000
 
     def increment(self, file_size, username=None, db: Session = None):
         if username:
