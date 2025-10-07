@@ -26,6 +26,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const sidebar = document.getElementById('sidebar');
     const mainContent = document.querySelector('.main-content');
     let maxFileSize = null;
+    let auditCount = 0;
+    let auditLimit = 3;
 
     // Fetch CSRF token with retry
     const fetchCsrfToken = async (attempt = 1, maxAttempts = 3) => {
@@ -69,6 +71,19 @@ document.addEventListener('DOMContentLoaded', () => {
         return fetchFn(token);
     };
 
+    // Refresh CSRF token periodically for hosted environment
+    const refreshCsrfToken = async () => {
+        try {
+            const token = await fetchCsrfToken();
+            console.log(`[DEBUG] CSRF token refreshed, time=${new Date().toISOString()}`);
+            return token;
+        } catch (error) {
+            console.error(`[ERROR] Failed to refresh CSRF token: ${error.message}`);
+            usageWarning.textContent = `Error refreshing secure connection: ${error.message}`;
+            usageWarning.classList.add('error');
+        }
+    };
+
     // Calculate Diamond audit price
     const calculateDiamondPrice = (file) => {
         if (!file) {
@@ -83,8 +98,9 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(`[DEBUG] Diamond price calculated: $${price} for ${size} bytes, time=${new Date().toISOString()}`);
     };
 
-    // Fetch CSRF token
-    fetchCsrfToken();
+    // Fetch CSRF token on load
+    refreshCsrfToken();
+    setInterval(refreshCsrfToken, 30 * 60 * 1000); // Refresh every 30 minutes
 
     // File input listener for price calculation
     document.getElementById('file').addEventListener('change', (event) => {
@@ -168,8 +184,8 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         facetWell.appendChild(loadingDiv);
         try {
-            const username = localStorage.getItem('username');
-            const response = await fetch(`/facets/${contractAddress}?username=${username || ''}&_=${Date.now()}`, {
+            const username = localStorage.getItem('username') || '';
+            const response = await fetch(`/facets/${contractAddress}?username=${encodeURIComponent(username)}&_=${Date.now()}`, {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json',
@@ -254,18 +270,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // Fetch tier data
     const fetchTierData = async () => {
         try {
-            const username = localStorage.getItem('username');
+            const username = localStorage.getItem('username') || '';
             const url = username ? `/tier?username=${encodeURIComponent(username)}` : '/tier';
             const response = await fetch(url);
-            if (!response.ok) throw new Error('Failed to fetch tier data');
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || 'Failed to fetch tier data');
+            }
             const data = await response.json();
-            const { tier, size_limit, feature_flags, api_key } = data;
-            tierInfo.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)} (${size_limit === 'Unlimited' ? 'Unlimited audits' : 'Limited audits'})`;
-            tierDescription.textContent = `${tier.charAt(0).toUpperCase() + tier.slice(1)} Tier: ${tier === 'diamond' ? 'Unlimited file size, full Diamond audits, fuzzing' : tier === 'pro' ? 'Unlimited audits, Diamond audit access, fuzzing' : tier === 'beginner' ? 'Up to 10 audits, 1MB file size' : 'Up to 3 audits, 1MB file size'}`;
+            const { tier, size_limit, feature_flags, api_key, audit_count, audit_limit } = data;
+            auditCount = audit_count;
+            auditLimit = audit_limit;
+            tierInfo.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)} (${size_limit === 'Unlimited' ? 'Unlimited audits' : `${auditCount}/${auditLimit} audits`})`;
+            tierDescription.textContent = `${tier.charAt(0).toUpperCase() + tier.slice(1)} Tier: ${tier === 'diamond' ? 'Unlimited file size, full Diamond audits, fuzzing' : tier === 'pro' ? 'Unlimited audits, Diamond audit access, fuzzing' : tier === 'beginner' ? `Up to 10 audits, 1MB file size (${auditCount}/${auditLimit} remaining)` : `Up to 3 audits, 1MB file size (${auditCount}/${auditLimit} remaining)`}`;
             sizeLimit.textContent = `Max file size: ${size_limit}`;
             features.textContent = `Features: ${feature_flags.diamond ? 'Diamond audit access, Diamond Pattern previews' : 'Standard audit features'}${feature_flags.predictions ? ', AI predictions' : ''}${feature_flags.onchain ? ', on-chain analysis' : ''}${feature_flags.reports ? ', exportable reports' : ''}${feature_flags.fuzzing ? ', fuzzing analysis' : ''}`;
+            usageWarning.textContent = tier === 'free' || tier === 'beginner' ? `${tier.charAt(0).toUpperCase() + tier.slice(1)} tier: ${auditCount}/${auditLimit} audits remaining` : '';
+            usageWarning.classList.remove('error');
             upgradeLink.style.display = tier !== 'diamond' ? 'inline-block' : 'none';
-            maxFileSize = size_limit === 'Unlimited' ? Infinity : parseFloat(size_limit) * 1024 * 1024;
+            maxFileSize = size_limit === 'Unlimited' ? Infinity : parseFloat(size_limit.replace('MB', '')) * 1024 * 1024;
             document.querySelector('#file-help').textContent = `Max size: ${size_limit}. Ensure code is valid Solidity.`;
             document.querySelectorAll('.pro-diamond-only').forEach(el => el.style.display = tier === 'pro' || tier === 'diamond' ? 'block' : 'none');
             customReportInput.style.display = tier === 'pro' || tier === 'diamond' ? 'block' : 'none';
@@ -276,6 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelector('.priority-support').style.display = tier === 'beginner' || tier === 'pro' || tier === 'diamond' ? 'block' : 'none';
             apiKeySpan.textContent = api_key || 'N/A';
             document.getElementById('api-key').style.display = api_key ? 'block' : 'none';
+            console.log(`[DEBUG] Tier data fetched: tier=${tier}, auditCount=${auditCount}, auditLimit=${auditLimit}, time=${new Date().toISOString()}`);
         } catch (error) {
             usageWarning.textContent = `Error fetching tier data: ${error.message}`;
             usageWarning.classList.add('error');
@@ -289,24 +313,30 @@ document.addEventListener('DOMContentLoaded', () => {
             const selectedTier = tierSelect?.value;
             if (!selectedTier) {
                 console.error('[ERROR] tierSelect element not found');
+                usageWarning.textContent = 'Error: Tier selection unavailable';
+                usageWarning.classList.add('error');
                 return;
             }
             try {
                 const username = localStorage.getItem('username');
                 if (!username) throw new Error('Must be signed in to upgrade');
-                const response = await fetch(`/set-tier/${username}/${selectedTier}`, {
+                const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=${selectedTier}`, {
                     method: 'POST',
-                    headers: { 'X-CSRF-Token': token }
+                    headers: {
+                        'X-CSRF-Token': token,
+                        'Accept': 'application/json'
+                    },
+                    credentials: 'include'
                 });
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || 'Failed to switch tier');
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || 'Failed to initiate tier upgrade');
                 }
                 const data = await response.json();
-                alert(data.message);
-                await fetchTierData();
+                window.location.href = data.session_url; // Redirect to Stripe checkout
+                console.log(`[DEBUG] Redirecting to Stripe for tier upgrade: ${selectedTier}, time=${new Date().toISOString()}`);
             } catch (error) {
-                usageWarning.textContent = `Error switching tier: ${error.message}`;
+                usageWarning.textContent = `Error initiating tier upgrade: ${error.message}`;
                 usageWarning.classList.add('error');
                 console.error('Tier switch error:', error);
             }
@@ -325,22 +355,23 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const formData = new FormData();
             formData.append('file', file);
-            formData.append('username', localStorage.getItem('username') || '');
             try {
-                const response = await fetch(`/diamond-audit?username=${localStorage.getItem('username')}`, {
+                const username = localStorage.getItem('username') || '';
+                const response = await fetch(`/diamond-audit?username=${encodeURIComponent(username)}`, {
                     method: 'POST',
                     headers: { 'X-CSRF-Token': token },
-                    body: formData
+                    body: formData,
+                    credentials: 'include'
                 });
                 if (!response.ok) {
-                    const errorData = await response.json();
+                    const errorData = await response.json().catch(() => ({}));
                     throw new Error(errorData.detail || 'Diamond audit request failed');
                 }
                 const data = await response.json();
-                alert(`Diamond audit purchased for $${data.price}`);
-                handleAuditResponse(data.audit_result);
+                window.location.href = data.session_url; // Redirect to Stripe checkout
+                console.log(`[DEBUG] Redirecting to Stripe for Diamond audit, time=${new Date().toISOString()}`);
             } catch (error) {
-                usageWarning.textContent = `Error: ${error.message}`;
+                usageWarning.textContent = `Error initiating Diamond audit: ${error.message}`;
                 usageWarning.classList.add('error');
                 console.error('Diamond audit error:', error);
             }
@@ -409,6 +440,7 @@ document.addEventListener('DOMContentLoaded', () => {
         loading.setAttribute('aria-hidden', 'true');
         resultsDiv.setAttribute('aria-hidden', 'false');
         resultsDiv.focus();
+        console.log(`[DEBUG] Audit results displayed, risk_score=${report.risk_score}, time=${new Date().toISOString()}`);
     };
 
     const handleSubmit = (event) => {
@@ -416,37 +448,108 @@ document.addEventListener('DOMContentLoaded', () => {
         withCsrfToken(async (token) => {
             loading.classList.add('show');
             resultsDiv.classList.remove('show');
-            usageWarning.textContent = 'Free tier: Limited audits.';
+            usageWarning.textContent = '';
+            usageWarning.classList.remove('error');
             loading.setAttribute('aria-hidden', 'false');
             resultsDiv.setAttribute('aria-hidden', 'true');
             const fileInput = auditForm.querySelector('#file');
             const file = fileInput.files[0];
-            if (file && maxFileSize !== null && file.size > maxFileSize) {
+            if (!file) {
                 loading.classList.remove('show');
-                usageWarning.textContent = `File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds ${maxFileSize === Infinity ? 'unlimited' : (maxFileSize / 1024 / 1024) + 'MB'} limit for your tier.`;
+                usageWarning.textContent = 'Please select a file to audit';
                 usageWarning.classList.add('error');
                 return;
             }
-            const formData = new FormData(auditForm);
-            const username = localStorage.getItem('username');
-            if (username) {
-                formData.append('username', username);
+            if (maxFileSize !== null && file.size > maxFileSize) {
+                loading.classList.remove('show');
+                usageWarning.textContent = `File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds ${maxFileSize === Infinity ? 'unlimited' : (maxFileSize / 1024 / 1024) + 'MB'} limit for your tier.`;
+                usageWarning.classList.add('error');
+                const upgradeButton = document.createElement('button');
+                upgradeButton.textContent = 'Upgrade to Pro';
+                upgradeButton.className = 'upgrade-button';
+                upgradeButton.addEventListener('click', () => {
+                    withCsrfToken(async (token) => {
+                        try {
+                            const username = localStorage.getItem('username') || '';
+                            const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=pro`, {
+                                method: 'POST',
+                                headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' },
+                                credentials: 'include'
+                            });
+                            if (!response.ok) {
+                                const errorData = await response.json().catch(() => ({}));
+                                throw new Error(errorData.detail || 'Failed to initiate tier upgrade');
+                            }
+                            const data = await response.json();
+                            window.location.href = data.session_url;
+                            console.log(`[DEBUG] Redirecting to Stripe for Pro upgrade due to file size, time=${new Date().toISOString()}`);
+                        } catch (error) {
+                            usageWarning.textContent = `Error initiating upgrade: ${error.message}`;
+                            usageWarning.classList.add('error');
+                            console.error('Upgrade error:', error);
+                        }
+                    });
+                });
+                usageWarning.appendChild(upgradeButton);
+                return;
             }
+            if (auditCount >= auditLimit) {
+                loading.classList.remove('show');
+                usageWarning.textContent = `Usage limit exceeded (${auditCount}/${auditLimit} audits). Upgrade your tier.`;
+                usageWarning.classList.add('error');
+                const upgradeButton = document.createElement('button');
+                upgradeButton.textContent = 'Upgrade Tier';
+                upgradeButton.className = 'upgrade-button';
+                upgradeButton.addEventListener('click', () => {
+                    withCsrfToken(async (token) => {
+                        try {
+                            const username = localStorage.getItem('username') || '';
+                            const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=beginner`, {
+                                method: 'POST',
+                                headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' },
+                                credentials: 'include'
+                            });
+                            if (!response.ok) {
+                                const errorData = await response.json().catch(() => ({}));
+                                throw new Error(errorData.detail || 'Failed to initiate tier upgrade');
+                            }
+                            const data = await response.json();
+                            window.location.href = data.session_url;
+                            console.log(`[DEBUG] Redirecting to Stripe for Beginner upgrade due to audit limit, time=${new Date().toISOString()}`);
+                        } catch (error) {
+                            usageWarning.textContent = `Error initiating upgrade: ${error.message}`;
+                            usageWarning.classList.add('error');
+                            console.error('Upgrade error:', error);
+                        }
+                    });
+                });
+                usageWarning.appendChild(upgradeButton);
+                return;
+            }
+            const formData = new FormData(auditForm);
+            const username = localStorage.getItem('username') || '';
             try {
-                const response = await fetch(`/audit?username=${username || ''}`, {
+                const response = await fetch(`/audit?username=${encodeURIComponent(username)}`, {
                     method: 'POST',
                     headers: { 'X-CSRF-Token': token },
-                    body: formData
+                    body: formData,
+                    credentials: 'include'
                 });
                 if (!response.ok) {
-                    const errorData = await response.json();
+                    const errorData = await response.json().catch(() => ({}));
+                    if (errorData.session_url) {
+                        window.location.href = errorData.session_url;
+                        console.log(`[DEBUG] Redirecting to Stripe for audit limit/file size upgrade, time=${new Date().toISOString()}`);
+                        return;
+                    }
                     throw new Error(errorData.detail || 'Audit request failed');
                 }
                 const data = await response.json();
                 handleAuditResponse(data);
+                await fetchTierData(); // Update audit count
             } catch (error) {
                 loading.classList.remove('show');
-                usageWarning.textContent = error.message || 'Audit request failed';
+                usageWarning.textContent = `Error initiating audit: ${error.message}`;
                 usageWarning.classList.add('error');
                 console.error('Audit error:', error);
             }
@@ -482,6 +585,58 @@ document.addEventListener('DOMContentLoaded', () => {
         URL.revokeObjectURL(url);
         console.log('[DEBUG] Report downloaded');
     });
+
+    // Handle post-payment redirect
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionId = urlParams.get('session_id');
+    const tier = urlParams.get('tier');
+    const tempId = urlParams.get('temp_id');
+    if (sessionId && tier) {
+        withCsrfToken(async (token) => {
+            try {
+                const username = localStorage.getItem('username') || '';
+                const response = await fetch(`/complete-tier-checkout?session_id=${encodeURIComponent(sessionId)}&tier=${encodeURIComponent(tier)}&username=${encodeURIComponent(username)}`, {
+                    method: 'GET',
+                    headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' },
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || 'Failed to complete tier upgrade');
+                }
+                const data = await response.json();
+                alert(data.message);
+                await fetchTierData();
+                console.log(`[DEBUG] Tier upgrade completed: ${tier}, time=${new Date().toISOString()}`);
+            } catch (error) {
+                usageWarning.textContent = `Error completing tier upgrade: ${error.message}`;
+                usageWarning.classList.add('error');
+                console.error('Tier upgrade completion error:', error);
+            }
+        });
+    } else if (sessionId && tempId) {
+        withCsrfToken(async (token) => {
+            try {
+                const username = localStorage.getItem('username') || '';
+                const response = await fetch(`/complete-diamond-audit?session_id=${encodeURIComponent(sessionId)}&temp_id=${encodeURIComponent(tempId)}&username=${encodeURIComponent(username)}`, {
+                    method: 'GET',
+                    headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' },
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || 'Failed to complete Diamond audit');
+                }
+                const data = await response.json();
+                handleAuditResponse(data);
+                console.log(`[DEBUG] Diamond audit completed, time=${new Date().toISOString()}`);
+            } catch (error) {
+                usageWarning.textContent = `Error completing Diamond audit: ${error.message}`;
+                usageWarning.classList.add('error');
+                console.error('Diamond audit completion error:', error);
+            }
+        });
+    }
 
     auditForm?.addEventListener('submit', handleSubmit);
     auditForm?.addEventListener('keypress', (event) => {

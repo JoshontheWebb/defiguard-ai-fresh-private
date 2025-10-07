@@ -36,8 +36,8 @@ INFURA_PROJECT_ID = os.getenv("INFURA_PROJECT_ID")
 STRIPE_API_KEY = os.getenv("STRIPE_API_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
-if not GROK_API_KEY or not INFURA_PROJECT_ID or not STRIPE_API_KEY:
-    raise ValueError("Missing API keys in .env file. Please set GROK_API_KEY, INFURA_PROJECT_ID, and STRIPE_API_KEY.")
+if not GROK_API_KEY or not INFURA_PROJECT_ID:
+    raise ValueError("Missing API keys in .env file. Please set GROK_API_KEY and INFURA_PROJECT_ID.")
 
 try:
     with open('debug.log', 'a') as f:
@@ -55,6 +55,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 handler = logging.getLogger().handlers[0]
 handler.flush = lambda: handler.stream.flush()
+
+# Set Stripe API key
+if STRIPE_API_KEY:
+    stripe.api_key = STRIPE_API_KEY
+else:
+    logger.warning("STRIPE_API_KEY not set; Stripe functionality disabled")
 
 # === DATABASE SETUP ===
 Base = declarative_base()
@@ -488,22 +494,17 @@ async def signin(username: str, request: Request, db: Session = Depends(get_db))
 
 @app.get("/tier")
 async def get_tier(username: str = Query(None), db: Session = Depends(get_db)):
-    if username:
-        user = db.query(User).filter(User.username == username).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        user_tier = user.tier
-        size_limit = "Unlimited" if user_tier == "diamond" else "1MB"
-        feature_flags = usage_tracker.feature_flags[user_tier]
-        api_key = user.api_key if user_tier == "pro" else None
-        audit_count = usage_tracker.count
-    else:
-        user_tier = os.getenv("TIER", "free")
-        size_limit = "Unlimited" if user_tier == "diamond" else "1MB"
-        feature_flags = usage_tracker.feature_flags[user_tier]
-        api_key = None
-        audit_count = usage_tracker.count
-    logger.debug(f"Retrieved tier for {username or 'anonymous'}: {user_tier}, audit count: {audit_count}")
+    if not username:
+        raise HTTPException(status_code=400, detail="Username is required")
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user_tier = user.tier
+    size_limit = "Unlimited" if user_tier == "diamond" else "1MB"
+    feature_flags = usage_tracker.feature_flags[user_tier]
+    api_key = user.api_key if user_tier == "pro" else None
+    audit_count = usage_tracker.count
+    logger.debug(f"Retrieved tier for {username}: {user_tier}, audit count: {audit_count}")
     logger.debug("Flushing log file after tier retrieval")
     handler.flush()
     return {
@@ -523,6 +524,9 @@ async def set_tier(username: str, tier: str, request: Request, db: Session = Dep
         raise HTTPException(status_code=404, detail="User not found")
     if tier not in level_map:
         raise HTTPException(status_code=400, detail=f"Invalid tier: {tier}. Use 'free', 'beginner', 'pro', or 'diamond'")
+    if not STRIPE_API_KEY:
+        logger.error(f"Stripe checkout creation failed for {username} to {tier}: STRIPE_API_KEY not set")
+        raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again later or contact support.")
     try:
         price = {"beginner": 5000, "pro": 19900, "diamond": 2500000}.get(tier, 0)  # Prices in cents
         if price == 0:
@@ -550,7 +554,7 @@ async def set_tier(username: str, tier: str, request: Request, db: Session = Dep
         return {"session_url": session.url}
     except Exception as e:
         logger.error(f"Stripe checkout creation failed for {username} to {tier}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create checkout session: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
 
 @app.post("/create-tier-checkout")
 async def create_tier_checkout(username: str = Query(...), tier: str = Query(...), request: Request = None, db: Session = Depends(get_db)):
@@ -560,6 +564,9 @@ async def create_tier_checkout(username: str = Query(...), tier: str = Query(...
         raise HTTPException(status_code=404, detail="User not found")
     if tier not in level_map:
         raise HTTPException(status_code=400, detail=f"Invalid tier: {tier}. Use 'free', 'beginner', 'pro', or 'diamond'")
+    if not STRIPE_API_KEY:
+        logger.error(f"Stripe checkout creation failed for {username} to {tier}: STRIPE_API_KEY not set")
+        raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again later or contact support.")
     try:
         price = {"beginner": 5000, "pro": 19900, "diamond": 2500000}.get(tier, 0)  # Prices in cents
         if price == 0:
@@ -587,13 +594,16 @@ async def create_tier_checkout(username: str = Query(...), tier: str = Query(...
         return {"session_url": session.url}
     except Exception as e:
         logger.error(f"Stripe checkout creation failed for {username} to {tier}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create checkout session: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
 
 @app.get("/complete-tier-checkout")
 async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query(...), username: str = Query(...), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == username).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if not STRIPE_API_KEY:
+        logger.error(f"Tier upgrade checkout failed for {username}: STRIPE_API_KEY not set")
+        raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again later or contact support.")
     try:
         session = stripe.checkout.Session.retrieve(session_id)
         if session.payment_status == 'paid':
@@ -607,7 +617,7 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
             raise HTTPException(status_code=400, detail="Payment not completed")
     except Exception as e:
         logger.error(f"Tier upgrade checkout failed for {username}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to complete tier upgrade: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Failed to complete tier upgrade: Payment processing error. Please try again or contact support.")
 
 @app.get("/upgrade")
 async def upgrade_page():
@@ -769,6 +779,9 @@ async def create_checkout_session(username: str = Query(...), temp_id: str = Que
     user = db.query(User).filter(User.username == username).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if not STRIPE_API_KEY:
+        logger.error(f"Stripe session creation failed for {username}: STRIPE_API_KEY not set")
+        raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again later or contact support.")
     try:
         session = stripe.checkout.Session.create(
             payment_method_types=['card'],
@@ -791,13 +804,16 @@ async def create_checkout_session(username: str = Query(...), temp_id: str = Que
         return {"session_url": session.url}
     except Exception as e:
         logger.error(f"Stripe session creation failed for {username}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create checkout session: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
 
 @app.post("/webhook")
 async def webhook(request: Request, db: Session = Depends(get_db)):
     payload = await request.body()
     sig_header = request.headers.get('stripe-signature')
     event = None
+    if not STRIPE_API_KEY or not STRIPE_WEBHOOK_SECRET:
+        logger.error("Stripe webhook processing failed: STRIPE_API_KEY or STRIPE_WEBHOOK_SECRET not set")
+        return Response(status_code=503, content="Webhook processing unavailable due to configuration error")
     try:
         event = stripe.Webhook.construct_event(
             payload, sig_header, STRIPE_WEBHOOK_SECRET
@@ -831,6 +847,9 @@ async def complete_diamond_audit(session_id: str = Query(...), temp_id: str = Qu
     user = db.query(User).filter(User.username == username).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    if not STRIPE_API_KEY:
+        logger.error(f"Complete diamond audit failed for {username}: STRIPE_API_KEY not set")
+        raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again later or contact support.")
     try:
         session = stripe.checkout.Session.retrieve(session_id)
         if session.payment_status == 'paid':
@@ -847,7 +866,7 @@ async def complete_diamond_audit(session_id: str = Query(...), temp_id: str = Qu
             raise HTTPException(status_code=400, detail="Payment not completed")
     except Exception as e:
         logger.error(f"Complete diamond audit failed for {username}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to complete audit: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Failed to complete audit: Payment processing error. Please try again or contact support.")
 
 @app.post("/diamond-audit")
 async def diamond_audit(file: UploadFile = File(...), username: str = Query(...), db: Session = Depends(get_db), request: Request = None):
@@ -867,6 +886,10 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(...)
     temp_path = os.path.join(temp_dir, f"{temp_id}.sol")
     with open(temp_path, "wb") as f:
         f.write(code_bytes)
+    if not STRIPE_API_KEY:
+        logger.error(f"Stripe checkout creation failed for {username} Diamond audit: STRIPE_API_KEY not set")
+        os.unlink(temp_path)
+        raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again later or contact support.")
     try:
         session = stripe.checkout.Session.create(
             payment_method_types=['card'],
@@ -892,7 +915,7 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(...)
     except Exception as e:
         logger.error(f"Stripe checkout creation failed for {username} Diamond audit: {str(e)}")
         os.unlink(temp_path)
-        raise HTTPException(status_code=500, detail=f"Failed to create checkout session: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
 
 @app.get("/api/audit")
 async def api_audit(username: str, api_key: str, db: Session = Depends(get_db)):
@@ -910,9 +933,9 @@ async def read_root():
 
 class AuditReport(BaseModel):
     risk_score: int = Field(..., ge=0, le=100)
-    issues: list[dict] = Field(..., min_length=1)
-    predictions: list[dict] = Field(..., min_length=0)
-    recommendations: list[str] = Field(..., min_length=0)
+    issues: list[dict] = Field(default_factory=list, min_length=0)
+    predictions: list[dict] = Field(default_factory=list, min_length=0)
+    recommendations: list[str] = Field(default_factory=list, min_length=0)
     remediation_roadmap: Optional[str] = Field(None, description="Detailed remediation plan for Diamond tier")
     fuzzing_results: list[dict] = Field(default_factory=list, description="Echidna fuzzing results for Pro/Diamond tiers")
 
@@ -937,7 +960,8 @@ AUDIT_SCHEMA = {
                     "fix": {"type": "string"}
                 },
                 "required": ["type", "severity", "fix"]
-            }
+            },
+            "minItems": 0
         },
         "predictions": {
             "type": "array",
@@ -948,9 +972,14 @@ AUDIT_SCHEMA = {
                     "impact": {"type": "string", "enum": ["Low", "Med", "High"]}
                 },
                 "required": ["scenario", "impact"]
-            }
+            },
+            "minItems": 0
         },
-        "recommendations": {"type": "array", "items": {"type": "string"}},
+        "recommendations": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 0
+        },
         "remediation_roadmap": {"type": ["string", "null"]},
         "fuzzing_results": {
             "type": "array",
@@ -961,7 +990,8 @@ AUDIT_SCHEMA = {
                     "description": {"type": "string"}
                 },
                 "required": ["vulnerability", "description"]
-            }
+            },
+            "minItems": 0
         }
     },
     "required": ["risk_score", "issues", "predictions", "recommendations", "fuzzing_results"]
@@ -1003,6 +1033,10 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             temp_path = os.path.join(temp_dir, f"{temp_id}.sol")
             with open(temp_path, "wb") as f:
                 f.write(code_bytes)
+            if not STRIPE_API_KEY:
+                logger.error(f"Stripe checkout creation failed for {username} Pro upgrade: STRIPE_API_KEY not set")
+                os.unlink(temp_path)
+                raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again later or contact support.")
             try:
                 session = stripe.checkout.Session.create(
                     payment_method_types=['card'],
@@ -1028,9 +1062,12 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             except Exception as e:
                 logger.error(f"Stripe checkout creation failed for {username} Pro upgrade: {str(e)}")
                 os.unlink(temp_path)
-                raise HTTPException(status_code=500, detail=f"Failed to create checkout session: {str(e)}")
+                raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
         elif e.status_code == 403 and "Usage limit exceeded" in e.detail:
             logger.info(f"Usage limit exceeded for {username}; redirecting to upgrade")
+            if not STRIPE_API_KEY:
+                logger.error(f"Stripe checkout creation failed for {username} Beginner upgrade: STRIPE_API_KEY not set")
+                raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again later or contact support.")
             try:
                 session = stripe.checkout.Session.create(
                     payment_method_types=['card'],
@@ -1055,7 +1092,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 return {"session_url": session.url}
             except Exception as e:
                 logger.error(f"Stripe checkout creation failed for {username} Beginner upgrade: {str(e)}")
-                raise HTTPException(status_code=500, detail=f"Failed to create checkout session: {str(e)}")
+                raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
         else:
             raise e
 
