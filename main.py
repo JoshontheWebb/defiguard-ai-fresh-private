@@ -35,10 +35,10 @@ GROK_API_KEY = os.getenv("GROK_API_KEY")
 INFURA_PROJECT_ID = os.getenv("INFURA_PROJECT_ID")
 STRIPE_API_KEY = os.getenv("STRIPE_API_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-STRIPE_PRICE_BEGINNER = os.getenv("STRIPE_PRICE_BEGINNER", "price_beginner_50")
-STRIPE_PRICE_PRO = os.getenv("STRIPE_PRICE_PRO", "price_pro_200")
-STRIPE_PRICE_DIAMOND = os.getenv("STRIPE_PRICE_DIAMOND", "price_diamond_50")
-STRIPE_METERED_PRICE_DIAMOND = os.getenv("STRIPE_METERED_PRICE_DIAMOND", "price_diamond_overage")
+STRIPE_PRICE_BEGINNER = os.getenv("STRIPE_PRICE_BEGINNER", "price_1SFoJGEqXlKjClpjj2RZ10bf")
+STRIPE_PRICE_PRO = os.getenv("STRIPE_PRICE_PRO", "price_1SFoLlEqXlKjClpjoNrA0XCO")
+STRIPE_PRICE_DIAMOND = os.getenv("STRIPE_PRICE_DIAMOND", "price_1SFoVMEqXlKjClpjTyRtHJcD")
+STRIPE_METERED_PRICE_DIAMOND = os.getenv("STRIPE_METERED_PRICE_DIAMOND", "price_1SFpPTEqXlKjClpjeGFNYSgF")
 
 if not GROK_API_KEY or not INFURA_PROJECT_ID:
     raise ValueError("Missing API keys in .env file. Please set GROK_API_KEY and INFURA_PROJECT_ID.")
@@ -85,6 +85,8 @@ class User(Base):
     last_reset = Column(DateTime, default=datetime.now)
     api_key = Column(String, nullable=True)
     audit_history = Column(String, default="[]")
+    stripe_subscription_id = Column(String, nullable=True)  # Store subscription ID
+    stripe_subscription_item_id = Column(String, nullable=True)  # Store subscription item ID for overage
 
 # Migrate database schema
 def migrate_database():
@@ -99,16 +101,25 @@ def migrate_database():
             return
         cursor.execute("PRAGMA table_info(users)")
         columns = [info[1] for info in cursor.fetchall()]
-        if 'api_key' not in columns or 'audit_history' not in columns or 'has_diamond' not in columns:
-            logger.info("Migrating users table to add api_key, audit_history, and has_diamond columns")
-            cursor.execute("SELECT id, username, email, password_hash, tier, last_reset FROM users")
+        missing_columns = [
+            col for col in ['api_key', 'audit_history', 'has_diamond', 'stripe_subscription_id', 'stripe_subscription_item_id']
+            if col not in columns
+        ]
+        if missing_columns:
+            logger.info(f"Migrating users table to add columns: {missing_columns}")
+            cursor.execute("SELECT id, username, email, password_hash, tier, last_reset, api_key, audit_history, has_diamond FROM users")
             old_data = cursor.fetchall()
             cursor.execute("DROP TABLE IF EXISTS users")
             Base.metadata.create_all(bind=engine)
             for row in old_data:
+                # Pad row with None for new columns
+                while len(row) < 9:  # Adjust for existing columns
+                    row += (None,)
+                row += (None, None)  # Add stripe_subscription_id, stripe_subscription_item_id
                 cursor.execute(
-                    "INSERT INTO users (id, username, email, password_hash, tier, last_reset, api_key, audit_history, has_diamond) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    row + (None, "[]", False)
+                    "INSERT INTO users (id, username, email, password_hash, tier, last_reset, api_key, audit_history, has_diamond, stripe_subscription_id, stripe_subscription_item_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    row
                 )
             conn.commit()
             logger.info("Database migration completed")
@@ -176,7 +187,12 @@ class UsageTracker:
                 total_cost += remaining_mb * 1.00  # Next 40MB at $1.00/MB
             else:
                 total_cost += 40 * 1.00  # 11-50MB at $1.00/MB
-                total_cost += (remaining_mb - 40) * 2.00  # 51+MB at $2.00/MB
+                remaining_mb -= 40
+                if remaining_mb <= 2:
+                    total_cost += remaining_mb * 2.00  # 51-52MB at $2.00/MB
+                else:
+                    total_cost += 2 * 2.00  # 51-52MB at $2.00/MB
+                    total_cost += (remaining_mb - 2) * 5.00  # 53+MB at $5.00/MB
         return round(total_cost * 100)  # Convert to cents
 
     def increment(self, file_size, username=None, db: Session = None):
@@ -612,6 +628,13 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
             metadata={'username': username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
         )
         logger.info(f"Redirecting {username} to Stripe checkout for {tier} tier, has_diamond: {has_diamond}")
+        # Store subscription details after successful checkout
+        if session.subscription:
+            user.stripe_subscription_id = session.subscription
+            for item in stripe.Subscription.retrieve(session.subscription).get('items', {}).get('data', []):
+                if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
+                    user.stripe_subscription_item_id = item.id
+            db.commit()
         logger.debug("Flushing log file after tier checkout redirect")
         for handler in logging.getLogger().handlers:
             handler.flush()
@@ -659,6 +682,13 @@ async def create_tier_checkout(username: str = Query(...), tier: str = Query(...
             metadata={'username': username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
         )
         logger.info(f"Created Stripe checkout session for {username} to {tier}, has_diamond: {has_diamond}")
+        # Store subscription details after successful checkout
+        if session.subscription:
+            user.stripe_subscription_id = session.subscription
+            for item in stripe.Subscription.retrieve(session.subscription).get('items', {}).get('data', []):
+                if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
+                    user.stripe_subscription_item_id = item.id
+            db.commit()
         logger.debug("Flushing log file after tier checkout creation")
         for handler in logging.getLogger().handlers:
             handler.flush()
@@ -679,7 +709,12 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
         session = stripe.checkout.Session.retrieve(session_id)
         if session.payment_status == 'paid':
             result = usage_tracker.set_tier(tier, has_diamond, username, db)
+            user.stripe_subscription_id = session.subscription
+            for item in stripe.Subscription.retrieve(session.subscription).get('items', {}).get('data', []):
+                if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
+                    user.stripe_subscription_item_id = item.id
             usage_tracker.reset_usage(username, db)
+            db.commit()
             logger.info(f"Tier upgrade completed for {username} to {tier}, has_diamond: {has_diamond}")
             logger.debug("Flushing log file after tier upgrade completion")
             for handler in logging.getLogger().handlers:
@@ -861,16 +896,10 @@ async def create_checkout_session(username: str = Query(...), temp_id: str = Que
         session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=[{
-                'price_data': {
-                    'currency': 'usd',
-                    'product_data': {
-                        'name': 'Diamond Audit Overage',
-                    },
-                    'unit_amount': price * 100,  # cents
-                },
+                'price': STRIPE_METERED_PRICE_DIAMOND,
                 'quantity': 1,
             }],
-            mode='payment',
+            mode='subscription',
             success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&temp_id={temp_id}',
             cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
             metadata={'temp_id': temp_id, 'username': username}
@@ -905,12 +934,16 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
         temp_id = session['metadata'].get('temp_id')
         tier = session['metadata'].get('tier')
         has_diamond = session['metadata'].get('has_diamond') == 'true'
-        if tier:
-            user = db.query(User).filter(User.username == username).first()
-            if user:
-                usage_tracker.set_tier(tier, has_diamond, username, db)
-                usage_tracker.reset_usage(username, db)
-                logger.info(f"Tier upgrade completed for {username} to {tier}, has_diamond: {has_diamond}")
+        user = db.query(User).filter(User.username == username).first()
+        if user and tier:
+            user.stripe_subscription_id = session.subscription
+            for item in stripe.Subscription.retrieve(session.subscription).get('items', {}).get('data', []):
+                if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
+                    user.stripe_subscription_item_id = item.id
+            usage_tracker.set_tier(tier, has_diamond, username, db)
+            usage_tracker.reset_usage(username, db)
+            logger.info(f"Tier upgrade completed for {username} to {tier}, has_diamond: {has_diamond}")
+            db.commit()
         elif temp_id:
             logger.info(f"Payment completed for {username}, starting audit for temp_id {temp_id}")
         logger.debug("Flushing log file after webhook processing")
@@ -970,16 +1003,10 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(...)
         session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=[{
-                'price_data': {
-                    'currency': 'usd',
-                    'product_data': {
-                        'name': 'Diamond Audit Overage',
-                    },
-                    'unit_amount': overage_cost,  # Already in cents
-                },
+                'price': STRIPE_METERED_PRICE_DIAMOND,
                 'quantity': 1,
             }],
-            mode='payment',
+            mode='subscription',
             success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&temp_id={temp_id}',
             cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
             metadata={'temp_id': temp_id, 'username': username}
@@ -1209,7 +1236,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 temp_path = temp_file.name
                 if platform.system() == "Windows":
                     temp_path = temp_path.replace("/", "\\")
-            
+           
             context = ""
             fuzzing_results = []
             try:
@@ -1297,20 +1324,19 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     history = json.loads(user.audit_history)
                     history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": aggregated["risk_score"]})
                     user.audit_history = json.dumps(history)
+                    overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)  # Convert to MB
+                    if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
+                        try:
+                            stripe.SubscriptionItem.create_usage_record(
+                                user.stripe_subscription_item_id,
+                                quantity=int(overage_mb),  # Integer MB over 1MB
+                                timestamp=int(time.time()),
+                                action='increment'
+                            )
+                            logger.info(f"Reported {overage_mb:.2f}MB overage for {username} to Stripe")
+                        except Exception as e:
+                            logger.error(f"Failed to report overage for {username}: {str(e)}")
                     db.commit()
-                overage_cost = usage_tracker.calculate_diamond_overage(file_size) / 100  # Convert to dollars
-                if overage_cost > 0:
-                    try:
-                        stripe.SubscriptionItem.create_usage_record(
-                            user.stripe_subscription_item_id,  # Assumes stored in user model or fetched
-                            quantity=int((file_size - 1024 * 1024) / (1024 * 1024)),  # MB over 1MB
-                            timestamp=int(time.time()),
-                            action='increment',
-                            subscription=user.stripe_subscription_id
-                        )
-                        logger.info(f"Reported {file_size / 1024 / 1024:.2f}MB overage for {username} to Stripe")
-                    except Exception as e:
-                        logger.error(f"Failed to report overage for {username}: {str(e)}")
                 return {"report": aggregated, "risk_score": str(aggregated["risk_score"]), "overage_cost": overage_cost}
             print("Calling Grok API...")
             prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=code_str, details=details, tier="diamond" if user.has_diamond else current_tier)
@@ -1341,6 +1367,18 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     history = json.loads(user.audit_history)
                     history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": audit_json["risk_score"]})
                     user.audit_history = json.dumps(history)
+                    overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)  # Convert to MB
+                    if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
+                        try:
+                            stripe.SubscriptionItem.create_usage_record(
+                                user.stripe_subscription_item_id,
+                                quantity=int(overage_mb),  # Integer MB over 1MB
+                                timestamp=int(time.time()),
+                                action='increment'
+                            )
+                            logger.info(f"Reported {overage_mb:.2f}MB overage for {username} to Stripe")
+                        except Exception as e:
+                            logger.error(f"Failed to report overage for {username}: {str(e)}")
                     db.commit()
                 logger.debug("Flushing log file after successful audit")
                 for handler in logging.getLogger().handlers:

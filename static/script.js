@@ -88,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const calculateDiamondOverage = (file) => {
         if (!file) {
             document.getElementById('diamond-price').style.display = 'none';
-            return;
+            return 0;
         }
         const size = file.size;
         const overageMb = Math.max(0, (size - 1024 * 1024) / (1024 * 1024)); // MB over 1MB
@@ -103,7 +103,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     overageCost += remainingMb * 1.00; // Next 40MB at $1.00/MB
                 } else {
                     overageCost += 40 * 1.00; // 11-50MB at $1.00/MB
-                    overageCost += (remainingMb - 40) * 2.00; // 51+MB at $2.00/MB
+                    const remainingAfter50 = remainingMb - 40;
+                    if (remainingAfter50 <= 2) {
+                        overageCost += remainingAfter50 * 2.00; // 51-52MB at $2.00/MB
+                    } else {
+                        overageCost += 2 * 2.00; // 51-52MB at $2.00/MB
+                        overageCost += (remainingAfter50 - 2) * 5.00; // 53+MB at $5.00/MB
+                    }
                 }
             }
         }
@@ -111,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
         priceElement.textContent = `Diamond Audit Overage: $${overageCost.toFixed(2)} for ${(size / 1024 / 1024).toFixed(2)}MB`;
         priceElement.style.display = overageCost > 0 ? 'block' : 'none';
         console.log(`[DEBUG] Diamond overage calculated: $${overageCost.toFixed(2)} for ${size} bytes, time=${new Date().toISOString()}`);
+        return overageCost;
     };
 
     // Fetch CSRF token on load
@@ -538,7 +545,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             const data = await response.json();
                             window.location.href = data.session_url;
                             console.log(`[DEBUG] Redirecting to Stripe for Beginner upgrade due to audit limit, time=${new Date().toISOString()}`);
-                        } catch (error) {
+                        } else {
                             usageWarning.textContent = `Error initiating upgrade: ${error.message}`;
                             usageWarning.classList.add('error');
                             console.error('Upgrade error:', error);
@@ -673,4 +680,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize auth status
     updateAuthStatus();
-});
+    });
