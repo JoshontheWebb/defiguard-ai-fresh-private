@@ -43,22 +43,25 @@ STRIPE_METERED_PRICE_DIAMOND = os.getenv("STRIPE_METERED_PRICE_DIAMOND", "price_
 if not GROK_API_KEY or not INFURA_PROJECT_ID:
     raise ValueError("Missing API keys in .env file. Please set GROK_API_KEY and INFURA_PROJECT_ID.")
 
+# Configure logging for both file and console
 try:
     with open('debug.log', 'a') as f:
         f.write("Logging initialized at " + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n")
         f.flush()
 except Exception as e:
     print(f"Error initializing log file: {e}", file=sys.stderr)
+
 logging.basicConfig(
     level=logging.DEBUG,
-    filename='debug.log',
-    filemode='a',
     format='%(asctime)s - %(levelname)s - %(message)s',
-    force=True
+    handlers=[
+        logging.FileHandler('debug.log', mode='a'),
+        logging.StreamHandler(sys.stdout)  # Add console output for Render logs
+    ]
 )
 logger = logging.getLogger(__name__)
-handler = logging.getLogger().handlers[0]
-handler.flush = lambda: handler.stream.flush()
+for handler in logging.getLogger().handlers:
+    handler.flush = lambda: handler.stream.flush()
 
 # Set Stripe API key
 if STRIPE_API_KEY:
@@ -197,7 +200,7 @@ class UsageTracker:
                 overage_cost = self.calculate_diamond_overage(file_size) / 100  # Convert to dollars for message
                 raise HTTPException(
                     status_code=400,
-                    detail=f"File size ({file_size / 1024 / 1024:.2f}MB) exceeds {user.tier} limit. Upgrade to Diamond add-on ($50/mo + ${overage_cost:.2f} overage for this file)."
+                    detail=f"Access to Diamond audits is only available on Pro tier with Diamond add-on. Upgrade to Pro + Diamond ($200/mo + $50/mo + ${overage_cost:.2f} overage for this file)."
                 )
             self.count += 1
             user.last_reset = current_time
@@ -227,7 +230,7 @@ class UsageTracker:
                 overage_cost = self.calculate_diamond_overage(file_size) / 100
                 raise HTTPException(
                     status_code=400,
-                    detail=f"File size ({file_size / 1024 / 1024:.2f}MB) exceeds {current_tier} limit. Upgrade to Diamond add-on ($50/mo + ${overage_cost:.2f} overage for this file)."
+                    detail=f"Access to Diamond audits is only available on Pro tier with Diamond add-on. Upgrade to Pro + Diamond ($200/mo + $50/mo + ${overage_cost:.2f} overage for this file)."
                 )
             self.count += 1
             self._save_state()
@@ -370,12 +373,14 @@ async def get_csrf_token(request: Request):
         else:
             logger.debug(f"Reusing existing CSRF token: {token}")
         logger.debug("Flushing log file after CSRF token generation")
-        handler.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         return token
     except Exception as e:
         logger.error(f"Error generating CSRF token: {str(e)}")
         logger.debug("Flushing log file after CSRF error")
-        handler.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         raise HTTPException(status_code=500, detail=f"CSRF token generation failed: {str(e)}")
 
 async def verify_csrf_token(request: Request):
@@ -387,15 +392,18 @@ async def verify_csrf_token(request: Request):
             if not token or token != session_token:
                 logger.error(f"CSRF validation failed: Provided={token}, Expected={session_token}")
                 logger.debug("Flushing log file after CSRF validation failure")
-                handler.flush()
+                for handler in logging.getLogger().handlers:
+                    handler.flush()
                 raise HTTPException(status_code=403, detail="Invalid CSRF token")
         logger.debug("Flushing log file after CSRF verification")
-        handler.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         return True
     except Exception as e:
         logger.error(f"CSRF verification error: {str(e)}")
         logger.debug("Flushing log file after CSRF verification error")
-        handler.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         raise HTTPException(status_code=500, detail=f"CSRF verification failed: {str(e)}")
 
 # Debug endpoint to test logging
@@ -406,15 +414,17 @@ async def debug_log():
     logger.warning("Test WARNING log")
     logger.error("Test ERROR log")
     logger.debug("Flushing log file after debug endpoint")
-    handler.flush()
-    return {"message": "Debug logs written to debug.log"}
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+    return {"message": "Debug logs written to debug.log and console"}
 
 # Debug static file serving
 @app.get("/static/{file_path:path}")
 async def serve_static(file_path: str):
     logger.info(f"Serving static file: /static/{file_path}")
     logger.debug("Flushing log file after serving static file")
-    handler.flush()
+    for handler in logging.getLogger().handlers:
+        handler.flush()
     return StaticFiles(directory="static").get_response(file_path)
 
 # Reset usage for testing
@@ -425,7 +435,8 @@ async def reset_usage(request: Request, username: str = Query(None), db: Session
         count = usage_tracker.reset_usage(username, db)
         logger.info(f"Usage reset to {count} for {username or 'anonymous'}")
         logger.debug("Flushing log file after usage reset")
-        handler.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         return {"message": f"Usage reset to {count} for {username or 'anonymous'}"}
     except HTTPException as e:
         logger.error(f"Reset usage HTTP error for {username or 'anonymous'}: {str(e)}")
@@ -441,12 +452,14 @@ async def read_ui():
             print(f"Loading UI from: {os.path.abspath('templates/index.html')}")
             logger.info(f"Loading UI from: {os.path.abspath('templates/index.html')}")
             logger.debug("Flushing log file after loading UI")
-            handler.flush()
+            for handler in logging.getLogger().handlers:
+                handler.flush()
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
         logger.error("UI file not found: templates/index.html")
         logger.debug("Flushing log file after UI file error")
-        handler.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         return HTMLResponse(content="<h1>UI file not found. Check templates/index.html.</h1>")
 
 @app.get("/auth", response_class=HTMLResponse)
@@ -456,12 +469,14 @@ async def read_auth():
             print(f"Loading auth from: {os.path.abspath('templates/auth.html')}")
             logger.info(f"Loading auth from: {os.path.abspath('templates/auth.html')}")
             logger.debug("Flushing log file after loading auth")
-            handler.flush()
+            for handler in logging.getLogger().handlers:
+                handler.flush()
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
         logger.error("Auth file not found: templates/auth.html")
         logger.debug("Flushing log file after auth file error")
-        handler.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         return HTMLResponse(content="<h1>Auth file not found. Check templates folder.</h1>")
 
 @app.get("/csrf-token")
@@ -471,12 +486,14 @@ async def get_csrf(request: Request):
         token = await get_csrf_token(request)
         logger.info(f"Returning CSRF token: {token}")
         logger.debug("Flushing log file after returning CSRF token")
-        handler.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         return {"csrf_token": token}
     except Exception as e:
         logger.error(f"CSRF endpoint error: {str(e)}")
         logger.debug("Flushing log file after CSRF endpoint error")
-        handler.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         raise HTTPException(status_code=500, detail=f"Failed to generate CSRF token: {str(e)}")
 
 @app.post("/signup/{username}")
@@ -497,7 +514,8 @@ async def signup(username: str, request: Request, db: Session = Depends(get_db))
     db.commit()
     logger.info(f"User {username} signed up with free tier")
     logger.debug("Flushing log file after signup")
-    handler.flush()
+    for handler in logging.getLogger().handlers:
+        handler.flush()
     return {"message": f"User {username} signed up with free tier"}
 
 @app.post("/signin/{username}")
@@ -514,7 +532,8 @@ async def signin(username: str, request: Request, db: Session = Depends(get_db))
         raise HTTPException(status_code=401, detail="Invalid password")
     logger.info(f"User {username} signed in")
     logger.debug("Flushing log file after signin")
-    handler.flush()
+    for handler in logging.getLogger().handlers:
+        handler.flush()
     return {"message": f"Signed in as {username}"}
 
 @app.get("/tier")
@@ -542,7 +561,8 @@ async def get_tier(username: str = Query(None), db: Session = Depends(get_db)):
         has_diamond = user.has_diamond
     logger.debug(f"Retrieved tier for {username or 'anonymous'}: {user_tier}, audit count: {audit_count}, has_diamond: {has_diamond}")
     logger.debug("Flushing log file after tier retrieval")
-    handler.flush()
+    for handler in logging.getLogger().handlers:
+        handler.flush()
     return {
         "tier": user_tier,
         "size_limit": size_limit,
@@ -593,7 +613,8 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
         )
         logger.info(f"Redirecting {username} to Stripe checkout for {tier} tier, has_diamond: {has_diamond}")
         logger.debug("Flushing log file after tier checkout redirect")
-        handler.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         return {"session_url": session.url}
     except Exception as e:
         logger.error(f"Stripe checkout creation failed for {username} to {tier}: {str(e)}")
@@ -639,7 +660,8 @@ async def create_tier_checkout(username: str = Query(...), tier: str = Query(...
         )
         logger.info(f"Created Stripe checkout session for {username} to {tier}, has_diamond: {has_diamond}")
         logger.debug("Flushing log file after tier checkout creation")
-        handler.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         return {"session_url": session.url}
     except Exception as e:
         logger.error(f"Stripe checkout creation failed for {username} to {tier}: {str(e)}")
@@ -660,7 +682,8 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
             usage_tracker.reset_usage(username, db)
             logger.info(f"Tier upgrade completed for {username} to {tier}, has_diamond: {has_diamond}")
             logger.debug("Flushing log file after tier upgrade completion")
-            handler.flush()
+            for handler in logging.getLogger().handlers:
+                handler.flush()
             return {"message": result}
         else:
             raise HTTPException(status_code=400, detail="Payment not completed")
@@ -672,7 +695,8 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
 async def upgrade_page():
     logger.debug("Upgrade page accessed")
     logger.debug("Flushing log file after upgrade page access")
-    handler.flush()
+    for handler in logging.getLogger().handlers:
+        handler.flush()
     return {"message": "Upgrade at /ui for Beginner ($50/mo), Pro ($200/mo), or Diamond add-on ($50/mo with Pro)."}
 
 @app.get("/facets/{contract_address}")
@@ -682,17 +706,17 @@ async def get_facets(contract_address: str, username: str = Query(None), db: Ses
         if not w3.is_address(contract_address):
             logger.error(f"Invalid Ethereum address: {contract_address}")
             logger.debug("Flushing log file after invalid address")
-            handler.flush()
+            for handler in logging.getLogger().handlers:
+                handler.flush()
             raise HTTPException(status_code=400, detail="Invalid Ethereum address")
-
         user = db.query(User).filter(User.username == username).first()
         current_tier = user.tier if user else os.getenv("TIER", "free")
         if current_tier not in ["pro", "diamond"] and not (user and user.has_diamond):
             logger.warning(f"Facet preview denied for {username or 'anonymous'} (tier: {current_tier}, has_diamond: {user.has_diamond if user else False})")
             logger.debug("Flushing log file after tier check failure")
-            handler.flush()
+            for handler in logging.getLogger().handlers:
+                handler.flush()
             raise HTTPException(status_code=403, detail="Facet preview requires Pro tier or Diamond add-on. Upgrade at /ui.")
-
         diamond_abi = [
             {
                 "inputs": [{"internalType": "bytes4", "name": "_functionSelector", "type": "bytes4"}],
@@ -720,7 +744,7 @@ async def get_facets(contract_address: str, username: str = Query(None), db: Ses
             }
         ]
         contract = w3.eth.contract(address=contract_address, abi=diamond_abi)
-        
+       
         try:
             facets = contract.functions.facets().call()
             facet_data = [
@@ -733,19 +757,22 @@ async def get_facets(contract_address: str, username: str = Query(None), db: Ses
             ]
             logger.info(f"Retrieved {len(facet_data)} facets for {contract_address}")
             logger.debug("Flushing log file after fetching facets")
-            handler.flush()
+            for handler in logging.getLogger().handlers:
+                handler.flush()
             return {"facets": facet_data, "is_preview": current_tier == "pro" and not (user and user.has_diamond)}
         except Exception as e:
             logger.error(f"Failed to fetch facets for {contract_address}: {str(e)}")
             logger.debug("Flushing log file after facet fetch error")
-            handler.flush()
+            for handler in logging.getLogger().handlers:
+                handler.flush()
             raise HTTPException(status_code=500, detail=f"Failed to fetch facets: {str(e)}")
     except HTTPException as e:
         raise e
     except Exception as e:
         logger.error(f"Unexpected error in /facets: {str(e)}")
         logger.debug("Flushing log file after unexpected /facets error")
-        handler.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 def run_echidna(temp_path):
@@ -755,14 +782,14 @@ def run_echidna(temp_path):
     try:
         subprocess.run(["docker", "--version"], check=True, capture_output=True, text=True)
         logger.info("Docker is available, attempting to pull Echidna image")
-        
+       
         @retry(stop_after_attempt(3), wait_fixed(2))
         def pull_echidna():
             subprocess.run(["docker", "pull", "trailofbits/echidna"], check=True, capture_output=True, text=True)
             logger.info("Echidna image pulled successfully")
-        
+       
         pull_echidna()
-        
+       
         config_path = os.path.join(os.getcwd(), "echidna_config.yaml")
         output_path = os.path.join(os.getcwd(), "echidna_output")
         with open(config_path, "w") as f:
@@ -872,7 +899,6 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
     except stripe.error.SignatureVerificationError as e:
         logger.error(f"Stripe webhook error: Invalid signature - {str(e)}")
         return Response(status_code=400)
-
     if event['type'] == 'checkout.session.completed':
         session = event['data']['object']
         username = session['metadata'].get('username')
@@ -888,7 +914,8 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
         elif temp_id:
             logger.info(f"Payment completed for {username}, starting audit for temp_id {temp_id}")
         logger.debug("Flushing log file after webhook processing")
-        handler.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
     return Response(status_code=200)
 
 @app.get("/complete-diamond-audit")
@@ -959,7 +986,8 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(...)
         )
         logger.info(f"Redirecting {username} to Stripe checkout for Diamond audit overage")
         logger.debug("Flushing log file after Diamond checkout redirect")
-        handler.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         return {"session_url": session.url}
     except Exception as e:
         logger.error(f"Stripe checkout creation failed for {username} Diamond audit: {str(e)}")
@@ -977,7 +1005,8 @@ async def api_audit(username: str, api_key: str, db: Session = Depends(get_db)):
 async def read_root():
     logger.debug("Root endpoint accessed, redirecting to /ui")
     logger.debug("Flushing log file after root access")
-    handler.flush()
+    for handler in logging.getLogger().handlers:
+        handler.flush()
     return HTMLResponse(content="<script>window.location.href='/ui';</script>")
 
 class AuditReport(BaseModel):
@@ -1077,14 +1106,15 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         overage_cost = usage_tracker.calculate_diamond_overage(file_size) / 100  # Convert to dollars
         raise HTTPException(
             status_code=400,
-            detail=f"File size ({file_size / 1024 / 1024:.2f}MB) exceeds {current_tier} limit. Upgrade to Diamond add-on ($50/mo + ${overage_cost:.2f} overage for this file)."
+            detail=f"Access to Diamond audits is only available on Pro tier with Diamond add-on. Upgrade to Pro + Diamond ($200/mo + $50/mo + ${overage_cost:.2f} overage for this file)."
         )
     limits = {"free": FREE_LIMIT, "beginner": BEGINNER_LIMIT, "pro": PRO_LIMIT, "diamond": PRO_LIMIT}
     try:
         current_count = usage_tracker.increment(file_size, username, db)
         logger.info(f"Audit request {current_count} processed for contract {contract_address} with tier {current_tier} for user {username}")
         logger.debug("Flushing log file after audit request")
-        handler.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
     except HTTPException as e:
         if e.status_code == 400 and "exceeds" in e.detail:
             logger.info(f"File size exceeds limit for {username}; redirecting to upgrade")
@@ -1115,7 +1145,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 )
                 logger.info(f"Redirecting {username} to Stripe checkout for Pro tier with Diamond add-on due to file size")
                 logger.debug("Flushing log file after upgrade redirect")
-                handler.flush()
+                for handler in logging.getLogger().handlers:
+                    handler.flush()
                 return {"session_url": session.url}
             except Exception as e:
                 logger.error(f"Stripe checkout creation failed for {username} Pro upgrade: {str(e)}")
@@ -1140,7 +1171,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 )
                 logger.info(f"Redirecting {username} to Stripe checkout for Beginner tier due to usage limit")
                 logger.debug("Flushing log file after upgrade redirect")
-                handler.flush()
+                for handler in logging.getLogger().handlers:
+                    handler.flush()
                 return {"session_url": session.url}
             except Exception as e:
                 logger.error(f"Stripe checkout creation failed for {username} Beginner upgrade: {str(e)}")
@@ -1160,12 +1192,14 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         except UnicodeDecodeError as decode_err:
             logger.error(f"File decoding failed: {str(decode_err)}")
             logger.debug("Flushing log file after decode error")
-            handler.flush()
+            for handler in logging.getLogger().handlers:
+                handler.flush()
             raise HTTPException(status_code=400, detail=f"File decoding failed: {str(decode_err)}")
         if not code_str.strip():
             logger.error("Empty file uploaded")
             logger.debug("Flushing log file after empty file error")
-            handler.flush()
+            for handler in logging.getLogger().handlers:
+                handler.flush()
             raise HTTPException(status_code=400, detail="Empty file uploaded.")
 
         temp_path = None
@@ -1197,7 +1231,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 print(f"Slither error details: {str(e)}")
                 logger.error(f"Slither analysis failed: {str(e)}")
                 logger.debug("Flushing log file after Slither error")
-                handler.flush()
+                for handler in logging.getLogger().handlers:
+                    handler.flush()
                 context = "Slither analysis failed; proceeding with raw code"
 
             if usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["fuzzing"]:
@@ -1213,7 +1248,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             if contract_address and not usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["onchain"]:
                 logger.warning(f"On-chain analysis denied for {username} (tier: {current_tier}, has_diamond: {user.has_diamond})")
                 logger.debug("Flushing log file after onchain tier check")
-                handler.flush()
+                for handler in logging.getLogger().handlers:
+                    handler.flush()
                 raise HTTPException(status_code=403, detail="On-chain analysis requires Beginner tier or higher.")
 
             details = "Uploaded Solidity code for analysis."
@@ -1221,7 +1257,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 if not w3.is_address(contract_address):
                     logger.error(f"Invalid Ethereum address: {contract_address}")
                     logger.debug("Flushing log file after invalid address")
-                    handler.flush()
+                    for handler in logging.getLogger().handlers:
+                        handler.flush()
                     raise HTTPException(status_code=400, detail="Invalid Ethereum address.")
                 onchain_code = w3.eth.get_code(contract_address)
                 if onchain_code:
@@ -1275,7 +1312,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     except Exception as e:
                         logger.error(f"Failed to report overage for {username}: {str(e)}")
                 return {"report": aggregated, "risk_score": str(aggregated["risk_score"]), "overage_cost": overage_cost}
-
             print("Calling Grok API...")
             prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=code_str, details=details, tier="diamond" if user.has_diamond else current_tier)
             response = client.chat.completions.create(
@@ -1289,7 +1325,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 }
             )
             print("API response received.")
-
             if response.choices and response.choices[0].message.content:
                 raw_response = response.choices[0].message.content
                 print(f"DEBUG: Raw Grok Response: {raw_response}", file=sys.stdout, flush=True)
@@ -1308,12 +1343,14 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     user.audit_history = json.dumps(history)
                     db.commit()
                 logger.debug("Flushing log file after successful audit")
-                handler.flush()
+                for handler in logging.getLogger().handlers:
+                    handler.flush()
                 return {"report": audit_json, "risk_score": str(audit_json.get("risk_score", "N/A")), "overage_cost": overage_cost}
             else:
                 logger.error("No response from Grok API")
                 logger.debug("Flushing log file after no API response")
-                handler.flush()
+                for handler in logging.getLogger().handlers:
+                    handler.flush()
                 raise HTTPException(status_code=500, detail="No response from Grok API")
         finally:
             if temp_path and os.path.exists(temp_path):
@@ -1328,7 +1365,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             logger.error(f"Error Raw Grok Response: {raw_response}")
         logger.error(f"Audit error: {str(e)}")
         logger.debug("Flushing log file after audit error")
-        handler.flush()
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 def handle_tool_call(tool_call):
