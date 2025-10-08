@@ -84,18 +84,33 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // Calculate Diamond audit price
-    const calculateDiamondPrice = (file) => {
+    // Calculate Diamond audit overage price
+    const calculateDiamondOverage = (file) => {
         if (!file) {
             document.getElementById('diamond-price').style.display = 'none';
             return;
         }
         const size = file.size;
-        const price = size < 10 * 1024 ? 5000 : size < 50 * 1024 ? 10000 : size < 100 * 1024 ? 15000 : 25000;
+        const overageMb = Math.max(0, (size - 1024 * 1024) / (1024 * 1024)); // MB over 1MB
+        let overageCost = 0;
+        if (overageMb > 0) {
+            if (overageMb <= 10) {
+                overageCost = overageMb * 0.50;
+            } else {
+                overageCost += 10 * 0.50; // First 10MB at $0.50/MB
+                const remainingMb = overageMb - 10;
+                if (remainingMb <= 40) {
+                    overageCost += remainingMb * 1.00; // Next 40MB at $1.00/MB
+                } else {
+                    overageCost += 40 * 1.00; // 11-50MB at $1.00/MB
+                    overageCost += (remainingMb - 40) * 2.00; // 51+MB at $2.00/MB
+                }
+            }
+        }
         const priceElement = document.getElementById('diamond-price');
-        priceElement.textContent = `Diamond Audit Cost: $${price} for ${(size / 1024 / 1024).toFixed(2)}MB`;
-        priceElement.style.display = 'block';
-        console.log(`[DEBUG] Diamond price calculated: $${price} for ${size} bytes, time=${new Date().toISOString()}`);
+        priceElement.textContent = `Diamond Audit Overage: $${overageCost.toFixed(2)} for ${(size / 1024 / 1024).toFixed(2)}MB`;
+        priceElement.style.display = overageCost > 0 ? 'block' : 'none';
+        console.log(`[DEBUG] Diamond overage calculated: $${overageCost.toFixed(2)} for ${size} bytes, time=${new Date().toISOString()}`);
     };
 
     // Fetch CSRF token on load
@@ -105,7 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // File input listener for price calculation
     document.getElementById('file').addEventListener('change', (event) => {
         const file = event.target.files[0];
-        calculateDiamondPrice(file);
+        calculateDiamondOverage(file);
     });
 
     // Hamburger menu initialization
@@ -238,7 +253,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.is_preview) {
                 const watermark = document.createElement('p');
                 watermark.className = 'has-text-warning';
-                watermark.textContent = 'Pro Tier Preview – Upgrade to Diamond for Full Audit';
+                watermark.textContent = 'Pro Tier Preview – Upgrade to Diamond add-on for Full Audit';
                 facetWell.appendChild(watermark);
             }
             console.log(`[DEBUG] Facet preview loaded for address: ${contractAddress}, is_preview=${data.is_preview}, time=${new Date().toISOString()}`);
@@ -252,7 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 facetWell.className = 'has-text-danger';
                 facetWell.setAttribute('aria-live', 'assertive');
                 if (error.message.includes("Pro or Diamond tier")) {
-                    facetWell.innerHTML = `<p class="has-text-warning" aria-live="assertive">Diamond Pattern facet preview requires Pro or Diamond tier. <a href="/upgrade">Upgrade now</a>.</p>`;
+                    facetWell.innerHTML = `<p class="has-text-warning" aria-live="assertive">Diamond Pattern facet preview requires Pro tier or Diamond add-on. <a href="/upgrade">Upgrade now</a>.</p>`;
                 }
             }
         }
@@ -278,28 +293,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(errorData.detail || 'Failed to fetch tier data');
             }
             const data = await response.json();
-            const { tier, size_limit, feature_flags, api_key, audit_count, audit_limit } = data;
+            const { tier, size_limit, feature_flags, api_key, audit_count, audit_limit, has_diamond } = data;
             auditCount = audit_count;
             auditLimit = audit_limit;
-            tierInfo.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)} (${size_limit === 'Unlimited' ? 'Unlimited audits' : `${auditCount}/${auditLimit} audits`})`;
-            tierDescription.textContent = `${tier.charAt(0).toUpperCase() + tier.slice(1)} Tier: ${tier === 'diamond' ? 'Unlimited file size, full Diamond audits, fuzzing' : tier === 'pro' ? 'Unlimited audits, Diamond audit access, fuzzing' : tier === 'beginner' ? `Up to 10 audits, 1MB file size (${auditCount}/${auditLimit} remaining)` : `Up to 3 audits, 1MB file size (${auditCount}/${auditLimit} remaining)`}`;
+            tierInfo.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} (${size_limit === 'Unlimited' ? 'Unlimited audits' : `${auditCount}/${auditLimit} audits`})`;
+            tierDescription.textContent = `${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} Tier: ${has_diamond ? 'Unlimited file size, full Diamond audits, fuzzing, priority support, NFT rewards' : tier === 'pro' ? 'Unlimited audits, Diamond add-on access ($50/mo), fuzzing, priority support' : tier === 'beginner' ? `Up to 10 audits, 1MB file size (${auditCount}/${auditLimit} remaining), priority support` : `Up to 3 audits, 1MB file size (${auditCount}/${auditLimit} remaining)`}`;
             sizeLimit.textContent = `Max file size: ${size_limit}`;
-            features.textContent = `Features: ${feature_flags.diamond ? 'Diamond audit access, Diamond Pattern previews' : 'Standard audit features'}${feature_flags.predictions ? ', AI predictions' : ''}${feature_flags.onchain ? ', on-chain analysis' : ''}${feature_flags.reports ? ', exportable reports' : ''}${feature_flags.fuzzing ? ', fuzzing analysis' : ''}`;
+            features.textContent = `Features: ${has_diamond ? 'Diamond audits, Diamond Pattern previews, priority support, NFT rewards' : tier === 'pro' ? 'Diamond add-on access, standard audits, Diamond Pattern previews, fuzzing, priority support' : 'Standard audit features'}${feature_flags.predictions ? ', AI predictions' : ''}${feature_flags.onchain ? ', on-chain analysis' : ''}${feature_flags.reports ? ', exportable reports' : ''}${feature_flags.fuzzing ? ', fuzzing analysis' : ''}${feature_flags.priority_support ? ', priority support' : ''}${feature_flags.nft_rewards ? ', NFT rewards' : ''}`;
             usageWarning.textContent = tier === 'free' || tier === 'beginner' ? `${tier.charAt(0).toUpperCase() + tier.slice(1)} tier: ${auditCount}/${auditLimit} audits remaining` : '';
             usageWarning.classList.remove('error');
-            upgradeLink.style.display = tier !== 'diamond' ? 'inline-block' : 'none';
+            upgradeLink.style.display = !has_diamond ? 'inline-block' : 'none';
             maxFileSize = size_limit === 'Unlimited' ? Infinity : parseFloat(size_limit.replace('MB', '')) * 1024 * 1024;
             document.querySelector('#file-help').textContent = `Max size: ${size_limit}. Ensure code is valid Solidity.`;
-            document.querySelectorAll('.pro-diamond-only').forEach(el => el.style.display = tier === 'pro' || tier === 'diamond' ? 'block' : 'none');
-            customReportInput.style.display = tier === 'pro' || tier === 'diamond' ? 'block' : 'none';
+            document.querySelectorAll('.pro-diamond-only').forEach(el => el.style.display = tier === 'pro' || has_diamond ? 'block' : 'none');
+            customReportInput.style.display = tier === 'pro' || has_diamond ? 'block' : 'none';
             downloadReportButton.style.display = feature_flags.reports ? 'block' : 'none';
-            document.querySelectorAll('.diamond-only').forEach(el => el.style.display = feature_flags.diamond ? 'block' : 'none');
-            document.querySelector('.remediation-placeholder').style.display = tier === 'diamond' ? 'block' : 'none';
+            document.querySelectorAll('.diamond-only').forEach(el => el.style.display = has_diamond ? 'block' : 'none');
+            document.querySelector('.remediation-placeholder').style.display = has_diamond ? 'block' : 'none';
             document.querySelector('.fuzzing-placeholder').style.display = feature_flags.fuzzing ? 'block' : 'none';
-            document.querySelector('.priority-support').style.display = tier === 'beginner' || tier === 'pro' || tier === 'diamond' ? 'block' : 'none';
+            document.querySelector('.priority-support').style.display = feature_flags.priority_support ? 'block' : 'none';
             apiKeySpan.textContent = api_key || 'N/A';
             document.getElementById('api-key').style.display = api_key ? 'block' : 'none';
-            console.log(`[DEBUG] Tier data fetched: tier=${tier}, auditCount=${auditCount}, auditLimit=${auditLimit}, time=${new Date().toISOString()}`);
+            console.log(`[DEBUG] Tier data fetched: tier=${tier}, has_diamond=${has_diamond}, auditCount=${auditCount}, auditLimit=${auditLimit}, time=${new Date().toISOString()}`);
         } catch (error) {
             usageWarning.textContent = `Error fetching tier data: ${error.message}`;
             usageWarning.classList.add('error');
@@ -320,7 +335,8 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const username = localStorage.getItem('username');
                 if (!username) throw new Error('Must be signed in to upgrade');
-                const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=${selectedTier}`, {
+                const hasDiamond = selectedTier === 'diamond';
+                const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=${selectedTier === 'diamond' ? 'pro' : selectedTier}&has_diamond=${hasDiamond}`, {
                     method: 'POST',
                     headers: {
                         'X-CSRF-Token': token,
@@ -334,7 +350,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 const data = await response.json();
                 window.location.href = data.session_url; // Redirect to Stripe checkout
-                console.log(`[DEBUG] Redirecting to Stripe for tier upgrade: ${selectedTier}, time=${new Date().toISOString()}`);
+                console.log(`[DEBUG] Redirecting to Stripe for tier upgrade: ${selectedTier}, has_diamond=${hasDiamond}, time=${new Date().toISOString()}`);
             } catch (error) {
                 usageWarning.textContent = `Error initiating tier upgrade: ${error.message}`;
                 usageWarning.classList.add('error');
@@ -381,6 +397,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Handle audit form submission
     const handleAuditResponse = (data) => {
         const report = data.report;
+        const overageCost = data.overage_cost;
         riskScoreSpan.textContent = report.risk_score;
         riskScoreSpan.parentElement.setAttribute('aria-live', 'polite');
         issuesBody.innerHTML = '';
@@ -435,12 +452,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (remediationRoadmap && report.remediation_roadmap) {
             remediationRoadmap.textContent = report.remediation_roadmap;
         }
+        if (overageCost) {
+            usageWarning.textContent = `Diamond audit completed with $${overageCost.toFixed(2)} overage charged.`;
+            usageWarning.classList.add('success');
+        }
         loading.classList.remove('show');
         resultsDiv.classList.add('show');
         loading.setAttribute('aria-hidden', 'true');
         resultsDiv.setAttribute('aria-hidden', 'false');
         resultsDiv.focus();
-        console.log(`[DEBUG] Audit results displayed, risk_score=${report.risk_score}, time=${new Date().toISOString()}`);
+        console.log(`[DEBUG] Audit results displayed, risk_score=${report.risk_score}, overage_cost=${overageCost}, time=${new Date().toISOString()}`);
     };
 
     const handleSubmit = (event) => {
@@ -449,7 +470,7 @@ document.addEventListener('DOMContentLoaded', () => {
             loading.classList.add('show');
             resultsDiv.classList.remove('show');
             usageWarning.textContent = '';
-            usageWarning.classList.remove('error');
+            usageWarning.classList.remove('error', 'success');
             loading.setAttribute('aria-hidden', 'false');
             resultsDiv.setAttribute('aria-hidden', 'true');
             const fileInput = auditForm.querySelector('#file');
@@ -462,16 +483,17 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (maxFileSize !== null && file.size > maxFileSize) {
                 loading.classList.remove('show');
-                usageWarning.textContent = `File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds ${maxFileSize === Infinity ? 'unlimited' : (maxFileSize / 1024 / 1024) + 'MB'} limit for your tier.`;
+                const overageCost = calculateDiamondOverage(file);
+                usageWarning.textContent = `File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds ${maxFileSize === Infinity ? 'unlimited' : (maxFileSize / 1024 / 1024) + 'MB'} limit for your tier. Upgrade to Diamond add-on ($50/mo + $${overageCost.toFixed(2)} overage).`;
                 usageWarning.classList.add('error');
                 const upgradeButton = document.createElement('button');
-                upgradeButton.textContent = 'Upgrade to Pro';
+                upgradeButton.textContent = 'Upgrade to Pro + Diamond';
                 upgradeButton.className = 'upgrade-button';
                 upgradeButton.addEventListener('click', () => {
                     withCsrfToken(async (token) => {
                         try {
                             const username = localStorage.getItem('username') || '';
-                            const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=pro`, {
+                            const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=pro&has_diamond=true`, {
                                 method: 'POST',
                                 headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' },
                                 credentials: 'include'
@@ -482,7 +504,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             }
                             const data = await response.json();
                             window.location.href = data.session_url;
-                            console.log(`[DEBUG] Redirecting to Stripe for Pro upgrade due to file size, time=${new Date().toISOString()}`);
+                            console.log(`[DEBUG] Redirecting to Stripe for Pro + Diamond upgrade due to file size, time=${new Date().toISOString()}`);
                         } catch (error) {
                             usageWarning.textContent = `Error initiating upgrade: ${error.message}`;
                             usageWarning.classList.add('error');
@@ -498,7 +520,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 usageWarning.textContent = `Usage limit exceeded (${auditCount}/${auditLimit} audits). Upgrade your tier.`;
                 usageWarning.classList.add('error');
                 const upgradeButton = document.createElement('button');
-                upgradeButton.textContent = 'Upgrade Tier';
+                upgradeButton.textContent = 'Upgrade to Beginner';
                 upgradeButton.className = 'upgrade-button';
                 upgradeButton.addEventListener('click', () => {
                     withCsrfToken(async (token) => {
@@ -590,12 +612,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     const sessionId = urlParams.get('session_id');
     const tier = urlParams.get('tier');
+    const hasDiamond = urlParams.get('has_diamond') === 'true';
     const tempId = urlParams.get('temp_id');
     if (sessionId && tier) {
         withCsrfToken(async (token) => {
             try {
                 const username = localStorage.getItem('username') || '';
-                const response = await fetch(`/complete-tier-checkout?session_id=${encodeURIComponent(sessionId)}&tier=${encodeURIComponent(tier)}&username=${encodeURIComponent(username)}`, {
+                const response = await fetch(`/complete-tier-checkout?session_id=${encodeURIComponent(sessionId)}&tier=${encodeURIComponent(tier)}&has_diamond=${hasDiamond}&username=${encodeURIComponent(username)}`, {
                     method: 'GET',
                     headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' },
                     credentials: 'include'
@@ -607,7 +630,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await response.json();
                 alert(data.message);
                 await fetchTierData();
-                console.log(`[DEBUG] Tier upgrade completed: ${tier}, time=${new Date().toISOString()}`);
+                console.log(`[DEBUG] Tier upgrade completed: ${tier}, has_diamond=${hasDiamond}, time=${new Date().toISOString()}`);
             } catch (error) {
                 usageWarning.textContent = `Error completing tier upgrade: ${error.message}`;
                 usageWarning.classList.add('error');

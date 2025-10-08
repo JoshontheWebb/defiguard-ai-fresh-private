@@ -93,21 +93,21 @@
             <div class="usage-warning" aria-live="assertive">
                 <p>Free tier: Limited audits.</p>
             </div>
+            <div class="upgrade-prompt" aria-live="polite">
+                <h4>Upgrade Your Plan</h4>
+                <select id="tier-select" aria-label="Select subscription tier">
+                    <option value="beginner">Beginner ($50/mo)</option>
+                    <option value="pro">Pro ($200/mo)</option>
+                    <option value="diamond">Diamond add-on ($50/mo with Pro + overage)</option>
+                </select>
+                <button id="tier-switch" class="upgrade-button">Upgrade Tier</button>
+                <a id="upgrade-link" href="/upgrade">Upgrade for more features!</a>
+            </div>
             <div class="tier-benefits" aria-live="polite">
                 <h3>Tier Benefits</h3>
                 <p id="tier-description">Loading tier information...</p>
                 <p id="size-limit">Max file size: Loading...</p>
                 <p id="features">Features: Loading...</p>
-                <div class="upgrade-prompt">
-                    <h4>Upgrade Your Plan</h4>
-                    <select id="tier-select" aria-label="Select subscription tier">
-                        <option value="beginner">Beginner ($50/mo)</option>
-                        <option value="pro">Pro ($199/mo)</option>
-                        <option value="diamond">Diamond ($5k-$25k one-off)</option>
-                    </select>
-                    <button id="tier-switch">Upgrade Tier</button>
-                    <a id="upgrade-link" href="/upgrade">Upgrade for more features!</a>
-                </div>
             </div>
             <div id="facet-preview" class="box pro-diamond-only" style="display: none;"></div>
             <div class="loading">
@@ -176,7 +176,7 @@
         <section id="settings">
             <h3>Account Settings</h3>
             <ul>
-                <li>Upgrade Tier: <a href="/upgrade">Beginner ($50/mo), Pro ($199/mo), Diamond ($5k-$25k)</a></li>
+                <li>Upgrade Tier: <a href="/upgrade">Beginner ($50/mo), Pro ($200/mo), Diamond add-on ($50/mo with Pro + overage)</a></li>
                 <li>View Usage History</li>
                 <li id="api-key" style="display: none;">API Key: <span id="api-key-value">Loading...</span> (Pro only)</li>
             </ul>
