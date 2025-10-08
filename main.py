@@ -56,7 +56,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('debug.log', mode='a'),
-        logging.StreamHandler(sys.stdout)  # Add console output for Render logs
+        logging.StreamHandler(sys.stdout)
     ]
 )
 logger = logging.getLogger(__name__)
@@ -81,12 +81,12 @@ class User(Base):
     email = Column(String)
     password_hash = Column(String)
     tier = Column(String, default="free")
-    has_diamond = Column(Boolean, default=False)  # Tracks Diamond add-on
+    has_diamond = Column(Boolean, default=False)
     last_reset = Column(DateTime, default=datetime.now)
     api_key = Column(String, nullable=True)
     audit_history = Column(String, default="[]")
-    stripe_subscription_id = Column(String, nullable=True)  # Store subscription ID
-    stripe_subscription_item_id = Column(String, nullable=True)  # Store subscription item ID for overage
+    stripe_subscription_id = Column(String, nullable=True)
+    stripe_subscription_item_id = Column(String, nullable=True)
 
 # Migrate database schema
 def migrate_database():
@@ -112,10 +112,9 @@ def migrate_database():
             cursor.execute("DROP TABLE IF EXISTS users")
             Base.metadata.create_all(bind=engine)
             for row in old_data:
-                # Pad row with None for new columns
-                while len(row) < 9:  # Adjust for existing columns
+                while len(row) < 9:
                     row += (None,)
-                row += (None, None)  # Add stripe_subscription_id, stripe_subscription_item_id
+                row += (None, None)
                 cursor.execute(
                     "INSERT INTO users (id, username, email, password_hash, tier, last_reset, api_key, audit_history, has_diamond, stripe_subscription_id, stripe_subscription_item_id) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -174,26 +173,26 @@ class UsageTracker:
 
     def calculate_diamond_overage(self, file_size):
         """Calculate progressive overage for Diamond tier files >1MB."""
-        if file_size <= 1024 * 1024:  # <= 1MB
+        if file_size <= 1024 * 1024:
             return 0
-        overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)  # Convert to MB
+        overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
         total_cost = 0
         if overage_mb <= 10:
             total_cost = overage_mb * 0.50
         else:
-            total_cost += 10 * 0.50  # First 10MB at $0.50/MB
+            total_cost += 10 * 0.50
             remaining_mb = overage_mb - 10
             if remaining_mb <= 40:
-                total_cost += remaining_mb * 1.00  # Next 40MB at $1.00/MB
+                total_cost += remaining_mb * 1.00
             else:
-                total_cost += 40 * 1.00  # 11-50MB at $1.00/MB
+                total_cost += 40 * 1.00
                 remaining_mb -= 40
                 if remaining_mb <= 2:
-                    total_cost += remaining_mb * 2.00  # 51-52MB at $2.00/MB
+                    total_cost += remaining_mb * 2.00
                 else:
-                    total_cost += 2 * 2.00  # 51-52MB at $2.00/MB
-                    total_cost += (remaining_mb - 2) * 5.00  # 53+MB at $5.00/MB
-        return round(total_cost * 100)  # Convert to cents
+                    total_cost += 2 * 2.00
+                    total_cost += (remaining_mb - 2) * 5.00
+        return round(total_cost * 100)
 
     def increment(self, file_size, username=None, db: Session = None):
         if username:
@@ -213,7 +212,7 @@ class UsageTracker:
                 db.commit()
                 logger.info(f"Downgraded {username} to free tier due to non-payment")
             if file_size > self.size_limits.get(user.tier, self.size_limits["free"]) and not user.has_diamond:
-                overage_cost = self.calculate_diamond_overage(file_size) / 100  # Convert to dollars for message
+                overage_cost = self.calculate_diamond_overage(file_size) / 100
                 raise HTTPException(
                     status_code=400,
                     detail=f"Access to Diamond audits is only available on Pro tier with Diamond add-on. Upgrade to Pro + Diamond ($200/mo + $50/mo + ${overage_cost:.2f} overage for this file)."
@@ -303,7 +302,7 @@ class UsageTracker:
             if tier == "pro" and not user.api_key:
                 user.api_key = secrets.token_urlsafe(32)
             if tier == "diamond":
-                user.tier = "pro"  # Grant 1-month Pro after Diamond
+                user.tier = "pro"
                 user.has_diamond = True
                 user.last_reset = datetime.now() + timedelta(days=30)
             db.commit()
@@ -380,7 +379,7 @@ def generate_csrf_token():
 
 async def get_csrf_token(request: Request):
     try:
-        logger.debug(f"Processing get_csrf_token for session: {request.session}, headers: {request.headers}")
+        logger.debug(f"Processing get_csrf_token for session: {request.session}, headers: {request.headers}, cookies: {request.cookies}")
         token = request.session.get("csrf_token")
         if not token:
             token = generate_csrf_token()
@@ -465,7 +464,6 @@ async def reset_usage(request: Request, username: str = Query(None), db: Session
 async def read_ui():
     try:
         with open("templates/index.html", "r") as f:
-            print(f"Loading UI from: {os.path.abspath('templates/index.html')}")
             logger.info(f"Loading UI from: {os.path.abspath('templates/index.html')}")
             logger.debug("Flushing log file after loading UI")
             for handler in logging.getLogger().handlers:
@@ -482,7 +480,6 @@ async def read_ui():
 async def read_auth():
     try:
         with open("templates/auth.html", "r") as f:
-            print(f"Loading auth from: {os.path.abspath('templates/auth.html')}")
             logger.info(f"Loading auth from: {os.path.abspath('templates/auth.html')}")
             logger.debug("Flushing log file after loading auth")
             for handler in logging.getLogger().handlers:
@@ -498,7 +495,7 @@ async def read_auth():
 @app.get("/csrf-token")
 async def get_csrf(request: Request):
     try:
-        logger.debug(f"Received /csrf-token request from {request.client.host}, headers: {request.headers}, cookies: {request.cookies}")
+        logger.debug(f"Received /csrf-token request from {request.client.host}, headers: {request.headers}, cookies: {request.cookies}, session: {request.session}")
         token = await get_csrf_token(request)
         logger.info(f"Returning CSRF token: {token}")
         logger.debug("Flushing log file after returning CSRF token")
@@ -528,7 +525,8 @@ async def signup(username: str, request: Request, db: Session = Depends(get_db))
     user = User(username=username, email=email, password_hash=password_hash, tier="free", has_diamond=False, last_reset=datetime.now(), api_key=None, audit_history="[]")
     db.add(user)
     db.commit()
-    logger.info(f"User {username} signed up with free tier")
+    request.session["username"] = username
+    logger.info(f"User {username} signed up with free tier, session: {request.session}")
     logger.debug("Flushing log file after signup")
     for handler in logging.getLogger().handlers:
         handler.flush()
@@ -546,36 +544,41 @@ async def signin(username: str, request: Request, db: Session = Depends(get_db))
         raise HTTPException(status_code=404, detail="User not found")
     if not bcrypt.checkpw(password.encode('utf-8'), user.password_hash.encode('utf-8')):
         raise HTTPException(status_code=401, detail="Invalid password")
-    logger.info(f"User {username} signed in")
+    request.session["username"] = username
+    logger.info(f"User {username} signed in, session: {request.session}")
     logger.debug("Flushing log file after signin")
     for handler in logging.getLogger().handlers:
         handler.flush()
     return {"message": f"Signed in as {username}"}
 
 @app.get("/tier")
-async def get_tier(username: str = Query(None), db: Session = Depends(get_db)):
-    if not username:
+async def get_tier(request: Request, username: str = Query(None), db: Session = Depends(get_db)):
+    session_username = request.session.get("username")
+    logger.debug(f"Tier request: Query username={username}, Session username={session_username}, session: {request.session}")
+    if not username and not session_username:
         logger.debug("No username provided for /tier; returning free tier defaults")
-        user_tier = "free"
-        size_limit = "1MB"
-        feature_flags = usage_tracker.feature_flags["free"]
-        api_key = None
-        audit_count = 0
-        audit_limit = FREE_LIMIT
-        has_diamond = False
-    else:
-        user = db.query(User).filter(User.username == username).first()
-        if not user:
-            logger.error(f"Tier fetch failed: User {username} not found")
-            raise HTTPException(status_code=404, detail="User not found")
-        user_tier = user.tier
-        size_limit = "Unlimited" if user.has_diamond else "1MB"
-        feature_flags = usage_tracker.feature_flags["diamond" if user.has_diamond else user.tier]
-        api_key = user.api_key if user.tier == "pro" else None
-        audit_count = usage_tracker.count
-        audit_limit = {"free": FREE_LIMIT, "beginner": BEGINNER_LIMIT, "pro": PRO_LIMIT, "diamond": PRO_LIMIT}.get(user.tier, FREE_LIMIT)
-        has_diamond = user.has_diamond
-    logger.debug(f"Retrieved tier for {username or 'anonymous'}: {user_tier}, audit count: {audit_count}, has_diamond: {has_diamond}")
+        return {
+            "tier": "free",
+            "size_limit": "1MB",
+            "feature_flags": usage_tracker.feature_flags["free"],
+            "api_key": None,
+            "audit_count": 0,
+            "audit_limit": FREE_LIMIT,
+            "has_diamond": False
+        }
+    effective_username = username or session_username
+    user = db.query(User).filter(User.username == effective_username).first()
+    if not user:
+        logger.error(f"Tier fetch failed: User {effective_username} not found")
+        raise HTTPException(status_code=404, detail="User not found")
+    user_tier = user.tier
+    size_limit = "Unlimited" if user.has_diamond else "1MB"
+    feature_flags = usage_tracker.feature_flags["diamond" if user.has_diamond else user.tier]
+    api_key = user.api_key if user.tier == "pro" else None
+    audit_count = usage_tracker.count
+    audit_limit = {"free": FREE_LIMIT, "beginner": BEGINNER_LIMIT, "pro": PRO_LIMIT, "diamond": PRO_LIMIT}.get(user.tier, FREE_LIMIT)
+    has_diamond = user.has_diamond
+    logger.debug(f"Retrieved tier for {effective_username}: {user_tier}, audit count: {audit_count}, has_diamond: {has_diamond}")
     logger.debug("Flushing log file after tier retrieval")
     for handler in logging.getLogger().handlers:
         handler.flush()
@@ -627,17 +630,16 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
             cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
             metadata={'username': username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
         )
-        logger.info(f"Redirecting {username} to Stripe checkout for {tier} tier, has_diamond: {has_diamond}")
-        # Store subscription details after successful checkout
+        logger.info(f"Redirecting {username} to Stripe checkout for {tier} tier, has_diamond: {has_diamond}, session: {request.session}")
+        logger.debug("Flushing log file after tier checkout redirect")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         if session.subscription:
             user.stripe_subscription_id = session.subscription
             for item in stripe.Subscription.retrieve(session.subscription).get('items', {}).get('data', []):
                 if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
                     user.stripe_subscription_item_id = item.id
             db.commit()
-        logger.debug("Flushing log file after tier checkout redirect")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
         return {"session_url": session.url}
     except Exception as e:
         logger.error(f"Stripe checkout creation failed for {username} to {tier}: {str(e)}")
@@ -681,17 +683,16 @@ async def create_tier_checkout(username: str = Query(...), tier: str = Query(...
             cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
             metadata={'username': username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
         )
-        logger.info(f"Created Stripe checkout session for {username} to {tier}, has_diamond: {has_diamond}")
-        # Store subscription details after successful checkout
+        logger.info(f"Created Stripe checkout session for {username} to {tier}, has_diamond: {has_diamond}, session: {request.session}")
+        logger.debug("Flushing log file after tier checkout creation")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         if session.subscription:
             user.stripe_subscription_id = session.subscription
             for item in stripe.Subscription.retrieve(session.subscription).get('items', {}).get('data', []):
                 if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
                     user.stripe_subscription_item_id = item.id
             db.commit()
-        logger.debug("Flushing log file after tier checkout creation")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
         return {"session_url": session.url}
     except Exception as e:
         logger.error(f"Stripe checkout creation failed for {username} to {tier}: {str(e)}")
@@ -735,19 +736,22 @@ async def upgrade_page():
     return {"message": "Upgrade at /ui for Beginner ($50/mo), Pro ($200/mo), or Diamond add-on ($50/mo with Pro)."}
 
 @app.get("/facets/{contract_address}")
-async def get_facets(contract_address: str, username: str = Query(None), db: Session = Depends(get_db)):
+async def get_facets(contract_address: str, request: Request, username: str = Query(None), db: Session = Depends(get_db)):
     try:
-        logger.debug(f"Received /facets request for {contract_address} by {username or 'anonymous'}")
+        logger.debug(f"Received /facets request for {contract_address} by {username or 'anonymous'}, session: {request.session}")
         if not w3.is_address(contract_address):
             logger.error(f"Invalid Ethereum address: {contract_address}")
             logger.debug("Flushing log file after invalid address")
             for handler in logging.getLogger().handlers:
                 handler.flush()
             raise HTTPException(status_code=400, detail="Invalid Ethereum address")
-        user = db.query(User).filter(User.username == username).first()
+        session_username = request.session.get("username")
+        effective_username = username or session_username
+        user = db.query(User).filter(User.username == effective_username).first() if effective_username else None
         current_tier = user.tier if user else os.getenv("TIER", "free")
-        if current_tier not in ["pro", "diamond"] and not (user and user.has_diamond):
-            logger.warning(f"Facet preview denied for {username or 'anonymous'} (tier: {current_tier}, has_diamond: {user.has_diamond if user else False})")
+        has_diamond = user.has_diamond if user else False
+        if current_tier not in ["pro", "diamond"] and not has_diamond:
+            logger.warning(f"Facet preview denied for {effective_username or 'anonymous'} (tier: {current_tier}, has_diamond: {has_diamond})")
             logger.debug("Flushing log file after tier check failure")
             for handler in logging.getLogger().handlers:
                 handler.flush()
@@ -779,14 +783,13 @@ async def get_facets(contract_address: str, username: str = Query(None), db: Ses
             }
         ]
         contract = w3.eth.contract(address=contract_address, abi=diamond_abi)
-       
         try:
             facets = contract.functions.facets().call()
             facet_data = [
                 {
                     "facetAddress": facet[0],
-                    "functionSelectors": [selector.hex() for selector in facet[1]][:2] if current_tier == "pro" and not (user and user.has_diamond) else [selector.hex() for selector in facet[1]],
-                    "functions": [selector[:10] for selector in facet[1]][:2] if current_tier == "pro" and not (user and user.has_diamond) else [selector[:10] for selector in facet[1]]
+                    "functionSelectors": [selector.hex() for selector in facet[1]][:2] if current_tier == "pro" and not has_diamond else [selector.hex() for selector in facet[1]],
+                    "functions": [selector[:10] for selector in facet[1]][:2] if current_tier == "pro" and not has_diamond else [selector[:10] for selector in facet[1]]
                 }
                 for facet in facets
             ]
@@ -794,7 +797,7 @@ async def get_facets(contract_address: str, username: str = Query(None), db: Ses
             logger.debug("Flushing log file after fetching facets")
             for handler in logging.getLogger().handlers:
                 handler.flush()
-            return {"facets": facet_data, "is_preview": current_tier == "pro" and not (user and user.has_diamond)}
+            return {"facets": facet_data, "is_preview": current_tier == "pro" and not has_diamond}
         except Exception as e:
             logger.error(f"Failed to fetch facets for {contract_address}: {str(e)}")
             logger.debug("Flushing log file after facet fetch error")
@@ -817,14 +820,11 @@ def run_echidna(temp_path):
     try:
         subprocess.run(["docker", "--version"], check=True, capture_output=True, text=True)
         logger.info("Docker is available, attempting to pull Echidna image")
-       
         @retry(stop_after_attempt(3), wait_fixed(2))
         def pull_echidna():
             subprocess.run(["docker", "pull", "trailofbits/echidna"], check=True, capture_output=True, text=True)
             logger.info("Echidna image pulled successfully")
-       
         pull_echidna()
-       
         config_path = os.path.join(os.getcwd(), "echidna_config.yaml")
         output_path = os.path.join(os.getcwd(), "echidna_output")
         with open(config_path, "w") as f:
@@ -869,7 +869,10 @@ coverage: true
 @app.post("/upload-temp")
 async def upload_temp(file: UploadFile = File(...), username: str = Query(...), db: Session = Depends(get_db), request: Request = None):
     await verify_csrf_token(request)
-    user = db.query(User).filter(User.username == username).first()
+    session_username = request.session.get("username")
+    logger.debug(f"Upload-temp request: Query username={username}, Session username={session_username}, session: {request.session}")
+    effective_username = username or session_username
+    user = db.query(User).filter(User.username == effective_username).first()
     if not user or not user.has_diamond:
         raise HTTPException(status_code=403, detail="Temporary file upload requires Diamond add-on")
     temp_id = str(uuid.uuid4())
@@ -880,17 +883,20 @@ async def upload_temp(file: UploadFile = File(...), username: str = Query(...), 
     file_size = len(code_bytes)
     with open(temp_path, "wb") as f:
         f.write(code_bytes)
-    logger.info(f"Temporary file uploaded for {username}: {temp_id}, size: {file_size / 1024 / 1024:.2f}MB")
+    logger.info(f"Temporary file uploaded for {effective_username}: {temp_id}, size: {file_size / 1024 / 1024:.2f}MB")
     return {"temp_id": temp_id, "file_size": file_size}
 
 @app.post("/create-checkout-session")
 async def create_checkout_session(username: str = Query(...), temp_id: str = Query(...), price: int = Query(...), request: Request = None, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
-    user = db.query(User).filter(User.username == username).first()
+    session_username = request.session.get("username")
+    logger.debug(f"Create-checkout-session request: Query username={username}, Session username={session_username}, session: {request.session}")
+    effective_username = username or session_username
+    user = db.query(User).filter(User.username == effective_username).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if not STRIPE_API_KEY:
-        logger.error(f"Stripe session creation failed for {username}: STRIPE_API_KEY not set")
+        logger.error(f"Stripe session creation failed for {effective_username}: STRIPE_API_KEY not set")
         raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again or contact support.")
     try:
         session = stripe.checkout.Session.create(
@@ -902,12 +908,12 @@ async def create_checkout_session(username: str = Query(...), temp_id: str = Que
             mode='subscription',
             success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&temp_id={temp_id}',
             cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
-            metadata={'temp_id': temp_id, 'username': username}
+            metadata={'temp_id': temp_id, 'username': effective_username}
         )
-        logger.info(f"Stripe Checkout session created for {username} with temp_id {temp_id}")
+        logger.info(f"Stripe Checkout session created for {effective_username} with temp_id {temp_id}")
         return {"session_url": session.url}
     except Exception as e:
-        logger.error(f"Stripe session creation failed for {username}: {str(e)}")
+        logger.error(f"Stripe session creation failed for {effective_username}: {str(e)}")
         raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
 
 @app.post("/webhook")
@@ -953,11 +959,14 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/complete-diamond-audit")
 async def complete_diamond_audit(session_id: str = Query(...), temp_id: str = Query(...), username: str = Query(...), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == username).first()
+    session_username = request.session.get("username")
+    logger.debug(f"Complete-diamond-audit request: Query username={username}, Session username={session_username}, session: {request.session}")
+    effective_username = username or session_username
+    user = db.query(User).filter(User.username == effective_username).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if not STRIPE_API_KEY:
-        logger.error(f"Complete diamond audit failed for {username}: STRIPE_API_KEY not set")
+        logger.error(f"Complete diamond audit failed for {effective_username}: STRIPE_API_KEY not set")
         raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again or contact support.")
     try:
         session = stripe.checkout.Session.retrieve(session_id)
@@ -967,20 +976,23 @@ async def complete_diamond_audit(session_id: str = Query(...), temp_id: str = Qu
                 raise HTTPException(status_code=404, detail="Temporary file not found")
             with open(temp_path, "rb") as f:
                 file = UploadFile(filename="temp.sol", file=f)
-                result = await audit_contract(file, None, username, db, None)
+                result = await audit_contract(file, None, effective_username, db, None)
             os.unlink(temp_path)
-            logger.info(f"Diamond audit completed for {username} after payment")
+            logger.info(f"Diamond audit completed for {effective_username} after payment")
             return result
         else:
             raise HTTPException(status_code=400, detail="Payment not completed")
     except Exception as e:
-        logger.error(f"Complete diamond audit failed for {username}: {str(e)}")
+        logger.error(f"Complete diamond audit failed for {effective_username}: {str(e)}")
         raise HTTPException(status_code=503, detail=f"Failed to complete audit: Payment processing error. Please try again or contact support.")
 
 @app.post("/diamond-audit")
 async def diamond_audit(file: UploadFile = File(...), username: str = Query(...), db: Session = Depends(get_db), request: Request = None):
     await verify_csrf_token(request)
-    user = db.query(User).filter(User.username == username).first()
+    session_username = request.session.get("username")
+    logger.debug(f"Diamond-audit request: Query username={username}, Session username={session_username}, session: {request.session}")
+    effective_username = username or session_username
+    user = db.query(User).filter(User.username == effective_username).first()
     if not user or not user.has_diamond:
         raise HTTPException(status_code=403, detail="Diamond audit requires Diamond add-on")
     code_bytes = await file.read()
@@ -988,7 +1000,7 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(...)
     if file_size > 50 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File size exceeds 50MB limit")
     overage_cost = usage_tracker.calculate_diamond_overage(file_size)
-    logger.info(f"Preparing Diamond audit for {username} with overage ${overage_cost / 100:.2f} for file size {file_size / 1024 / 1024:.2f}MB")
+    logger.info(f"Preparing Diamond audit for {effective_username} with overage ${overage_cost / 100:.2f} for file size {file_size / 1024 / 1024:.2f}MB")
     temp_id = str(uuid.uuid4())
     temp_dir = "temp_files"
     os.makedirs(temp_dir, exist_ok=True)
@@ -996,7 +1008,7 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(...)
     with open(temp_path, "wb") as f:
         f.write(code_bytes)
     if not STRIPE_API_KEY:
-        logger.error(f"Stripe checkout creation failed for {username} Diamond audit: STRIPE_API_KEY not set")
+        logger.error(f"Stripe checkout creation failed for {effective_username} Diamond audit: STRIPE_API_KEY not set")
         os.unlink(temp_path)
         raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again or contact support.")
     try:
@@ -1009,15 +1021,15 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(...)
             mode='subscription',
             success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&temp_id={temp_id}',
             cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
-            metadata={'temp_id': temp_id, 'username': username}
+            metadata={'temp_id': temp_id, 'username': effective_username}
         )
-        logger.info(f"Redirecting {username} to Stripe checkout for Diamond audit overage")
+        logger.info(f"Redirecting {effective_username} to Stripe checkout for Diamond audit overage")
         logger.debug("Flushing log file after Diamond checkout redirect")
         for handler in logging.getLogger().handlers:
             handler.flush()
         return {"session_url": session.url}
     except Exception as e:
-        logger.error(f"Stripe checkout creation failed for {username} Diamond audit: {str(e)}")
+        logger.error(f"Stripe checkout creation failed for {effective_username} Diamond audit: {str(e)}")
         os.unlink(temp_path)
         raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
 
@@ -1115,36 +1127,38 @@ Return the analysis in the exact JSON schema provided. For Beginner/Pro, include
 
 @app.post("/audit", response_model=AuditResponse)
 async def audit_contract(file: UploadFile = File(...), contract_address: str = None, username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
-    if not username:
-        logger.debug("No username provided for /audit; prompting login")
-        raise HTTPException(status_code=401, detail="Please login to continue")
     await verify_csrf_token(request)
-    user = db.query(User).filter(User.username == username).first()
+    session_username = request.session.get("username")
+    logger.debug(f"Audit request: Query username={username}, Session username={session_username}, session: {request.session}")
+    effective_username = username or session_username
+    if not effective_username:
+        logger.error("No username provided for /audit; redirecting to login")
+        raise HTTPException(status_code=401, detail="Please login to continue")
+    user = db.query(User).filter(User.username == effective_username).first()
     if not user:
-        logger.error(f"Audit failed: User {username} not found")
+        logger.error(f"Audit failed: User {effective_username} not found")
         raise HTTPException(status_code=401, detail="Please login to continue")
     code_bytes = await file.read()
     file_size = len(code_bytes)
-    print(f"File read: {file_size} bytes ({file_size / 1024 / 1024:.2f}MB)")
-    logger.debug(f"File read: {file_size} bytes for user {username}")
+    logger.debug(f"File read: {file_size} bytes for user {effective_username}")
     current_tier = user.tier
     overage_cost = None
     if file_size > 1024 * 1024 and not user.has_diamond:
-        overage_cost = usage_tracker.calculate_diamond_overage(file_size) / 100  # Convert to dollars
+        overage_cost = usage_tracker.calculate_diamond_overage(file_size) / 100
         raise HTTPException(
             status_code=400,
             detail=f"Access to Diamond audits is only available on Pro tier with Diamond add-on. Upgrade to Pro + Diamond ($200/mo + $50/mo + ${overage_cost:.2f} overage for this file)."
         )
     limits = {"free": FREE_LIMIT, "beginner": BEGINNER_LIMIT, "pro": PRO_LIMIT, "diamond": PRO_LIMIT}
     try:
-        current_count = usage_tracker.increment(file_size, username, db)
-        logger.info(f"Audit request {current_count} processed for contract {contract_address} with tier {current_tier} for user {username}")
+        current_count = usage_tracker.increment(file_size, effective_username, db)
+        logger.info(f"Audit request {current_count} processed for contract {contract_address} with tier {current_tier} for user {effective_username}")
         logger.debug("Flushing log file after audit request")
         for handler in logging.getLogger().handlers:
             handler.flush()
     except HTTPException as e:
         if e.status_code == 400 and "exceeds" in e.detail:
-            logger.info(f"File size exceeds limit for {username}; redirecting to upgrade")
+            logger.info(f"File size exceeds limit for {effective_username}; redirecting to upgrade")
             temp_id = str(uuid.uuid4())
             temp_dir = "temp_files"
             os.makedirs(temp_dir, exist_ok=True)
@@ -1152,7 +1166,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             with open(temp_path, "wb") as f:
                 f.write(code_bytes)
             if not STRIPE_API_KEY:
-                logger.error(f"Stripe checkout creation failed for {username} Pro upgrade: STRIPE_API_KEY not set")
+                logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: STRIPE_API_KEY not set")
                 os.unlink(temp_path)
                 raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again or contact support.")
             try:
@@ -1168,21 +1182,21 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     mode='subscription',
                     success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=pro&has_diamond=true',
                     cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
-                    metadata={'username': username, 'tier': 'pro', 'has_diamond': 'true'}
+                    metadata={'username': effective_username, 'tier': 'pro', 'has_diamond': 'true'}
                 )
-                logger.info(f"Redirecting {username} to Stripe checkout for Pro tier with Diamond add-on due to file size")
+                logger.info(f"Redirecting {effective_username} to Stripe checkout for Pro tier with Diamond add-on due to file size")
                 logger.debug("Flushing log file after upgrade redirect")
                 for handler in logging.getLogger().handlers:
                     handler.flush()
                 return {"session_url": session.url}
             except Exception as e:
-                logger.error(f"Stripe checkout creation failed for {username} Pro upgrade: {str(e)}")
+                logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: {str(e)}")
                 os.unlink(temp_path)
                 raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
         elif e.status_code == 403 and "Usage limit exceeded" in e.detail:
-            logger.info(f"Usage limit exceeded for {username}; redirecting to upgrade")
+            logger.info(f"Usage limit exceeded for {effective_username}; redirecting to upgrade")
             if not STRIPE_API_KEY:
-                logger.error(f"Stripe checkout creation failed for {username} Beginner upgrade: STRIPE_API_KEY not set")
+                logger.error(f"Stripe checkout creation failed for {effective_username} Beginner upgrade: STRIPE_API_KEY not set")
                 raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again or contact support.")
             try:
                 session = stripe.checkout.Session.create(
@@ -1194,15 +1208,15 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     mode='subscription',
                     success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=beginner',
                     cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
-                    metadata={'username': username, 'tier': 'beginner'}
+                    metadata={'username': effective_username, 'tier': 'beginner'}
                 )
-                logger.info(f"Redirecting {username} to Stripe checkout for Beginner tier due to usage limit")
+                logger.info(f"Redirecting {effective_username} to Stripe checkout for Beginner tier due to usage limit")
                 logger.debug("Flushing log file after upgrade redirect")
                 for handler in logging.getLogger().handlers:
                     handler.flush()
                 return {"session_url": session.url}
             except Exception as e:
-                logger.error(f"Stripe checkout creation failed for {username} Beginner upgrade: {str(e)}")
+                logger.error(f"Stripe checkout creation failed for {effective_username} Beginner upgrade: {str(e)}")
                 raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
         else:
             raise e
@@ -1236,7 +1250,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 temp_path = temp_file.name
                 if platform.system() == "Windows":
                     temp_path = temp_path.replace("/", "\\")
-           
             context = ""
             fuzzing_results = []
             try:
@@ -1273,7 +1286,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 logger.info(f"Fuzzing skipped for {current_tier} tier")
 
             if contract_address and not usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["onchain"]:
-                logger.warning(f"On-chain analysis denied for {username} (tier: {current_tier}, has_diamond: {user.has_diamond})")
+                logger.warning(f"On-chain analysis denied for {effective_username} (tier: {current_tier}, has_diamond: {user.has_diamond})")
                 logger.debug("Flushing log file after onchain tier check")
                 for handler in logging.getLogger().handlers:
                     handler.flush()
@@ -1319,23 +1332,23 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     "remediation_roadmap": "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review.",
                     "fuzzing_results": fuzzing_results
                 }
-                user = db.query(User).filter(User.username == username).first()
+                user = db.query(User).filter(User.username == effective_username).first()
                 if user:
                     history = json.loads(user.audit_history)
                     history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": aggregated["risk_score"]})
                     user.audit_history = json.dumps(history)
-                    overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)  # Convert to MB
+                    overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
                     if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
                         try:
                             stripe.SubscriptionItem.create_usage_record(
                                 user.stripe_subscription_item_id,
-                                quantity=int(overage_mb),  # Integer MB over 1MB
+                                quantity=int(overage_mb),
                                 timestamp=int(time.time()),
                                 action='increment'
                             )
-                            logger.info(f"Reported {overage_mb:.2f}MB overage for {username} to Stripe")
+                            logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
                         except Exception as e:
-                            logger.error(f"Failed to report overage for {username}: {str(e)}")
+                            logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
                     db.commit()
                 return {"report": aggregated, "risk_score": str(aggregated["risk_score"]), "overage_cost": overage_cost}
             print("Calling Grok API...")
@@ -1362,23 +1375,23 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 if user.has_diamond:
                     audit_json["remediation_roadmap"] = "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review."
                 audit_json["fuzzing_results"] = fuzzing_results
-                user = db.query(User).filter(User.username == username).first()
+                user = db.query(User).filter(User.username == effective_username).first()
                 if user:
                     history = json.loads(user.audit_history)
                     history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": audit_json["risk_score"]})
                     user.audit_history = json.dumps(history)
-                    overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)  # Convert to MB
+                    overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
                     if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
                         try:
                             stripe.SubscriptionItem.create_usage_record(
                                 user.stripe_subscription_item_id,
-                                quantity=int(overage_mb),  # Integer MB over 1MB
+                                quantity=int(overage_mb),
                                 timestamp=int(time.time()),
                                 action='increment'
                             )
-                            logger.info(f"Reported {overage_mb:.2f}MB overage for {username} to Stripe")
+                            logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
                         except Exception as e:
-                            logger.error(f"Failed to report overage for {username}: {str(e)}")
+                            logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
                     db.commit()
                 logger.debug("Flushing log file after successful audit")
                 for handler in logging.getLogger().handlers:
