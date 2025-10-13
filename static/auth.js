@@ -1,4 +1,4 @@
-/ Polling for DOM readiness
+// Polling for DOM readiness
 function waitForDOM(selectors, callback, maxAttempts = 10, interval = 100) {
     let attempts = 0;
     const elements = {};
@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(`Failed to fetch CSRF token: ${response.status} ${errorData.detail || response.statusText}`);
             }
             const data = await response.json();
-            console.log(`[DEBUG] CSRF response data: ${JSON.stringify(data)}, type=${typeof data.csrf_token}`);
+            console.log(`[DEBUG] CSRF response data: ${JSON.stringify(data)}, type=${typeof data.csrf_token}, time=${new Date().toISOString()}`);
             if (typeof data.csrf_token !== 'string' || !data.csrf_token || data.csrf_token === 'undefined') {
                 throw new Error('Invalid CSRF token received');
             }
@@ -59,9 +59,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Wrapper to ensure fresh CSRF token for POST requests
     const withCsrfToken = async (fetchFn) => {
-        await new Promise(resolve => setTimeout(resolve, 100)); // Add delay to ensure token is stored
-        const token = await fetchCsrfToken();
-        console.log(`[DEBUG] Using CSRF token for POST: ${token}, type=${typeof token}, time=${new Date().toISOString()}`);
+        await new Promise(resolve => setTimeout(resolve, 100)); // Ensure token storage
+        let token;
+        try {
+            token = await fetchCsrfToken();
+            console.log(`[DEBUG] Using CSRF token for POST: ${token}, type=${typeof token}, time=${new Date().toISOString()}`);
+        } catch (error) {
+            console.error(`[ERROR] Failed to fetch CSRF token for POST: ${error.message}`);
+            return null;
+        }
         return fetchFn(token);
     };
 
@@ -152,7 +158,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             console.log('Sign-in attempt:', { username });
-            await withCsrfToken(async (token) => {
+            const result = await withCsrfToken(async (token) => {
+                if (!token) {
+                    messageDiv.classList.remove('is-hidden', 'is-success');
+                    messageDiv.classList.add('is-danger');
+                    messageDiv.textContent = 'Unable to establish secure connection.';
+                    return;
+                }
                 try {
                     const response = await fetch(`/signin/${encodeURIComponent(username)}`, {
                         method: 'POST',
@@ -220,6 +232,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!emailError || !passwordError || !confirmError) {
                 console.error('[ERROR] Signup error elements not found');
+                messageDiv.classList.remove('is-hidden', 'is-success');
+                messageDiv.classList.add('is-danger');
+                messageDiv.textContent = 'Form elements not found. Please try again.';
                 return;
             }
 
@@ -256,7 +271,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             console.log('Signup attempt:', { email, username });
-            await withCsrfToken(async (token) => {
+            const result = await withCsrfToken(async (token) => {
+                if (!token) {
+                    messageDiv.classList.remove('is-hidden', 'is-success');
+                    messageDiv.classList.add('is-danger');
+                    messageDiv.textContent = 'Unable to establish secure connection.';
+                    return;
+                }
                 try {
                     const response = await fetch(`/signup/${encodeURIComponent(username)}`, {
                         method: 'POST',

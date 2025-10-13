@@ -65,22 +65,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Wrapper to ensure fresh CSRF token for POST requests
     const withCsrfToken = async (fetchFn) => {
         await new Promise(resolve => setTimeout(resolve, 100)); // Ensure token storage
-        const token = await fetchCsrfToken();
-        console.log(`[DEBUG] Using CSRF token for POST: ${token}, type=${typeof token}, time=${new Date().toISOString()}`);
-        return fetchFn(token);
-    };
-
-    // Refresh CSRF token periodically
-    const refreshCsrfToken = async () => {
+        let token;
         try {
-            const token = await fetchCsrfToken();
-            console.log(`[DEBUG] CSRF token refreshed, time=${new Date().toISOString()}`);
-            return token;
+            token = await fetchCsrfToken();
+            console.log(`[DEBUG] Using CSRF token for POST: ${token}, type=${typeof token}, time=${new Date().toISOString()}`);
         } catch (error) {
-            console.error(`[ERROR] Failed to refresh CSRF token: ${error.message}`);
-            usageWarning.textContent = `Error refreshing secure connection: ${error.message}`;
+            console.error(`[ERROR] Failed to fetch CSRF token for POST: ${error.message}`);
+            usageWarning.textContent = `Error setting up secure connection: ${error.message}`;
             usageWarning.classList.add('error');
+            return null;
         }
+        return fetchFn(token);
     };
 
     // Fetch CSRF token on load
@@ -405,7 +400,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Handle tier switching
     tierSwitchButton?.addEventListener('click', () => {
-        withCsrfToken(async (token) => {
+        const result = withCsrfToken(async (token) => {
+            if (!token) {
+                usageWarning.textContent = 'Unable to establish secure connection.';
+                usageWarning.classList.add('error');
+                return;
+            }
             const selectedTier = tierSelect?.value;
             if (!selectedTier) {
                 console.error('[ERROR] tierSelect element not found');
@@ -446,7 +446,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Handle Diamond audit request
     diamondAuditButton?.addEventListener('click', () => {
-        withCsrfToken(async (token) => {
+        const result = withCsrfToken(async (token) => {
+            if (!token) {
+                usageWarning.textContent = 'Unable to establish secure connection.';
+                usageWarning.classList.add('error');
+                return;
+            }
             const fileInput = document.querySelector('#file');
             const file = fileInput.files[0];
             if (!file) {
@@ -485,9 +490,84 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Handle audit form submission
+    const handleAuditResponse = (data) => {
+        const report = data.report;
+        const overageCost = data.overage_cost;
+        riskScoreSpan.textContent = report.risk_score;
+        riskScoreSpan.parentElement.setAttribute('aria-live', 'polite');
+        issuesBody.innerHTML = '';
+        if (report.issues.length === 0) {
+            issuesBody.innerHTML = '<tr><td colspan="4">No issues found.</td></tr>';
+        } else {
+            report.issues.forEach((issue, index) => {
+                const row = document.createElement('tr');
+                row.setAttribute('tabindex', '0');
+                row.innerHTML = `
+                    <td>${issue.type}</td>
+                    <td>${issue.severity}</td>
+                    <td>${issue.description || 'N/A'}</td>
+                    <td>${issue.fix}</td>
+                `;
+                issuesBody.appendChild(row);
+            });
+        }
+        predictionsList.innerHTML = '';
+        if (report.predictions.length === 0) {
+            predictionsList.innerHTML = '<li>No predictions available.</li>';
+        } else {
+            report.predictions.forEach(prediction => {
+                const li = document.createElement('li');
+                li.textContent = `Scenario: ${prediction.scenario} | Impact: ${prediction.impact}`;
+                li.setAttribute('tabindex', '0');
+                predictionsList.appendChild(li);
+            });
+        }
+        recommendationsList.innerHTML = '';
+        if (report.recommendations.length === 0) {
+            recommendationsList.innerHTML = '<li>No recommendations available.</li>';
+        } else {
+            report.recommendations.forEach(rec => {
+                const li = document.createElement('li');
+                li.textContent = rec;
+                li.setAttribute('tabindex', '0');
+                recommendationsList.appendChild(li);
+            });
+        }
+        fuzzingList.innerHTML = '';
+        if (report.fuzzing_results.length === 0) {
+            fuzzingList.innerHTML = '<li>No fuzzing results available.</li>';
+        } else {
+            report.fuzzing_results.forEach(result => {
+                const li = document.createElement('li');
+                li.textContent = `Vulnerability: ${result.vulnerability} | Description: ${result.description}`;
+                li.setAttribute('tabindex', '0');
+                fuzzingList.appendChild(li);
+            });
+        }
+        if (remediationRoadmap && report.remediation_roadmap) {
+            remediationRoadmap.textContent = report.remediation_roadmap;
+        }
+        if (overageCost) {
+            usageWarning.textContent = `Diamond audit completed with $${overageCost.toFixed(2)} overage charged.`;
+            usageWarning.classList.add('success');
+        }
+        loading.classList.remove('show');
+        resultsDiv.classList.add('show');
+        loading.setAttribute('aria-hidden', 'true');
+        resultsDiv.setAttribute('aria-hidden', 'false');
+        resultsDiv.focus();
+        console.log(`[DEBUG] Audit results displayed, risk_score=${report.risk_score}, overage_cost=${overageCost}, time=${new Date().toISOString()}`);
+    };
+
     const handleSubmit = (event) => {
         event.preventDefault();
-        withCsrfToken(async (token) => {
+        const result = withCsrfToken(async (token) => {
+            if (!token) {
+                loading.classList.remove('show');
+                usageWarning.textContent = 'Unable to establish secure connection.';
+                usageWarning.classList.add('error');
+                return;
+            }
             loading.classList.add('show');
             resultsDiv.classList.remove('show');
             usageWarning.textContent = '';
@@ -520,7 +600,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 upgradeButton.textContent = 'Upgrade to Pro + Diamond';
                 upgradeButton.className = 'upgrade-button';
                 upgradeButton.addEventListener('click', () => {
-                    withCsrfToken(async (token) => {
+                    const result = withCsrfToken(async (token) => {
+                        if (!token) {
+                            usageWarning.textContent = 'Unable to establish secure connection.';
+                            usageWarning.classList.add('error');
+                            return;
+                        }
                         try {
                             const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=pro&has_diamond=true`, {
                                 method: 'POST',
@@ -552,7 +637,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 upgradeButton.textContent = 'Upgrade to Beginner';
                 upgradeButton.className = 'upgrade-button';
                 upgradeButton.addEventListener('click', () => {
-                    withCsrfToken(async (token) => {
+                    const result = withCsrfToken(async (token) => {
+                        if (!token) {
+                            usageWarning.textContent = 'Unable to establish secure connection.';
+                            usageWarning.classList.add('error');
+                            return;
+                        }
                         try {
                             const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=beginner`, {
                                 method: 'POST',
@@ -587,7 +677,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
                     if (errorData.session_url) {
-                        window.location.href = data.session_url;
+                        window.location.href = errorData.session_url;
                         console.log(`[DEBUG] Redirecting to Stripe for audit limit/file size upgrade, time=${new Date().toISOString()}`);
                         return;
                     }

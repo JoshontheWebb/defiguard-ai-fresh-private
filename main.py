@@ -1,135 +1,85 @@
 ## Section 1 ##
-import os
-import json
 import logging
+import os
+import platform
+import json
+import time
+import uuid
+from datetime import datetime
+from tempfile import NamedTemporaryFile
+from typing import Optional
+from fastapi import FastAPI, File, UploadFile, Request, Query, HTTPException, Depends, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from web3 import Web3
+import stripe
 import bcrypt
 import sqlite3
-import subprocess
-from typing import Optional
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Depends, Query, Response
-from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from openai import OpenAI
-from slither.slither import Slither
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from slither import Slither
 from slither.exceptions import SlitherError
-from web3 import Web3
-from pydantic import BaseModel, Field
-from dotenv import load_dotenv
-from tempfile import NamedTemporaryFile
+from openai import OpenAI
 import re
-import platform
-import sys
-from datetime import datetime, timedelta
-import time
 from tenacity import retry, stop_after_attempt, wait_fixed
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
-import secrets
-from starlette.middleware.sessions import SessionMiddleware
-import stripe
-import uuid
+import uvicorn
+from eth_account import Account
+from eth_account.messages import encode_defunct
+from fastapi_csrf_protect import CsrfProtect
+from fastapi_csrf_protect.exceptions import CsrfProtectError
 
-# === ENVIRONMENT AND LOGGING ===
-load_dotenv()
-GROK_API_KEY = os.getenv("GROK_API_KEY")
-INFURA_PROJECT_ID = os.getenv("INFURA_PROJECT_ID")
-STRIPE_API_KEY = os.getenv("STRIPE_API_KEY")
-STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-STRIPE_PRICE_BEGINNER = os.getenv("STRIPE_PRICE_BEGINNER", "price_1SFoJGEqXlKjClpjj2RZ10bf")
-STRIPE_PRICE_PRO = os.getenv("STRIPE_PRICE_PRO", "price_1SFoLlEqXlKjClpjoNrA0XCO")
-STRIPE_PRICE_DIAMOND = os.getenv("STRIPE_PRICE_DIAMOND", "price_1SFoVMEqXlKjClpjTyRtHJcD")
-STRIPE_METERED_PRICE_DIAMOND = os.getenv("STRIPE_METERED_PRICE_DIAMOND", "price_1SFpPTEqXlKjClpjeGFNYSgF")
-
-if not GROK_API_KEY or not INFURA_PROJECT_ID:
-    raise ValueError("Missing API keys in .env file. Please set GROK_API_KEY and INFURA_PROJECT_ID.")
-
-# Configure logging for both file and console
-try:
-    with open('debug.log', 'a') as f:
-        f.write("Logging initialized at " + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n")
-        f.flush()
-except Exception as e:
-    print(f"Error initializing log file: {e}", file=sys.stderr)
-
+# Initialize logging
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('debug.log', mode='a'),
-        logging.StreamHandler(sys.stdout)
+        logging.FileHandler('debug.log'),
+        logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
-for handler in logging.getLogger().handlers:
-    handler.flush = lambda: handler.stream.flush()
 
-# Set Stripe API key
-if STRIPE_API_KEY:
-    stripe.api_key = STRIPE_API_KEY
-else:
-    logger.warning("STRIPE_API_KEY not set; Stripe functionality disabled")
+# Initialize FastAPI app
+app = FastAPI()
+app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/templates", StaticFiles(directory="templates"), name="templates")
 
-# === DATABASE SETUP ===
-Base = declarative_base()
-engine = create_engine("sqlite:///users.db")
+# CSRF Protection
+class CsrfSettings:
+    secret_key = os.getenv("CSRF_SECRET_KEY", "default-secret-key")
+    token_location = "header"
+    cookie_secure = True
+    cookie_samesite = "strict"
+    cookie_key = "csrf_token"
+    header_name = "X-CSRF-Token"
+
+@CsrfProtect.load_config
+def get_csrf_config():
+    return CsrfSettings()
+
+# Database setup
+DATABASE_URL = "sqlite:///users.db"
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
-    email = Column(String)
+    email = Column(String, unique=True, index=True)
     password_hash = Column(String)
     tier = Column(String, default="free")
     has_diamond = Column(Boolean, default=False)
-    last_reset = Column(DateTime, default=datetime.now)
+    last_reset = Column(DateTime)
     api_key = Column(String, nullable=True)
     audit_history = Column(String, default="[]")
     stripe_subscription_id = Column(String, nullable=True)
     stripe_subscription_item_id = Column(String, nullable=True)
 
-# Migrate database schema
-def migrate_database():
-    conn = sqlite3.connect('users.db')
-    cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
-        if cursor.fetchone() is None:
-            logger.info("No users table found; creating new table")
-            Base.metadata.create_all(bind=engine)
-            logger.info("Database table created")
-            return
-        cursor.execute("PRAGMA table_info(users)")
-        columns = [info[1] for info in cursor.fetchall()]
-        missing_columns = [
-            col for col in ['api_key', 'audit_history', 'has_diamond', 'stripe_subscription_id', 'stripe_subscription_item_id']
-            if col not in columns
-        ]
-        if missing_columns:
-            logger.info(f"Migrating users table to add columns: {missing_columns}")
-            cursor.execute("SELECT id, username, email, password_hash, tier, last_reset, api_key, audit_history, has_diamond FROM users")
-            old_data = cursor.fetchall()
-            cursor.execute("DROP TABLE IF EXISTS users")
-            Base.metadata.create_all(bind=engine)
-            for row in old_data:
-                while len(row) < 9:
-                    row += (None,)
-                row += (None, None)
-                cursor.execute(
-                    "INSERT INTO users (id, username, email, password_hash, tier, last_reset, api_key, audit_history, has_diamond, stripe_subscription_id, stripe_subscription_item_id) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    row
-                )
-            conn.commit()
-            logger.info("Database migration completed")
-    except Exception as e:
-        logger.error(f"Migration error: {str(e)}")
-        Base.metadata.create_all(bind=engine)
-    finally:
-        conn.close()
-
-migrate_database()
+Base.metadata.create_all(bind=engine)
 
 def get_db():
     db = SessionLocal()
@@ -138,7 +88,129 @@ def get_db():
     finally:
         db.close()
 
-# Audit Response Schema
+# Initialize clients
+client = OpenAI(api_key=os.getenv("GROK_API_KEY"))
+INFURA_PROJECT_ID = os.getenv("INFURA_PROJECT_ID")
+w3 = Web3(Web3.HTTPProvider(f"https://mainnet.infura.io/v3/{INFURA_PROJECT_ID}"))
+logger.info("Initializing OpenAI and Web3 clients...")
+logger.info("Starting client initialization...")
+logger.info("OpenAI client created successfully.")
+logger.info("Web3 provider initialized.")
+logger.info("Clients initialized successfully.")
+
+# Stripe setup
+STRIPE_API_KEY = os.getenv("STRIPE_API_KEY")
+stripe.api_key = STRIPE_API_KEY
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+STRIPE_PRICE_PRO = os.getenv("STRIPE_PRICE_PRO")
+STRIPE_PRICE_BEGINNER = os.getenv("STRIPE_PRICE_BEGINNER")
+STRIPE_PRICE_DIAMOND = os.getenv("STRIPE_PRICE_DIAMOND")
+STRIPE_METERED_PRICE_DIAMOND = os.getenv("STRIPE_METERED_PRICE_DIAMOND")
+
+FREE_LIMIT = 3
+BEGINNER_LIMIT = 10
+PRO_LIMIT = float("inf")
+
+level_map = {
+    "free": 0,
+    "beginner": 1,
+    "pro": 2,
+    "diamond": 3
+}
+
+class UsageTracker:
+    def __init__(self):
+        self.count = 0
+        self.feature_flags = {
+            "free": {
+                "predictions": False,
+                "onchain": False,
+                "reports": False,
+                "fuzzing": False,
+                "priority_support": False,
+                "nft_rewards": False
+            },
+            "beginner": {
+                "predictions": True,
+                "onchain": True,
+                "reports": True,
+                "fuzzing": False,
+                "priority_support": True,
+                "nft_rewards": False
+            },
+            "pro": {
+                "predictions": True,
+                "onchain": True,
+                "reports": True,
+                "fuzzing": True,
+                "priority_support": True,
+                "nft_rewards": False
+            },
+            "diamond": {
+                "predictions": True,
+                "onchain": True,
+                "reports": True,
+                "fuzzing": True,
+                "priority_support": True,
+                "nft_rewards": True
+            }
+        }
+
+    def reset_usage(self, username: str, db: Session):
+        user = db.query(User).filter(User.username == username).first()
+        if user:
+            self.count = 0
+            user.last_reset = datetime.now()
+            db.commit()
+            return self.count
+        return self.count
+
+    def increment(self, file_size: int, username: str, db: Session):
+        user = db.query(User).filter(User.username == username).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        current_tier = user.tier
+        limits = {"free": FREE_LIMIT, "beginner": BEGINNER_LIMIT, "pro": PRO_LIMIT}
+        limit = limits.get(current_tier, FREE_LIMIT)
+        if self.count >= limit:
+            raise HTTPException(status_code=403, detail=f"Usage limit exceeded for {current_tier} tier")
+        if file_size > 1024 * 1024 and not user.has_diamond:
+            raise HTTPException(status_code=400, detail=f"File size exceeds 1MB limit for {current_tier} tier")
+        self.count += 1
+        return self.count
+
+    def set_tier(self, tier: str, has_diamond: bool, username: str, db: Session):
+        user = db.query(User).filter(User.username == username).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if tier not in level_map:
+            raise HTTPException(status_code=400, detail="Invalid tier")
+        if tier == "diamond" and user.tier != "pro":
+            raise HTTPException(status_code=400, detail="Diamond add-on requires Pro tier")
+        user.tier = tier if tier != "diamond" else user.tier
+        user.has_diamond = has_diamond
+        db.commit()
+        return {"message": f"Tier set to {tier}, has_diamond: {has_diamond}"}
+
+    def calculate_diamond_overage(self, file_size: int) -> int:
+        if file_size <= 1024 * 1024:
+            return 0
+        overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
+        if overage_mb <= 10:
+            return int(overage_mb * 50)
+        total = 10 * 50
+        remaining_mb = overage_mb - 10
+        if remaining_mb <= 40:
+            return int(total + remaining_mb * 100)
+        total += 40 * 100
+        remaining_after_50 = remaining_mb - 40
+        if remaining_after_50 <= 2:
+            return int(total + remaining_after_50 * 200)
+        total += 2 * 200
+        return int(total + (remaining_after_50 - 2) * 500)
+
+usage_tracker = UsageTracker()
+
 class AuditResponse(BaseModel):
     report: dict
     risk_score: str
@@ -153,11 +225,12 @@ AUDIT_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "vulnerability": {"type": "string"},
-                    "description": {"type": "string"},
-                    "severity": {"type": "string"}
+                    "type": {"type": "string"},
+                    "severity": {"type": "string"},
+                    "description": {"type": ["string", "null"]},
+                    "fix": {"type": "string"}
                 },
-                "required": ["vulnerability", "description", "severity"]
+                "required": ["type", "severity", "fix"]
             }
         },
         "predictions": {
@@ -165,17 +238,14 @@ AUDIT_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "prediction": {"type": "string"},
-                    "confidence": {"type": "number"}
+                    "scenario": {"type": "string"},
+                    "impact": {"type": "string"}
                 },
-                "required": ["prediction", "confidence"]
+                "required": ["scenario", "impact"]
             }
         },
-        "recommendations": {
-            "type": "array",
-            "items": {"type": "string"}
-        },
-        "remediation_roadmap": {"type": "string", "nullable": True},
+        "recommendations": {"type": "array", "items": {"type": "string"}},
+        "remediation_roadmap": {"type": ["string", "null"]},
         "fuzzing_results": {
             "type": "array",
             "items": {
@@ -188,52 +258,53 @@ AUDIT_SCHEMA = {
             }
         }
     },
-    "required": ["risk_score", "issues", "predictions", "recommendations", "fuzzing_results"]
+    "required": ["risk_score", "issues", "predictions", "recommendations"]
 }
 
-# CSRF Token Generation and Validation
-def generate_csrf_token():
-    return secrets.token_urlsafe(32)
+def run_echidna(temp_path):
+    return {"fuzzing_results": "Echidna fuzzing not implemented in this context."}
 
-async def get_csrf_token(request: Request):
+# CSRF Token Generation
+async def get_csrf_token(request: Request) -> str:
+    token = request.session.get('csrf_token')
+    if not token:
+        token = str(uuid.uuid4())
+        request.session['csrf_token'] = token
+        logger.debug(f"Generated new CSRF token: {token}, session: {request.session}")
+    else:
+        logger.debug(f"Reusing existing CSRF token: {token}, session: {request.session}")
+    return token
+
+async def verify_csrf_token(request: Request):
+    provided_token = request.headers.get('X-CSRF-Token')
+    expected_token = request.session.get('csrf_token')
+    logger.debug(f"Verifying CSRF token: Provided={provided_token}, Expected={expected_token}, session: {request.session}")
+    if not provided_token or provided_token != expected_token:
+        logger.error(f"CSRF validation failed: Provided={provided_token}, Expected={expected_token}")
+        raise HTTPException(status_code=403, detail="CSRF token validation failed")
+    logger.debug("CSRF token verified successfully")
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+@app.get("/csrf-token")
+async def get_csrf(request: Request):
     try:
-        logger.debug(f"Processing get_csrf_token for session: {request.session}, headers: {request.headers}, cookies: {request.cookies}")
-        token = request.session.get("csrf_token")
-        if not token:
-            token = generate_csrf_token()
-            request.session["csrf_token"] = token
-            logger.info(f"Generated new CSRF token: {token}")
-        logger.debug(f"Returning CSRF token: {token}")
-        logger.debug("Flushing log file after CSRF token generation")
+        logger.debug(f"Received /csrf-token request from {request.client.host}, headers: {request.headers}, cookies: {request.cookies}, session: {request.session}")
+        token = await get_csrf_token(request)
+        if not isinstance(token, str):
+            logger.error(f"Invalid CSRF token generated: {token}, type={type(token)}")
+            raise HTTPException(status_code=500, detail="Failed to generate valid CSRF token")
+        logger.info(f"Returning CSRF token: {token}")
+        logger.debug("Flushing log file after returning CSRF token")
         for handler in logging.getLogger().handlers:
             handler.flush()
         return {"csrf_token": token}
     except Exception as e:
-        logger.error(f"Error generating CSRF token: {str(e)}")
-        logger.debug("Flushing log file after CSRF error")
+        logger.error(f"CSRF endpoint error: {str(e)}")
+        logger.debug("Flushing log file after CSRF endpoint error")
         for handler in logging.getLogger().handlers:
             handler.flush()
-        raise HTTPException(status_code=500, detail=f"CSRF token generation failed: {str(e)}")
-
-async def verify_csrf_token(request: Request):
-    logger.debug(f"Verifying CSRF token for request: {request.method} {request.url}, headers: {request.headers}")
-    if request.method in ["POST", "PUT", "DELETE"]:
-        token = request.headers.get("X-CSRF-Token")
-        session_token = request.session.get("csrf_token")
-        if not session_token:
-            session_token = generate_csrf_token()
-            request.session["csrf_token"] = session_token
-            logger.info(f"Generated new CSRF token for session: {session_token}")
-        if not token or token != session_token:
-            logger.error(f"CSRF validation failed: Provided={token}, Expected={session_token}")
-            logger.debug("Flushing log file after CSRF validation failure")
-            for handler in logging.getLogger().handlers:
-                handler.flush()
-            raise HTTPException(status_code=403, detail="Invalid CSRF token")
-    logger.debug("Flushing log file after CSRF verification")
-    for handler in logging.getLogger().handlers:
-        handler.flush()
-    return True
+        raise HTTPException(status_code=500, detail=f"Failed to generate CSRF token: {str(e)}")
     ## Section 2 ##
 # === USAGE TRACKING ===
 import os.path
