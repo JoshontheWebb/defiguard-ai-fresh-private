@@ -2,7 +2,7 @@ fastapi==0.115.0
 uvicorn==0.30.6
 openai==1.55.3
 slither-analyzer==0.10.3
-web3==7.2.0
+web3==6.20.0
 python-dotenv==1.0.1
 tenacity==9.0.0
 pydantic==1.10.17
