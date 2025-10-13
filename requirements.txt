@@ -11,3 +11,4 @@ sqlalchemy==2.0.35
 itsdangerous==2.2.0
 python-multipart==0.0.12
 stripe==10.5.0
+fastapi-csrf-protect==0.3.1
