@@ -42,7 +42,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(`Failed to fetch CSRF token: ${errorData.detail || response.statusText}`);
             }
             const data = await response.json();
-            if (!data.csrf_token || data.csrf_token === 'undefined') {
+            console.log(`[DEBUG] CSRF response data: ${JSON.stringify(data)}, type=${typeof data.csrf_token}, time=${new Date().toISOString()}`);
+            if (typeof data.csrf_token !== 'string' || !data.csrf_token || data.csrf_token === 'undefined') {
                 throw new Error('Invalid CSRF token received');
             }
             localStorage.setItem('csrfToken', data.csrf_token);
@@ -63,7 +64,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Wrapper to ensure fresh CSRF token for POST requests
     const withCsrfToken = async (fetchFn) => {
+        await new Promise(resolve => setTimeout(resolve, 100)); // Ensure token storage
         const token = await fetchCsrfToken();
+        console.log(`[DEBUG] Using CSRF token for POST: ${token}, type=${typeof token}, time=${new Date().toISOString()}`);
         return fetchFn(token);
     };
 
@@ -79,6 +82,9 @@ document.addEventListener('DOMContentLoaded', () => {
             usageWarning.classList.add('error');
         }
     };
+
+    // Fetch CSRF token on load
+    fetchCsrfToken();
 
     // Calculate Diamond audit overage price
     const calculateDiamondOverage = (file) => {
@@ -115,10 +121,6 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(`[DEBUG] Diamond overage calculated: $${overageCost.toFixed(2)} for ${size} bytes, time=${new Date().toISOString()}`);
         return overageCost;
     };
-
-    // Fetch CSRF token on load
-    refreshCsrfToken();
-    setInterval(refreshCsrfToken, 30 * 60 * 1000);
 
     // File input listener for price calculation
     document.getElementById('file')?.addEventListener('change', (event) => {
@@ -242,6 +244,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const errorData = await response.json().catch(() => ({}));
                     throw new Error(errorData.detail || `Failed to complete ${tempId ? 'Diamond audit' : 'tier upgrade'}`);
                 }
+                localStorage.setItem('username', username); // Persist username
                 const data = await response.json();
                 usageWarning.textContent = data.message || `Successfully completed ${tempId ? 'Diamond audit' : 'tier upgrade'}`;
                 usageWarning.classList.add('success');
@@ -252,6 +255,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error(`[ERROR] Post-payment redirect error: ${error.message}, time=${new Date().toISOString()}`);
                 usageWarning.textContent = `Error completing ${tempId ? 'Diamond audit' : 'tier upgrade'}: ${error.message}`;
                 usageWarning.classList.add('error');
+                if (error.message.includes('User not found') || error.message.includes('Please login')) {
+                    window.location.href = '/auth?redirect_reason=post_payment';
+                }
             }
         }
     };
@@ -359,7 +365,10 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const username = localStorage.getItem('username') || '';
             const url = username ? `/tier?username=${encodeURIComponent(username)}` : '/tier';
-            const response = await fetch(url);
+            const response = await fetch(url, {
+                headers: { 'Accept': 'application/json' },
+                credentials: 'include'
+            });
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
                 throw new Error(errorData.detail || 'Failed to fetch tier data');
@@ -415,7 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=${selectedTier === 'diamond' ? 'pro' : selectedTier}&has_diamond=${hasDiamond}`, {
                     method: 'POST',
                     headers: {
-                        'X-CSRF-Token': token || localStorage.getItem('csrfToken'),
+                        'X-CSRF-Token': token,
                         'Accept': 'application/json'
                     },
                     credentials: 'include'
@@ -456,7 +465,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const response = await fetch(`/diamond-audit?username=${encodeURIComponent(username)}`, {
                     method: 'POST',
-                    headers: { 'X-CSRF-Token': token || localStorage.getItem('csrfToken') },
+                    headers: { 'X-CSRF-Token': token },
                     body: formData,
                     credentials: 'include'
                 });
@@ -476,75 +485,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Handle audit form submission
-    const handleAuditResponse = (data) => {
-        const report = data.report;
-        const overageCost = data.overage_cost;
-        riskScoreSpan.textContent = report.risk_score;
-        riskScoreSpan.parentElement.setAttribute('aria-live', 'polite');
-        issuesBody.innerHTML = '';
-        if (report.issues.length === 0) {
-            issuesBody.innerHTML = '<tr><td colspan="4">No issues found.</td></tr>';
-        } else {
-            report.issues.forEach((issue, index) => {
-                const row = document.createElement('tr');
-                row.setAttribute('tabindex', '0');
-                row.innerHTML = `
-                    <td>${issue.type}</td>
-                    <td>${issue.severity}</td>
-                    <td>${issue.description || 'N/A'}</td>
-                    <td>${issue.fix}</td>
-                `;
-                issuesBody.appendChild(row);
-            });
-        }
-        predictionsList.innerHTML = '';
-        if (report.predictions.length === 0) {
-            predictionsList.innerHTML = '<li>No predictions available.</li>';
-        } else {
-            report.predictions.forEach(prediction => {
-                const li = document.createElement('li');
-                li.textContent = `Scenario: ${prediction.scenario} | Impact: ${prediction.impact}`;
-                li.setAttribute('tabindex', '0');
-                predictionsList.appendChild(li);
-            });
-        }
-        recommendationsList.innerHTML = '';
-        if (report.recommendations.length === 0) {
-            recommendationsList.innerHTML = '<li>No recommendations available.</li>';
-        } else {
-            report.recommendations.forEach(rec => {
-                const li = document.createElement('li');
-                li.textContent = rec;
-                li.setAttribute('tabindex', '0');
-                recommendationsList.appendChild(li);
-            });
-        }
-        fuzzingList.innerHTML = '';
-        if (report.fuzzing_results.length === 0) {
-            fuzzingList.innerHTML = '<li>No fuzzing results available.</li>';
-        } else {
-            report.fuzzing_results.forEach(result => {
-                const li = document.createElement('li');
-                li.textContent = `Vulnerability: ${result.vulnerability} | Description: ${result.description}`;
-                li.setAttribute('tabindex', '0');
-                fuzzingList.appendChild(li);
-            });
-        }
-        if (remediationRoadmap && report.remediation_roadmap) {
-            remediationRoadmap.textContent = report.remediation_roadmap;
-        }
-        if (overageCost) {
-            usageWarning.textContent = `Diamond audit completed with $${overageCost.toFixed(2)} overage charged.`;
-            usageWarning.classList.add('success');
-        }
-        loading.classList.remove('show');
-        resultsDiv.classList.add('show');
-        loading.setAttribute('aria-hidden', 'true');
-        resultsDiv.setAttribute('aria-hidden', 'false');
-        resultsDiv.focus();
-        console.log(`[DEBUG] Audit results displayed, risk_score=${report.risk_score}, overage_cost=${overageCost}, time=${new Date().toISOString()}`);
-    };
-
     const handleSubmit = (event) => {
         event.preventDefault();
         withCsrfToken(async (token) => {
@@ -584,7 +524,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         try {
                             const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=pro&has_diamond=true`, {
                                 method: 'POST',
-                                headers: { 'X-CSRF-Token': token || localStorage.getItem('csrfToken'), 'Accept': 'application/json' },
+                                headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' },
                                 credentials: 'include'
                             });
                             if (!response.ok) {
@@ -616,7 +556,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         try {
                             const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=beginner`, {
                                 method: 'POST',
-                                headers: { 'X-CSRF-Token': token || localStorage.getItem('csrfToken'), 'Accept': 'application/json' },
+                                headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' },
                                 credentials: 'include'
                             });
                             if (!response.ok) {
@@ -640,14 +580,14 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const response = await fetch(`/audit?username=${encodeURIComponent(username)}`, {
                     method: 'POST',
-                    headers: { 'X-CSRF-Token': token || localStorage.getItem('csrfToken') },
+                    headers: { 'X-CSRF-Token': token },
                     body: formData,
                     credentials: 'include'
                 });
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
                     if (errorData.session_url) {
-                        window.location.href = errorData.session_url;
+                        window.location.href = data.session_url;
                         console.log(`[DEBUG] Redirecting to Stripe for audit limit/file size upgrade, time=${new Date().toISOString()}`);
                         return;
                     }

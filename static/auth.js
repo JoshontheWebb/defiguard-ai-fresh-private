@@ -1,4 +1,4 @@
-// Polling for DOM readiness
+/ Polling for DOM readiness
 function waitForDOM(selectors, callback, maxAttempts = 10, interval = 100) {
     let attempts = 0;
     const elements = {};
@@ -43,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error('Invalid CSRF token received');
             }
             localStorage.setItem('csrfToken', data.csrf_token);
-            console.log(`[DEBUG] CSRF token fetched and stored: ${data.csrf_token}, type=${typeof data.csrf_token}, time=${new Date().toISOString()}`);
+            console.log(`[DEBUG] CSRF token fetched and stored: ${data.csrf_token}, time=${new Date().toISOString()}`);
             return data.csrf_token;
         } catch (error) {
             console.error(`CSRF token fetch error (attempt ${attempt}/${maxAttempts}): ${error.message}`);
@@ -59,8 +59,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Wrapper to ensure fresh CSRF token for POST requests
     const withCsrfToken = async (fetchFn) => {
+        await new Promise(resolve => setTimeout(resolve, 100)); // Add delay to ensure token is stored
         const token = await fetchCsrfToken();
-        console.log(`[DEBUG] Using CSRF token for POST: ${token}, type=${typeof token}`);
+        console.log(`[DEBUG] Using CSRF token for POST: ${token}, type=${typeof token}, time=${new Date().toISOString()}`);
         return fetchFn(token);
     };
 
