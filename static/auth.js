@@ -38,11 +38,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(`Failed to fetch CSRF token: ${response.status} ${errorData.detail || response.statusText}`);
             }
             const data = await response.json();
-            if (!data.csrf_token || data.csrf_token === 'undefined') {
+            console.log(`[DEBUG] CSRF response data: ${JSON.stringify(data)}, type=${typeof data.csrf_token}`);
+            if (typeof data.csrf_token !== 'string' || !data.csrf_token || data.csrf_token === 'undefined') {
                 throw new Error('Invalid CSRF token received');
             }
             localStorage.setItem('csrfToken', data.csrf_token);
-            console.log(`[DEBUG] CSRF token fetched and stored: ${data.csrf_token}, time=${new Date().toISOString()}`);
+            console.log(`[DEBUG] CSRF token fetched and stored: ${data.csrf_token}, type=${typeof data.csrf_token}, time=${new Date().toISOString()}`);
             return data.csrf_token;
         } catch (error) {
             console.error(`CSRF token fetch error (attempt ${attempt}/${maxAttempts}): ${error.message}`);
@@ -59,6 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Wrapper to ensure fresh CSRF token for POST requests
     const withCsrfToken = async (fetchFn) => {
         const token = await fetchCsrfToken();
+        console.log(`[DEBUG] Using CSRF token for POST: ${token}, type=${typeof token}`);
         return fetchFn(token);
     };
 
