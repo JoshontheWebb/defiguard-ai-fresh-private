@@ -32,8 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
         signinForm: '#signin-form',
         signupForm: '#signup-form'
     }, ({ authToggle, authForms, messageDiv, logoutSection, logoutButton, tabs, signinForm, signupForm }) => {
-        // Fetch CSRF token
-        let csrfToken = null;
+        // Fetch CSRF token with retry
         const fetchCsrfToken = async (attempt = 1, maxAttempts = 3) => {
             try {
                 const response = await fetch(`/csrf-token?_=${Date.now()}`, {
@@ -49,25 +48,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error(`Failed to fetch CSRF token: ${response.status} ${errorData.detail || response.statusText}`);
                 }
                 const data = await response.json();
-                csrfToken = data.csrf_token;
-                console.log(`[DEBUG] CSRF token fetched: ${csrfToken}, time=${new Date().toISOString()}`);
-                messageDiv.classList.remove('is-hidden', 'is-danger');
-                messageDiv.classList.add('is-success');
-                messageDiv.textContent = 'CSRF token loaded successfully.';
+                if (!data.csrf_token || data.csrf_token === 'undefined') {
+                    throw new Error('Invalid CSRF token received');
+                }
+                console.log(`[DEBUG] CSRF token fetched: ${data.csrf_token}, time=${new Date().toISOString()}`);
+                return data.csrf_token;
             } catch (error) {
                 console.error(`CSRF token fetch error (attempt ${attempt}/${maxAttempts}): ${error.message}`);
                 if (attempt < maxAttempts) {
                     console.log(`Retrying CSRF token fetch in 1s...`);
-                    setTimeout(() => fetchCsrfToken(attempt + 1, maxAttempts), 1000);
-                } else {
-                    console.error('Max CSRF fetch attempts reached.');
-                    messageDiv.classList.remove('is-hidden', 'is-success');
-                    messageDiv.classList.add('is-danger');
-                    messageDiv.textContent = `Error setting up secure connection: ${error.message}`;
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    return fetchCsrfToken(attempt + 1, maxAttempts);
                 }
+                console.error('Max CSRF fetch attempts reached.');
+                messageDiv.classList.remove('is-hidden', 'is-success');
+                messageDiv.classList.add('is-danger');
+                messageDiv.textContent = `Error setting up secure connection: ${error.message}`;
+                throw error;
             }
         };
-        fetchCsrfToken();
 
         // Toggle auth forms
         authToggle.addEventListener('click', () => {
@@ -137,20 +136,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
             console.log('Sign-in attempt:', { username });
             try {
-                const response = await fetch(`/signin/${username}`, {
+                const token = await fetchCsrfToken(); // Fetch fresh token for each POST
+                const response = await fetch(`/signin/${encodeURIComponent(username)}`, {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
-                        'X-CSRF-Token': csrfToken
+                        'X-CSRF-Token': token
                     },
-                    body: JSON.stringify({ password })
+                    body: JSON.stringify({ password }),
+                    credentials: 'include'
                 });
                 const data = await response.json();
 
                 if (response.ok) {
                     console.log('Sign-in success:', { username, message: data.message });
                     localStorage.setItem('username', username);
-                    const tierResponse = await fetch(`/tier?username=${username}`);
+                    const tierResponse = await fetch(`/tier?username=${encodeURIComponent(username)}`);
                     if (!tierResponse.ok) {
                         console.error('Failed to fetch tier:', tierResponse.status);
                         throw new Error('Failed to fetch tier information');
@@ -235,13 +236,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
             console.log('Signup attempt:', { email, username });
             try {
-                const response = await fetch(`/signup/${username}`, {
+                const token = await fetchCsrfToken(); // Fetch fresh token for each POST
+                const response = await fetch(`/signup/${encodeURIComponent(username)}`, {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
-                        'X-CSRF-Token': csrfToken
+                        'X-CSRF-Token': token
                     },
-                    body: JSON.stringify({ email, password })
+                    body: JSON.stringify({ email, password }),
+                    credentials: 'include'
                 });
                 const data = await response.json();
 

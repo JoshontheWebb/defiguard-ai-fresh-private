@@ -1,3 +1,4 @@
+##Section 1##
 import os
 import json
 import logging
@@ -442,13 +443,14 @@ async def serve_static(file_path: str):
         handler.flush()
     return StaticFiles(directory="static").get_response(file_path)
 
+## Section 2 ##
 # Reset usage for testing
 @app.post("/reset-usage")
 async def reset_usage(request: Request, username: str = Query(None), db: Session = Depends(get_db)):
     try:
         await verify_csrf_token(request)
         count = usage_tracker.reset_usage(username, db)
-        logger.info(f"Usage reset to {count} for {username or 'anonymous'}")
+        logger.info(f"Usage reset to {count} for {username or 'anonymous'}, session: {request.session}")
         logger.debug("Flushing log file after usage reset")
         for handler in logging.getLogger().handlers:
             handler.flush()
@@ -461,8 +463,21 @@ async def reset_usage(request: Request, username: str = Query(None), db: Session
         raise HTTPException(status_code=500, detail=f"Failed to reset usage: {str(e)}")
 
 @app.get("/ui", response_class=HTMLResponse)
-async def read_ui():
+async def read_ui(request: Request, session_id: str = Query(None), tier: str = Query(None), has_diamond: bool = Query(False), temp_id: str = Query(None), username: str = Query(None)):
     try:
+        session_username = request.session.get("username")
+        logger.debug(f"UI request, session_id={session_id}, tier={tier}, has_diamond={has_diamond}, temp_id={temp_id}, username={username}, session_username={session_username}, session: {request.session}")
+        if session_id:
+            effective_username = username or session_username
+            if not effective_username:
+                logger.error("No username provided for post-payment redirect; redirecting to login")
+                return RedirectResponse(url="/auth")
+            if temp_id:
+                logger.info(f"Processing post-payment redirect for Diamond audit, username={effective_username}, session_id={session_id}, temp_id={temp_id}")
+                return RedirectResponse(url=f"/complete-diamond-audit?session_id={session_id}&temp_id={temp_id}&username={effective_username}")
+            if tier:
+                logger.info(f"Processing post-payment redirect for tier upgrade, username={effective_username}, session_id={session_id}, tier={tier}, has_diamond={has_diamond}")
+                return RedirectResponse(url=f"/complete-tier-checkout?session_id={session_id}&tier={tier}&has_diamond={has_diamond}&username={effective_username}")
         with open("templates/index.html", "r") as f:
             logger.info(f"Loading UI from: {os.path.abspath('templates/index.html')}")
             logger.debug("Flushing log file after loading UI")
@@ -477,8 +492,9 @@ async def read_ui():
         return HTMLResponse(content="<h1>UI file not found. Check templates/index.html.</h1>")
 
 @app.get("/auth", response_class=HTMLResponse)
-async def read_auth():
+async def read_auth(request: Request):
     try:
+        logger.debug(f"Auth page accessed, session: {request.session}")
         with open("templates/auth.html", "r") as f:
             logger.info(f"Loading auth from: {os.path.abspath('templates/auth.html')}")
             logger.debug("Flushing log file after loading auth")
@@ -512,6 +528,7 @@ async def get_csrf(request: Request):
 @app.post("/signup/{username}")
 async def signup(username: str, request: Request, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
+    logger.debug(f"Signup request for {username}, session: {request.session}")
     if not re.match(r"^[a-zA-Z0-9_]{3,20}$", username):
         raise HTTPException(status_code=400, detail="Username must be 3-20 alphanumeric characters or underscores")
     data = await request.json()
@@ -535,6 +552,7 @@ async def signup(username: str, request: Request, db: Session = Depends(get_db))
 @app.post("/signin/{username}")
 async def signin(username: str, request: Request, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
+    logger.debug(f"Signin request for {username}, session: {request.session}")
     if not re.match(r"^[a-zA-Z0-9_]{3,20}$", username):
         raise HTTPException(status_code=400, detail="Invalid username format")
     data = await request.json()
@@ -595,6 +613,7 @@ async def get_tier(request: Request, username: str = Query(None), db: Session = 
 @app.post("/set-tier/{username}/{tier}")
 async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), request: Request = None, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
+    logger.debug(f"Set-tier request for {username}, tier: {tier}, has_diamond: {has_diamond}, session: {request.session}")
     user = db.query(User).filter(User.username == username).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -626,7 +645,7 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
             payment_method_types=['card'],
             line_items=line_items,
             mode='subscription',
-            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier={tier}&has_diamond={str(has_diamond).lower()}',
+            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={tier}&has_diamond={str(has_diamond).lower()}&username={username}',
             cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
             metadata={'username': username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
         )
@@ -646,9 +665,15 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
         raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
 
 @app.post("/create-tier-checkout")
-async def create_tier_checkout(username: str = Query(...), tier: str = Query(...), has_diamond: bool = Query(False), request: Request = None, db: Session = Depends(get_db)):
+async def create_tier_checkout(username: str = Query(None), tier: str = Query(...), has_diamond: bool = Query(False), request: Request = None, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
-    user = db.query(User).filter(User.username == username).first()
+    session_username = request.session.get("username")
+    logger.debug(f"Create-tier-checkout request for {username}, tier: {tier}, has_diamond: {has_diamond}, session: {request.session}")
+    effective_username = username or session_username
+    if not effective_username:
+        logger.error("No username provided for /create-tier-checkout; redirecting to login")
+        raise HTTPException(status_code=401, detail="Please login to continue")
+    user = db.query(User).filter(User.username == effective_username).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if tier not in level_map:
@@ -656,7 +681,7 @@ async def create_tier_checkout(username: str = Query(...), tier: str = Query(...
     if tier == "diamond" and user.tier != "pro":
         raise HTTPException(status_code=400, detail="Diamond add-on requires Pro tier")
     if not STRIPE_API_KEY:
-        logger.error(f"Stripe checkout creation failed for {username} to {tier}: STRIPE_API_KEY not set")
+        logger.error(f"Stripe checkout creation failed for {effective_username} to {tier}: STRIPE_API_KEY not set")
         raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again or contact support.")
     try:
         price_id = {
@@ -679,11 +704,11 @@ async def create_tier_checkout(username: str = Query(...), tier: str = Query(...
             payment_method_types=['card'],
             line_items=line_items,
             mode='subscription',
-            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier={tier}&has_diamond={str(has_diamond).lower()}',
+            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={tier}&has_diamond={str(has_diamond).lower()}&username={effective_username}',
             cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
-            metadata={'username': username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
+            metadata={'username': effective_username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
         )
-        logger.info(f"Created Stripe checkout session for {username} to {tier}, has_diamond: {has_diamond}, session: {request.session}")
+        logger.info(f"Created Stripe checkout session for {effective_username} to {tier}, has_diamond: {has_diamond}, session: {request.session}")
         logger.debug("Flushing log file after tier checkout creation")
         for handler in logging.getLogger().handlers:
             handler.flush()
@@ -695,36 +720,78 @@ async def create_tier_checkout(username: str = Query(...), tier: str = Query(...
             db.commit()
         return {"session_url": session.url}
     except Exception as e:
-        logger.error(f"Stripe checkout creation failed for {username} to {tier}: {str(e)}")
+        logger.error(f"Stripe checkout creation failed for {effective_username} to {tier}: {str(e)}")
         raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
 
-@app.get("/complete-tier-checkout")
-async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query(...), has_diamond: bool = Query(False), username: str = Query(...), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == username).first()
+@app.post("/create-checkout-session")
+async def create_checkout_session(username: str = Query(None), temp_id: str = Query(...), price: int = Query(...), request: Request = None, db: Session = Depends(get_db)):
+    await verify_csrf_token(request)
+    session_username = request.session.get("username")
+    logger.debug(f"Create-checkout-session request: Query username={username}, Session username={session_username}, temp_id={temp_id}, session: {request.session}")
+    effective_username = username or session_username
+    if not effective_username:
+        logger.error("No username provided for /create-checkout-session; redirecting to login")
+        raise HTTPException(status_code=401, detail="Please login to continue")
+    user = db.query(User).filter(User.username == effective_username).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if not STRIPE_API_KEY:
-        logger.error(f"Tier upgrade checkout failed for {username}: STRIPE_API_KEY not set")
+        logger.error(f"Stripe session creation failed for {effective_username}: STRIPE_API_KEY not set")
+        raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again or contact support.")
+    try:
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{
+                'price': STRIPE_METERED_PRICE_DIAMOND,
+                'quantity': 1,
+            }],
+            mode='subscription',
+            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-diamond-audit?session_id={{CHECKOUT_SESSION_ID}}&temp_id={temp_id}&username={effective_username}',
+            cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
+            metadata={'temp_id': temp_id, 'username': effective_username}
+        )
+        logger.info(f"Stripe Checkout session created for {effective_username} with temp_id {temp_id}, session: {request.session}")
+        logger.debug("Flushing log file after checkout session creation")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        return {"session_url": session.url}
+    except Exception as e:
+        logger.error(f"Stripe session creation failed for {effective_username}: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
+
+@app.get("/complete-tier-checkout")
+async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query(...), has_diamond: bool = Query(False), username: str = Query(None), request: Request = None, db: Session = Depends(get_db)):
+    session_username = request.session.get("username")
+    logger.debug(f"Complete-tier-checkout request: Query username={username}, Session username={session_username}, session: {request.session}")
+    effective_username = username or session_username
+    if not effective_username:
+        logger.error("No username provided for /complete-tier-checkout; redirecting to login")
+        raise HTTPException(status_code=401, detail="Please login to continue")
+    user = db.query(User).filter(User.username == effective_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not STRIPE_API_KEY:
+        logger.error(f"Tier upgrade checkout failed for {effective_username}: STRIPE_API_KEY not set")
         raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again or contact support.")
     try:
         session = stripe.checkout.Session.retrieve(session_id)
         if session.payment_status == 'paid':
-            result = usage_tracker.set_tier(tier, has_diamond, username, db)
+            result = usage_tracker.set_tier(tier, has_diamond, effective_username, db)
             user.stripe_subscription_id = session.subscription
             for item in stripe.Subscription.retrieve(session.subscription).get('items', {}).get('data', []):
                 if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
                     user.stripe_subscription_item_id = item.id
-            usage_tracker.reset_usage(username, db)
+            usage_tracker.reset_usage(effective_username, db)
             db.commit()
-            logger.info(f"Tier upgrade completed for {username} to {tier}, has_diamond: {has_diamond}")
+            logger.info(f"Tier upgrade completed for {effective_username} to {tier}, has_diamond: {has_diamond}, session: {request.session}")
             logger.debug("Flushing log file after tier upgrade completion")
             for handler in logging.getLogger().handlers:
                 handler.flush()
-            return {"message": result}
+            return RedirectResponse(url="/ui")  # Redirect to UI after completion
         else:
             raise HTTPException(status_code=400, detail="Payment not completed")
     except Exception as e:
-        logger.error(f"Tier upgrade checkout failed for {username}: {str(e)}")
+        logger.error(f"Tier upgrade checkout failed for {effective_username}: {str(e)}")
         raise HTTPException(status_code=503, detail=f"Failed to complete tier upgrade: Payment processing error. Please try again or contact support.")
 
 @app.get("/upgrade")
@@ -804,14 +871,14 @@ async def get_facets(contract_address: str, request: Request, username: str = Qu
             for handler in logging.getLogger().handlers:
                 handler.flush()
             raise HTTPException(status_code=500, detail=f"Failed to fetch facets: {str(e)}")
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        logger.error(f"Unexpected error in /facets: {str(e)}")
-        logger.debug("Flushing log file after unexpected /facets error")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+        except HTTPException as e:
+            raise e
+        except Exception as e:
+            logger.error(f"Unexpected error in /facets: {str(e)}")
+            logger.debug("Flushing log file after unexpected /facets error")
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+            raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 def run_echidna(temp_path):
     """Run Echidna fuzzing on the Solidity file and return results."""
@@ -867,11 +934,14 @@ coverage: true
             os.unlink(output_path)
 
 @app.post("/upload-temp")
-async def upload_temp(file: UploadFile = File(...), username: str = Query(...), db: Session = Depends(get_db), request: Request = None):
+async def upload_temp(file: UploadFile = File(...), username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
     await verify_csrf_token(request)
     session_username = request.session.get("username")
     logger.debug(f"Upload-temp request: Query username={username}, Session username={session_username}, session: {request.session}")
     effective_username = username or session_username
+    if not effective_username:
+        logger.error("No username provided for /upload-temp; redirecting to login")
+        raise HTTPException(status_code=401, detail="Please login to continue")
     user = db.query(User).filter(User.username == effective_username).first()
     if not user or not user.has_diamond:
         raise HTTPException(status_code=403, detail="Temporary file upload requires Diamond add-on")
@@ -887,11 +957,14 @@ async def upload_temp(file: UploadFile = File(...), username: str = Query(...), 
     return {"temp_id": temp_id, "file_size": file_size}
 
 @app.post("/create-checkout-session")
-async def create_checkout_session(username: str = Query(...), temp_id: str = Query(...), price: int = Query(...), request: Request = None, db: Session = Depends(get_db)):
+async def create_checkout_session(username: str = Query(None), temp_id: str = Query(...), price: int = Query(...), request: Request = None, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
     session_username = request.session.get("username")
-    logger.debug(f"Create-checkout-session request: Query username={username}, Session username={session_username}, session: {request.session}")
+    logger.debug(f"Create-checkout-session request: Query username={username}, Session username={session_username}, temp_id={temp_id}, session: {request.session}")
     effective_username = username or session_username
+    if not effective_username:
+        logger.error("No username provided for /create-checkout-session; redirecting to login")
+        raise HTTPException(status_code=401, detail="Please login to continue")
     user = db.query(User).filter(User.username == effective_username).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -906,11 +979,14 @@ async def create_checkout_session(username: str = Query(...), temp_id: str = Que
                 'quantity': 1,
             }],
             mode='subscription',
-            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&temp_id={temp_id}',
+            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-diamond-audit?session_id={{CHECKOUT_SESSION_ID}}&temp_id={temp_id}&username={effective_username}',
             cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
             metadata={'temp_id': temp_id, 'username': effective_username}
         )
-        logger.info(f"Stripe Checkout session created for {effective_username} with temp_id {temp_id}")
+        logger.info(f"Stripe Checkout session created for {effective_username} with temp_id {temp_id}, session: {request.session}")
+        logger.debug("Flushing log file after checkout session creation")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         return {"session_url": session.url}
     except Exception as e:
         logger.error(f"Stripe session creation failed for {effective_username}: {str(e)}")
@@ -920,6 +996,7 @@ async def create_checkout_session(username: str = Query(...), temp_id: str = Que
 async def webhook(request: Request, db: Session = Depends(get_db)):
     payload = await request.body()
     sig_header = request.headers.get('stripe-signature')
+    logger.debug(f"Webhook received, payload: {payload[:100]}, sig_header: {sig_header}, session: {request.session}")
     event = None
     if not STRIPE_API_KEY or not STRIPE_WEBHOOK_SECRET:
         logger.error("Stripe webhook processing failed: STRIPE_API_KEY or STRIPE_WEBHOOK_SECRET not set")
@@ -948,20 +1025,23 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
                     user.stripe_subscription_item_id = item.id
             usage_tracker.set_tier(tier, has_diamond, username, db)
             usage_tracker.reset_usage(username, db)
-            logger.info(f"Tier upgrade completed for {username} to {tier}, has_diamond: {has_diamond}")
+            logger.info(f"Tier upgrade completed for {username} to {tier}, has_diamond: {has_diamond}, session: {request.session}")
             db.commit()
         elif temp_id:
-            logger.info(f"Payment completed for {username}, starting audit for temp_id {temp_id}")
+            logger.info(f"Payment completed for {username}, starting audit for temp_id {temp_id}, session: {request.session}")
         logger.debug("Flushing log file after webhook processing")
         for handler in logging.getLogger().handlers:
             handler.flush()
     return Response(status_code=200)
 
 @app.get("/complete-diamond-audit")
-async def complete_diamond_audit(session_id: str = Query(...), temp_id: str = Query(...), username: str = Query(...), db: Session = Depends(get_db)):
+async def complete_diamond_audit(session_id: str = Query(...), temp_id: str = Query(...), username: str = Query(None), request: Request = None, db: Session = Depends(get_db)):
     session_username = request.session.get("username")
     logger.debug(f"Complete-diamond-audit request: Query username={username}, Session username={session_username}, session: {request.session}")
     effective_username = username or session_username
+    if not effective_username:
+        logger.error("No username provided for /complete-diamond-audit; redirecting to login")
+        raise HTTPException(status_code=401, detail="Please login to continue")
     user = db.query(User).filter(User.username == effective_username).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -976,10 +1056,13 @@ async def complete_diamond_audit(session_id: str = Query(...), temp_id: str = Qu
                 raise HTTPException(status_code=404, detail="Temporary file not found")
             with open(temp_path, "rb") as f:
                 file = UploadFile(filename="temp.sol", file=f)
-                result = await audit_contract(file, None, effective_username, db, None)
+                result = await audit_contract(file, None, effective_username, db, request)
             os.unlink(temp_path)
-            logger.info(f"Diamond audit completed for {effective_username} after payment")
-            return result
+            logger.info(f"Diamond audit completed for {effective_username} after payment, session: {request.session}")
+            logger.debug("Flushing log file after diamond audit completion")
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+            return RedirectResponse(url="/ui")  # Redirect to UI after completion
         else:
             raise HTTPException(status_code=400, detail="Payment not completed")
     except Exception as e:
@@ -987,11 +1070,14 @@ async def complete_diamond_audit(session_id: str = Query(...), temp_id: str = Qu
         raise HTTPException(status_code=503, detail=f"Failed to complete audit: Payment processing error. Please try again or contact support.")
 
 @app.post("/diamond-audit")
-async def diamond_audit(file: UploadFile = File(...), username: str = Query(...), db: Session = Depends(get_db), request: Request = None):
+async def diamond_audit(file: UploadFile = File(...), username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
     await verify_csrf_token(request)
     session_username = request.session.get("username")
     logger.debug(f"Diamond-audit request: Query username={username}, Session username={session_username}, session: {request.session}")
     effective_username = username or session_username
+    if not effective_username:
+        logger.error("No username provided for /diamond-audit; redirecting to login")
+        raise HTTPException(status_code=401, detail="Please login to continue")
     user = db.query(User).filter(User.username == effective_username).first()
     if not user or not user.has_diamond:
         raise HTTPException(status_code=403, detail="Diamond audit requires Diamond add-on")
@@ -1019,11 +1105,11 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(...)
                 'quantity': 1,
             }],
             mode='subscription',
-            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&temp_id={temp_id}',
+            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-diamond-audit?session_id={{CHECKOUT_SESSION_ID}}&temp_id={temp_id}&username={effective_username}',
             cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
             metadata={'temp_id': temp_id, 'username': effective_username}
         )
-        logger.info(f"Redirecting {effective_username} to Stripe checkout for Diamond audit overage")
+        logger.info(f"Redirecting {effective_username} to Stripe checkout for Diamond audit overage, session: {request.session}")
         logger.debug("Flushing log file after Diamond checkout redirect")
         for handler in logging.getLogger().handlers:
             handler.flush()
@@ -1048,73 +1134,7 @@ async def read_root():
         handler.flush()
     return HTMLResponse(content="<script>window.location.href='/ui';</script>")
 
-class AuditReport(BaseModel):
-    risk_score: int = Field(..., ge=0, le=100)
-    issues: list[dict] = Field(default_factory=list, min_length=0)
-    predictions: list[dict] = Field(default_factory=list, min_length=0)
-    recommendations: list[str] = Field(default_factory=list, min_length=0)
-    remediation_roadmap: Optional[str] = Field(None, description="Detailed remediation plan for Diamond add-on")
-    fuzzing_results: list[dict] = Field(default_factory=list, description="Echidna fuzzing results for Pro tier or Diamond add-on")
-
-class AuditResponse(BaseModel):
-    report: AuditReport
-    risk_score: str | int
-    overage_cost: Optional[float] = Field(None, description="Overage cost in USD for Diamond add-on")
-
-class AuditRequest(BaseModel):
-    contract_address: str = None
-
-AUDIT_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "risk_score": {"type": "integer", "minimum": 0, "maximum": 100},
-        "issues": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "type": {"type": "string"},
-                    "severity": {"type": "string", "enum": ["Low", "Med", "High"]},
-                    "fix": {"type": "string"}
-                },
-                "required": ["type", "severity", "fix"]
-            },
-            "minItems": 0
-        },
-        "predictions": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "scenario": {"type": "string"},
-                    "impact": {"type": "string", "enum": ["Low", "Med", "High"]}
-                },
-                "required": ["scenario", "impact"]
-            },
-            "minItems": 0
-        },
-        "recommendations": {
-            "type": "array",
-            "items": {"type": "string"},
-            "minItems": 0
-        },
-        "remediation_roadmap": {"type": ["string", "null"]},
-        "fuzzing_results": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "vulnerability": {"type": "string"},
-                    "description": {"type": "string"}
-                },
-                "required": ["vulnerability", "description"]
-            },
-            "minItems": 0
-        }
-    },
-    "required": ["risk_score", "issues", "predictions", "recommendations", "fuzzing_results"]
-}
-
+##section 4##
 PROMPT_TEMPLATE = """
 Analyze this Solidity code for vulnerabilities and 2025 regulations (MiCA, SEC FIT21).
 Context: {context}.

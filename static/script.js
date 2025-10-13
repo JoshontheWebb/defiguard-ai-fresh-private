@@ -61,17 +61,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // Wrapper to ensure CSRF token is available
+    // Wrapper to ensure fresh CSRF token for POST requests
     const withCsrfToken = async (fetchFn) => {
-        let token = localStorage.getItem('csrfToken');
-        if (!token || token === 'undefined') {
-            console.log(`[DEBUG] No valid CSRF token in localStorage, fetching new token, time=${new Date().toISOString()}`);
-            token = await fetchCsrfToken();
-        }
+        const token = await fetchCsrfToken();
         return fetchFn(token);
     };
 
-    // Refresh CSRF token periodically for hosted environment
+    // Refresh CSRF token periodically
     const refreshCsrfToken = async () => {
         try {
             const token = await fetchCsrfToken();
@@ -125,7 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(refreshCsrfToken, 30 * 60 * 1000);
 
     // File input listener for price calculation
-    document.getElementById('file').addEventListener('change', (event) => {
+    document.getElementById('file')?.addEventListener('change', (event) => {
         const file = event.target.files[0];
         calculateDiamondOverage(file);
     });
@@ -201,6 +197,62 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(`[DEBUG] Persistent auth check, username=${localStorage.getItem('username')}, time=${new Date().toISOString()}`);
         updateAuthStatus();
     }, 10000);
+
+    // Handle post-payment redirect
+    const handlePostPaymentRedirect = async () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get('session_id');
+        const tier = urlParams.get('tier');
+        const hasDiamond = urlParams.get('has_diamond') === 'true';
+        const tempId = urlParams.get('temp_id');
+        const username = urlParams.get('username') || localStorage.getItem('username');
+        if (sessionId && username) {
+            try {
+                const token = await fetchCsrfToken();
+                let endpoint = '';
+                let query = '';
+                if (tempId) {
+                    endpoint = '/complete-diamond-audit';
+                    query = `session_id=${encodeURIComponent(sessionId)}&temp_id=${encodeURIComponent(tempId)}&username=${encodeURIComponent(username)}`;
+                } else if (tier) {
+                    endpoint = '/complete-tier-checkout';
+                    query = `session_id=${encodeURIComponent(sessionId)}&tier=${encodeURIComponent(tier)}&has_diamond=${hasDiamond}&username=${encodeURIComponent(username)}`;
+                } else {
+                    console.error('[ERROR] Invalid post-payment redirect: missing tier or temp_id');
+                    usageWarning.textContent = 'Error: Invalid payment redirect parameters';
+                    usageWarning.classList.add('error');
+                    return;
+                }
+                console.log(`[DEBUG] Processing post-payment redirect to ${endpoint}?${query}, time=${new Date().toISOString()}`);
+                const response = await fetch(`${endpoint}?${query}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-Token': token
+                    },
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || `Failed to complete ${tempId ? 'Diamond audit' : 'tier upgrade'}`);
+                }
+                const data = await response.json();
+                usageWarning.textContent = data.message || `Successfully completed ${tempId ? 'Diamond audit' : 'tier upgrade'}`;
+                usageWarning.classList.add('success');
+                console.log(`[DEBUG] Post-payment completed: ${data.message}, time=${new Date().toISOString()}`);
+                await fetchTierData();
+                // Clear query parameters from URL
+                window.history.replaceState({}, document.title, '/ui');
+            } catch (error) {
+                console.error(`[ERROR] Post-payment redirect error: ${error.message}, time=${new Date().toISOString()}`);
+                usageWarning.textContent = `Error completing ${tempId ? 'Diamond audit' : 'tier upgrade'}: ${error.message}`;
+                usageWarning.classList.add('error');
+            }
+        }
+    };
+
+    // Run post-payment handler on load
+    handlePostPaymentRedirect();
 
     // Facet preview
     const fetchFacetPreview = async (contractAddress, attempt = 1, maxAttempts = 3) => {
@@ -608,6 +660,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    auditForm?.addEventListener('submit', handleSubmit);
+
     downloadReportButton?.addEventListener('click', () => {
         const reportData = {
             risk_score: riskScoreSpan.textContent,
@@ -637,80 +691,4 @@ document.addEventListener('DOMContentLoaded', () => {
         URL.revokeObjectURL(url);
         console.log('[DEBUG] Report downloaded');
     });
-
-    // Handle post-payment redirect
-    const urlParams = new URLSearchParams(window.location.search);
-    const sessionId = urlParams.get('session_id');
-    const tier = urlParams.get('tier');
-    const hasDiamond = urlParams.get('has_diamond') === 'true';
-    const tempId = urlParams.get('temp_id');
-    if (sessionId && tier) {
-        withCsrfToken(async (token) => {
-            try {
-                const username = localStorage.getItem('username') || '';
-                if (!username) {
-                    console.error('[ERROR] No username found, redirecting to /auth');
-                    window.location.href = '/auth';
-                    return;
-                }
-                const response = await fetch(`/complete-tier-checkout?session_id=${encodeURIComponent(sessionId)}&tier=${encodeURIComponent(tier)}&has_diamond=${hasDiamond}&username=${encodeURIComponent(username)}`, {
-                    method: 'GET',
-                    headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' },
-                    credentials: 'include'
-                });
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.detail || 'Failed to complete tier upgrade');
-                }
-                const data = await response.json();
-                alert(data.message);
-                await fetchTierData();
-                console.log(`[DEBUG] Tier upgrade completed: ${tier}, has_diamond=${hasDiamond}, time=${new Date().toISOString()}`);
-            } catch (error) {
-                console.error('Tier upgrade completion error:', error);
-                usageWarning.textContent = `Error completing tier upgrade: ${error.message}`;
-                usageWarning.classList.add('error');
-            }
-        });
-    } else if (sessionId && tempId) {
-        withCsrfToken(async (token) => {
-            try {
-                const username = localStorage.getItem('username') || '';
-                if (!username) {
-                    console.error('[ERROR] No username found, redirecting to /auth');
-                    window.location.href = '/auth';
-                    return;
-                }
-                const response = await fetch(`/complete-diamond-audit?session_id=${encodeURIComponent(sessionId)}&temp_id=${encodeURIComponent(tempId)}&username=${encodeURIComponent(username)}`, {
-                    method: 'GET',
-                    headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' },
-                    credentials: 'include'
-                });
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.detail || 'Failed to complete Diamond audit');
-                }
-                const data = await response.json();
-                handleAuditResponse(data);
-                console.log(`[DEBUG] Diamond audit completed, time=${new Date().toISOString()}`);
-            } catch (error) {
-                console.error('Diamond audit completion error:', error);
-                usageWarning.textContent = `Error completing Diamond audit: ${error.message}`;
-                usageWarning.classList.add('error');
-            }
-        });
-    }
-
-    auditForm?.addEventListener('submit', handleSubmit);
-    auditForm?.addEventListener('keypress', (event) => {
-        if (event.key === 'Enter' && event.target.tagName !== 'BUTTON') {
-            handleSubmit(event);
-        }
-    });
-
-    // Initialize tier data
-    fetchTierData();
-
-    // Initialize auth status
-    updateAuthStatus();
 });
