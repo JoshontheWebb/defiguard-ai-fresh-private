@@ -52,7 +52,7 @@ try:
 except Exception as e:
     print(f"Error initializing log file: {e}", file=sys.stderr)
 
-logging.basicBasicConfig(
+logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
