@@ -51,6 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!data.csrf_token || data.csrf_token === 'undefined') {
                     throw new Error('Invalid CSRF token received');
                 }
+                localStorage.setItem('csrfToken', data.csrf_token);
                 console.log(`[DEBUG] CSRF token fetched: ${data.csrf_token}, time=${new Date().toISOString()}`);
                 return data.csrf_token;
             } catch (error) {
@@ -66,6 +67,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 messageDiv.textContent = `Error setting up secure connection: ${error.message}`;
                 throw error;
             }
+        };
+
+        // Wrapper to ensure fresh CSRF token for POST requests
+        const withCsrfToken = async (fetchFn) => {
+            const token = await fetchCsrfToken();
+            return fetchFn(token);
         };
 
         // Toggle auth forms
@@ -135,55 +142,59 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             console.log('Sign-in attempt:', { username });
-            try {
-                const token = await fetchCsrfToken(); // Fetch fresh token for each POST
-                const response = await fetch(`/signin/${encodeURIComponent(username)}`, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'X-CSRF-Token': token
-                    },
-                    body: JSON.stringify({ password }),
-                    credentials: 'include'
-                });
-                const data = await response.json();
+            await withCsrfToken(async (token) => {
+                try {
+                    const response = await fetch(`/signin/${encodeURIComponent(username)}`, {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': token || localStorage.getItem('csrfToken')
+                        },
+                        body: JSON.stringify({ password }),
+                        credentials: 'include'
+                    });
+                    const data = await response.json();
 
-                if (response.ok) {
-                    console.log('Sign-in success:', { username, message: data.message });
-                    localStorage.setItem('username', username);
-                    const tierResponse = await fetch(`/tier?username=${encodeURIComponent(username)}`);
-                    if (!tierResponse.ok) {
-                        console.error('Failed to fetch tier:', tierResponse.status);
-                        throw new Error('Failed to fetch tier information');
+                    if (response.ok) {
+                        console.log('Sign-in success:', { username, message: data.message });
+                        localStorage.setItem('username', username);
+                        const tierResponse = await fetch(`/tier?username=${encodeURIComponent(username)}`, {
+                            headers: { 'Accept': 'application/json' },
+                            credentials: 'include'
+                        });
+                        if (!tierResponse.ok) {
+                            console.error('Failed to fetch tier:', tierResponse.status);
+                            throw new Error('Failed to fetch tier information');
+                        }
+                        const tierData = await tierResponse.json();
+                        localStorage.setItem('tier', tierData.tier);
+                        localStorage.setItem('size_limit', tierData.size_limit);
+                        localStorage.setItem('diamond_feature', JSON.stringify(tierData.feature_flags.diamond));
+                        console.log(`[DEBUG] Setting localStorage: username=${username}, tier=${tierData.tier}, time=${new Date().toISOString()}`);
+                        window.dispatchEvent(new Event('authUpdate'));
+                        messageDiv.classList.remove('is-hidden', 'is-danger');
+                        messageDiv.classList.add('is-success');
+                        messageDiv.textContent = data.message;
+                        logoutSection.style.display = 'block';
+                        document.getElementById('signin').style.display = 'none';
+                        document.getElementById('signup').style.display = 'none';
+                        authToggle.style.display = 'none';
+                        setTimeout(() => window.location.href = '/ui', 1000);
+                    } else {
+                        console.log('Sign-in failed:', { error: data.detail });
+                        localStorage.removeItem('username');
+                        localStorage.removeItem('tier');
+                        localStorage.removeItem('size_limit');
+                        localStorage.removeItem('diamond_feature');
+                        throw new Error(data.detail || 'Sign in failed');
                     }
-                    const tierData = await tierResponse.json();
-                    localStorage.setItem('tier', tierData.tier);
-                    localStorage.setItem('size_limit', tierData.size_limit);
-                    localStorage.setItem('diamond_feature', JSON.stringify(tierData.feature_flags.diamond));
-                    console.log(`[DEBUG] Setting localStorage: username=${username}, tier=${tierData.tier}, time=${new Date().toISOString()}`);
-                    window.dispatchEvent(new Event('authUpdate'));
-                    messageDiv.classList.remove('is-hidden', 'is-danger');
-                    messageDiv.classList.add('is-success');
-                    messageDiv.textContent = data.message;
-                    logoutSection.style.display = 'block';
-                    document.getElementById('signin').style.display = 'none';
-                    document.getElementById('signup').style.display = 'none';
-                    authToggle.style.display = 'none';
-                    setTimeout(() => window.location.href = '/ui', 1000);
-                } else {
-                    console.log('Sign-in failed:', { error: data.detail });
-                    localStorage.removeItem('username');
-                    localStorage.removeItem('tier');
-                    localStorage.removeItem('size_limit');
-                    localStorage.removeItem('diamond_feature');
-                    throw new Error(data.detail || 'Sign in failed');
+                } catch (error) {
+                    console.error('Sign-in error:', error.message);
+                    messageDiv.classList.remove('is-hidden', 'is-success');
+                    messageDiv.classList.add('is-danger');
+                    messageDiv.textContent = error.message;
                 }
-            } catch (error) {
-                console.error('Sign-in error:', error.message);
-                messageDiv.classList.remove('is-hidden', 'is-success');
-                messageDiv.classList.add('is-danger');
-                messageDiv.textContent = error.message;
-            }
+            });
         });
 
         // Signup form
@@ -235,49 +246,50 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             console.log('Signup attempt:', { email, username });
-            try {
-                const token = await fetchCsrfToken(); // Fetch fresh token for each POST
-                const response = await fetch(`/signup/${encodeURIComponent(username)}`, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'X-CSRF-Token': token
-                    },
-                    body: JSON.stringify({ email, password }),
-                    credentials: 'include'
-                });
-                const data = await response.json();
+            await withCsrfToken(async (token) => {
+                try {
+                    const response = await fetch(`/signup/${encodeURIComponent(username)}`, {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': token || localStorage.getItem('csrfToken')
+                        },
+                        body: JSON.stringify({ email, password }),
+                        credentials: 'include'
+                    });
+                    const data = await response.json();
 
-                if (response.ok) {
-                    console.log('Signup success:', { username, message: data.message });
-                    localStorage.setItem('username', username);
-                    localStorage.setItem('tier', 'free');
-                    localStorage.setItem('size_limit', '1MB');
-                    localStorage.setItem('diamond_feature', JSON.stringify(false));
-                    console.log(`[DEBUG] Setting localStorage: username=${username}, tier=free, time=${new Date().toISOString()}`);
-                    window.dispatchEvent(new Event('authUpdate'));
-                    messageDiv.classList.remove('is-hidden', 'is-danger');
-                    messageDiv.classList.add('is-success');
-                    messageDiv.textContent = data.message;
-                    logoutSection.style.display = 'block';
-                    document.getElementById('signin').style.display = 'none';
-                    document.getElementById('signup').style.display = 'none';
-                    authToggle.style.display = 'none';
-                    setTimeout(() => window.location.href = '/ui', 1000);
-                } else {
-                    console.log('Signup failed:', { error: data.detail });
-                    localStorage.removeItem('username');
-                    localStorage.removeItem('tier');
-                    localStorage.removeItem('size_limit');
-                    localStorage.removeItem('diamond_feature');
-                    throw new Error(data.detail || 'Account creation failed');
+                    if (response.ok) {
+                        console.log('Signup success:', { username, message: data.message });
+                        localStorage.setItem('username', username);
+                        localStorage.setItem('tier', 'free');
+                        localStorage.setItem('size_limit', '1MB');
+                        localStorage.setItem('diamond_feature', JSON.stringify(false));
+                        console.log(`[DEBUG] Setting localStorage: username=${username}, tier=free, time=${new Date().toISOString()}`);
+                        window.dispatchEvent(new Event('authUpdate'));
+                        messageDiv.classList.remove('is-hidden', 'is-danger');
+                        messageDiv.classList.add('is-success');
+                        messageDiv.textContent = data.message;
+                        logoutSection.style.display = 'block';
+                        document.getElementById('signin').style.display = 'none';
+                        document.getElementById('signup').style.display = 'none';
+                        authToggle.style.display = 'none';
+                        setTimeout(() => window.location.href = '/ui', 1000);
+                    } else {
+                        console.log('Signup failed:', { error: data.detail });
+                        localStorage.removeItem('username');
+                        localStorage.removeItem('tier');
+                        localStorage.removeItem('size_limit');
+                        localStorage.removeItem('diamond_feature');
+                        throw new Error(data.detail || 'Account creation failed');
+                    }
+                } catch (error) {
+                    console.error('Signup error:', error.message);
+                    messageDiv.classList.remove('is-hidden', 'is-success');
+                    messageDiv.classList.add('is-danger');
+                    messageDiv.textContent = error.message;
                 }
-            } catch (error) {
-                console.error('Signup error:', error.message);
-                messageDiv.classList.remove('is-hidden', 'is-success');
-                messageDiv.classList.add('is-danger');
-                messageDiv.textContent = error.message;
-            }
+            });
         });
 
         // Logout handler
@@ -299,6 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.removeItem('tier');
             localStorage.removeItem('size_limit');
             localStorage.removeItem('diamond_feature');
+            localStorage.removeItem('csrfToken');
             console.log('Logout success');
             logoutSection.style.display = 'none';
             document.getElementById('signin').classList.add('active');
