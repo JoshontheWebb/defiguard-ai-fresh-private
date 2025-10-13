@@ -11,7 +11,7 @@ from typing import Optional
 from fastapi import FastAPI, File, UploadFile, Request, Query, HTTPException, Depends, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseSettings
 from web3 import Web3
 import stripe
 import bcrypt
@@ -47,13 +47,13 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/templates", StaticFiles(directory="templates"), name="templates")
 
 # CSRF Protection
-class CsrfSettings:
-    secret_key = os.getenv("CSRF_SECRET_KEY", "default-secret-key")
-    token_location = "header"
-    cookie_secure = True
-    cookie_samesite = "strict"
-    cookie_key = "csrf_token"
-    header_name = "X-CSRF-Token"
+class CsrfSettings(BaseSettings):
+    secret_key: str = os.getenv("CSRF_SECRET_KEY", "default-secret-key")
+    token_location: str = "header"
+    cookie_secure: bool = True
+    cookie_samesite: str = "strict"
+    cookie_key: str = "csrf_token"
+    header_name: str = "X-CSRF-Token"
 
 @CsrfProtect.load_config
 def get_csrf_config():
