@@ -206,9 +206,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const hasDiamond = urlParams.get('has_diamond') === 'true';
         const tempId = urlParams.get('temp_id');
         const username = urlParams.get('username') || localStorage.getItem('username');
+        const upgradeStatus = urlParams.get('upgrade');
+        const message = urlParams.get('message');
+        if (upgradeStatus) {
+            usageWarning.textContent = message || (upgradeStatus === 'success' ? 'Tier upgrade completed' : 'Tier upgrade failed');
+            usageWarning.classList.add(upgradeStatus === 'success' ? 'success' : 'error');
+            console.log(`[DEBUG] Post-payment redirect handled: upgrade=${upgradeStatus}, message=${message}, time=${new Date().toISOString()}`);
+            window.history.replaceState({}, document.title, '/ui');
+            await fetchTierData();
+            return;
+        }
         if (sessionId && username) {
             try {
-                const token = await fetchCsrfToken();
                 let endpoint = '';
                 let query = '';
                 if (tempId) {
@@ -226,10 +235,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log(`[DEBUG] Processing post-payment redirect to ${endpoint}?${query}, time=${new Date().toISOString()}`);
                 const response = await fetch(`${endpoint}?${query}`, {
                     method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-CSRF-Token': token
-                    },
+                    headers: { 'Accept': 'application/json' },
                     credentials: 'include'
                 });
                 if (!response.ok) {
@@ -241,7 +247,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 usageWarning.classList.add('success');
                 console.log(`[DEBUG] Post-payment completed: ${data.message}, time=${new Date().toISOString()}`);
                 await fetchTierData();
-                // Clear query parameters from URL
                 window.history.replaceState({}, document.title, '/ui');
             } catch (error) {
                 console.error(`[ERROR] Post-payment redirect error: ${error.message}, time=${new Date().toISOString()}`);
@@ -410,7 +415,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=${selectedTier === 'diamond' ? 'pro' : selectedTier}&has_diamond=${hasDiamond}`, {
                     method: 'POST',
                     headers: {
-                        'X-CSRF-Token': token,
+                        'X-CSRF-Token': token || localStorage.getItem('csrfToken'),
                         'Accept': 'application/json'
                     },
                     credentials: 'include'
@@ -451,7 +456,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const response = await fetch(`/diamond-audit?username=${encodeURIComponent(username)}`, {
                     method: 'POST',
-                    headers: { 'X-CSRF-Token': token },
+                    headers: { 'X-CSRF-Token': token || localStorage.getItem('csrfToken') },
                     body: formData,
                     credentials: 'include'
                 });
@@ -579,7 +584,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         try {
                             const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=pro&has_diamond=true`, {
                                 method: 'POST',
-                                headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' },
+                                headers: { 'X-CSRF-Token': token || localStorage.getItem('csrfToken'), 'Accept': 'application/json' },
                                 credentials: 'include'
                             });
                             if (!response.ok) {
@@ -611,7 +616,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         try {
                             const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=beginner`, {
                                 method: 'POST',
-                                headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' },
+                                headers: { 'X-CSRF-Token': token || localStorage.getItem('csrfToken'), 'Accept': 'application/json' },
                                 credentials: 'include'
                             });
                             if (!response.ok) {
@@ -635,7 +640,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const response = await fetch(`/audit?username=${encodeURIComponent(username)}`, {
                     method: 'POST',
-                    headers: { 'X-CSRF-Token': token },
+                    headers: { 'X-CSRF-Token': token || localStorage.getItem('csrfToken') },
                     body: formData,
                     credentials: 'include'
                 });
