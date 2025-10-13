@@ -1,4 +1,4 @@
-##Section 1##
+## Section 1 ##
 import os
 import json
 import logging
@@ -52,7 +52,7 @@ try:
 except Exception as e:
     print(f"Error initializing log file: {e}", file=sys.stderr)
 
-logging.basicConfig(
+logging.basicBasicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
@@ -138,6 +138,100 @@ def get_db():
     finally:
         db.close()
 
+# Audit Response Schema
+class AuditResponse(BaseModel):
+    report: dict
+    risk_score: str
+    overage_cost: Optional[float] = None
+
+AUDIT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "risk_score": {"type": "number"},
+        "issues": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "vulnerability": {"type": "string"},
+                    "description": {"type": "string"},
+                    "severity": {"type": "string"}
+                },
+                "required": ["vulnerability", "description", "severity"]
+            }
+        },
+        "predictions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "prediction": {"type": "string"},
+                    "confidence": {"type": "number"}
+                },
+                "required": ["prediction", "confidence"]
+            }
+        },
+        "recommendations": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "remediation_roadmap": {"type": "string", "nullable": True},
+        "fuzzing_results": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "vulnerability": {"type": "string"},
+                    "description": {"type": "string"}
+                },
+                "required": ["vulnerability", "description"]
+            }
+        }
+    },
+    "required": ["risk_score", "issues", "predictions", "recommendations", "fuzzing_results"]
+}
+
+# CSRF Token Generation and Validation
+def generate_csrf_token():
+    return secrets.token_urlsafe(32)
+
+async def get_csrf_token(request: Request):
+    try:
+        logger.debug(f"Processing get_csrf_token for session: {request.session}, headers: {request.headers}, cookies: {request.cookies}")
+        token = request.session.get("csrf_token")
+        if not token:
+            token = generate_csrf_token()
+            request.session["csrf_token"] = token
+            logger.info(f"Generated new CSRF token: {token}")
+        else:
+            logger.debug(f"Reusing existing CSRF token: {token}")
+        logger.debug("Flushing log file after CSRF token generation")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        return token
+    except Exception as e:
+        logger.error(f"Error generating CSRF token: {str(e)}")
+        logger.debug("Flushing log file after CSRF error")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        raise HTTPException(status_code=500, detail=f"CSRF token generation failed: {str(e)}")
+
+async def verify_csrf_token(request: Request):
+    logger.debug(f"Verifying CSRF token for request: {request.method} {request.url}, headers: {request.headers}")
+    if request.method in ["POST", "PUT", "DELETE"]:
+        token = request.headers.get("X-CSRF-Token")
+        session_token = request.session.get("csrf_token")
+        if not token or token != session_token:
+            logger.error(f"CSRF validation failed: Provided={token}, Expected={session_token}")
+            logger.debug("Flushing log file after CSRF validation failure")
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+            raise HTTPException(status_code=403, detail="Invalid CSRF token")
+    logger.debug("Flushing log file after CSRF verification")
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+    return True
+    ## Section 2 ##
 # === USAGE TRACKING ===
 import os.path
 USAGE_STATE_FILE = 'usage_state.json'
@@ -354,6 +448,64 @@ def initialize_client():
         raise
 
 client, w3 = initialize_client()
+## Section 3 ##
+def run_echidna(temp_path):
+    """Run Echidna fuzzing on the Solidity file and return results."""
+    config_path = None
+    output_path = None
+    try:
+        subprocess.run(["docker", "--version"], check=True, capture_output=True, text=True)
+        logger.info("Docker is available, attempting to pull Echidna image")
+        @retry(stop_after_attempt(3), wait_fixed(2))
+        def pull_echidna():
+            subprocess.run(["docker", "pull", "trailofbits/echidna"], check=True, capture_output=True, text=True)
+            logger.info("Echidna image pulled successfully")
+        pull_echidna()
+        config_path = os.path.join(os.getcwd(), "echidna_config.yaml")
+        output_path = os.path.join(os.getcwd(), "echidna_output")
+        with open(config_path, "w") as f:
+            f.write("""
+format: text
+testLimit: 10000
+seqLen: 100
+coverage: true
+            """)
+        cmd = [
+            "docker", "run", "--rm",
+            "-v", f"{os.getcwd()}:/app",
+            "trailofbits/echidna",
+            f"/app/{os.path.basename(temp_path)}",
+            "--config", "/app/echidna_config.yaml",
+            "--output", "/app/echidna_output"
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if os.path.exists(output_path):
+            with open(output_path, "r") as f:
+                echidna_results = f.read()
+        else:
+            echidna_results = result.stdout
+        logger.info("Echidna fuzzing completed successfully")
+        logger.debug(f"Echidna results: {echidna_results}")
+        return {"fuzzing_results": echidna_results or "No vulnerabilities found by Echidna"}
+    except subprocess.TimeoutExpired:
+        logger.error("Echidna fuzzing timed out after 300 seconds")
+        return {"fuzzing_results": "Fuzzing timed out"}
+    except subprocess.SubprocessError as e:
+        logger.error(f"Echidna fuzzing failed: {str(e)}")
+        return {"fuzzing_results": f"Fuzzing failed: {str(e)}"}
+    except Exception as e:
+        logger.error(f"Echidna fuzzing unexpected error: {str(e)}")
+        return {"fuzzing_results": f"Fuzzing failed: {str(e)}"}
+    finally:
+        if config_path and os.path.exists(config_path):
+            os.unlink(config_path)
+        if output_path and os.path.exists(output_path):
+            os.unlink(output_path)
+
+def handle_tool_call(tool_call):
+    if tool_call.function.name == "fetch_reg":
+        return {"result": "Sample reg data: SEC FIT21 requires custody audits."}
+    return {"error": "Unknown tool"}
 
 app = FastAPI(title="DeFiGuard AI", description="Predictive DeFi Compliance Auditor")
 
@@ -373,54 +525,16 @@ app.add_middleware(
 )
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# CSRF Token Generation and Validation
-def generate_csrf_token():
-    return secrets.token_urlsafe(32)
-
-async def get_csrf_token(request: Request):
-    try:
-        logger.debug(f"Processing get_csrf_token for session: {request.session}, headers: {request.headers}, cookies: {request.cookies}")
-        token = request.session.get("csrf_token")
-        if not token:
-            token = generate_csrf_token()
-            request.session["csrf_token"] = token
-            logger.info(f"Generated new CSRF token: {token}")
-        else:
-            logger.debug(f"Reusing existing CSRF token: {token}")
-        logger.debug("Flushing log file after CSRF token generation")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        return token
-    except Exception as e:
-        logger.error(f"Error generating CSRF token: {str(e)}")
-        logger.debug("Flushing log file after CSRF error")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        raise HTTPException(status_code=500, detail=f"CSRF token generation failed: {str(e)}")
-
-async def verify_csrf_token(request: Request):
-    try:
-        logger.debug(f"Verifying CSRF token for request: {request.method} {request.url}, headers: {request.headers}")
-        if request.method in ["POST", "PUT", "DELETE"]:
-            token = request.headers.get("X-CSRF-Token")
-            session_token = request.session.get("csrf_token")
-            if not token or token != session_token:
-                logger.error(f"CSRF validation failed: Provided={token}, Expected={session_token}")
-                logger.debug("Flushing log file after CSRF validation failure")
-                for handler in logging.getLogger().handlers:
-                    handler.flush()
-                raise HTTPException(status_code=403, detail="Invalid CSRF token")
-        logger.debug("Flushing log file after CSRF verification")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        return True
-    except Exception as e:
-        logger.error(f"CSRF verification error: {str(e)}")
-        logger.debug("Flushing log file after CSRF verification error")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        raise HTTPException(status_code=500, detail=f"CSRF verification failed: {str(e)}")
+## Section 4 ##
+PROMPT_TEMPLATE = """
+Analyze this Solidity code for vulnerabilities and 2025 regulations (MiCA, SEC FIT21).
+Context: {context}.
+Fuzzing Results: {fuzzing_results}.
+Code: {code}.
+Protocol Details: {details}.
+Tier: {tier}.
+Return the analysis in the exact JSON schema provided. For Beginner/Pro, include detailed predictions and recommendations. For Pro, add advanced regulatory insights and fuzzing results. For Diamond add-on, include formal verification, exploit simulation, threat modeling, fuzzing results, and a remediation roadmap.
+"""
 
 # Debug endpoint to test logging
 @app.get("/debug")
@@ -443,7 +557,6 @@ async def serve_static(file_path: str):
         handler.flush()
     return StaticFiles(directory="static").get_response(file_path)
 
-## Section 2 ##
 # Reset usage for testing
 @app.post("/reset-usage")
 async def reset_usage(request: Request, username: str = Query(None), db: Session = Depends(get_db)):
@@ -871,68 +984,14 @@ async def get_facets(contract_address: str, request: Request, username: str = Qu
             for handler in logging.getLogger().handlers:
                 handler.flush()
             raise HTTPException(status_code=500, detail=f"Failed to fetch facets: {str(e)}")
-        except HTTPException as e:
-            raise e
-        except Exception as e:
-            logger.error(f"Unexpected error in /facets: {str(e)}")
-            logger.debug("Flushing log file after unexpected /facets error")
-            for handler in logging.getLogger().handlers:
-                handler.flush()
-            raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
-
-## section 3 ##
-def run_echidna(temp_path):
-    """Run Echidna fuzzing on the Solidity file and return results."""
-    config_path = None
-    output_path = None
-    try:
-        subprocess.run(["docker", "--version"], check=True, capture_output=True, text=True)
-        logger.info("Docker is available, attempting to pull Echidna image")
-        @retry(stop_after_attempt(3), wait_fixed(2))
-        def pull_echidna():
-            subprocess.run(["docker", "pull", "trailofbits/echidna"], check=True, capture_output=True, text=True)
-            logger.info("Echidna image pulled successfully")
-        pull_echidna()
-        config_path = os.path.join(os.getcwd(), "echidna_config.yaml")
-        output_path = os.path.join(os.getcwd(), "echidna_output")
-        with open(config_path, "w") as f:
-            f.write("""
-format: text
-testLimit: 10000
-seqLen: 100
-coverage: true
-            """)
-        cmd = [
-            "docker", "run", "--rm",
-            "-v", f"{os.getcwd()}:/app",
-            "trailofbits/echidna",
-            f"/app/{os.path.basename(temp_path)}",
-            "--config", "/app/echidna_config.yaml",
-            "--output", "/app/echidna_output"
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        if os.path.exists(output_path):
-            with open(output_path, "r") as f:
-                echidna_results = f.read()
-        else:
-            echidna_results = result.stdout
-        logger.info("Echidna fuzzing completed successfully")
-        logger.debug(f"Echidna results: {echidna_results}")
-        return {"fuzzing_results": echidna_results or "No vulnerabilities found by Echidna"}
-    except subprocess.TimeoutExpired:
-        logger.error("Echidna fuzzing timed out after 300 seconds")
-        return {"fuzzing_results": "Fuzzing timed out"}
-    except subprocess.SubprocessError as e:
-        logger.error(f"Echidna fuzzing failed: {str(e)}")
-        return {"fuzzing_results": f"Fuzzing failed: {str(e)}"}
+    except HTTPException as e:
+        raise e
     except Exception as e:
-        logger.error(f"Echidna fuzzing unexpected error: {str(e)}")
-        return {"fuzzing_results": f"Fuzzing failed: {str(e)}"}
-    finally:
-        if config_path and os.path.exists(config_path):
-            os.unlink(config_path)
-        if output_path and os.path.exists(output_path):
-            os.unlink(output_path)
+        logger.error(f"Unexpected error in /facets: {str(e)}")
+        logger.debug("Flushing log file after unexpected /facets error")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 @app.post("/upload-temp")
 async def upload_temp(file: UploadFile = File(...), username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
@@ -956,42 +1015,6 @@ async def upload_temp(file: UploadFile = File(...), username: str = Query(None),
         f.write(code_bytes)
     logger.info(f"Temporary file uploaded for {effective_username}: {temp_id}, size: {file_size / 1024 / 1024:.2f}MB")
     return {"temp_id": temp_id, "file_size": file_size}
-
-@app.post("/create-checkout-session")
-async def create_checkout_session(username: str = Query(None), temp_id: str = Query(...), price: int = Query(...), request: Request = None, db: Session = Depends(get_db)):
-    await verify_csrf_token(request)
-    session_username = request.session.get("username")
-    logger.debug(f"Create-checkout-session request: Query username={username}, Session username={session_username}, temp_id={temp_id}, session: {request.session}")
-    effective_username = username or session_username
-    if not effective_username:
-        logger.error("No username provided for /create-checkout-session; redirecting to login")
-        raise HTTPException(status_code=401, detail="Please login to continue")
-    user = db.query(User).filter(User.username == effective_username).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    if not STRIPE_API_KEY:
-        logger.error(f"Stripe session creation failed for {effective_username}: STRIPE_API_KEY not set")
-        raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again or contact support.")
-    try:
-        session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
-            line_items=[{
-                'price': STRIPE_METERED_PRICE_DIAMOND,
-                'quantity': 1,
-            }],
-            mode='subscription',
-            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-diamond-audit?session_id={{CHECKOUT_SESSION_ID}}&temp_id={temp_id}&username={effective_username}',
-            cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
-            metadata={'temp_id': temp_id, 'username': effective_username}
-        )
-        logger.info(f"Stripe Checkout session created for {effective_username} with temp_id {temp_id}, session: {request.session}")
-        logger.debug("Flushing log file after checkout session creation")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        return {"session_url": session.url}
-    except Exception as e:
-        logger.error(f"Stripe session creation failed for {effective_username}: {str(e)}")
-        raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
 
 @app.post("/webhook")
 async def webhook(request: Request, db: Session = Depends(get_db)):
@@ -1134,17 +1157,6 @@ async def read_root():
     for handler in logging.getLogger().handlers:
         handler.flush()
     return HTMLResponse(content="<script>window.location.href='/ui';</script>")
-
-##section 4##
-PROMPT_TEMPLATE = """
-Analyze this Solidity code for vulnerabilities and 2025 regulations (MiCA, SEC FIT21).
-Context: {context}.
-Fuzzing Results: {fuzzing_results}.
-Code: {code}.
-Protocol Details: {details}.
-Tier: {tier}.
-Return the analysis in the exact JSON schema provided. For Beginner/Pro, include detailed predictions and recommendations. For Pro, add advanced regulatory insights and fuzzing results. For Diamond add-on, include formal verification, exploit simulation, threat modeling, fuzzing results, and a remediation roadmap.
-"""
 
 @app.post("/audit", response_model=AuditResponse)
 async def audit_contract(file: UploadFile = File(...), contract_address: str = None, username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
@@ -1440,11 +1452,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         for handler in logging.getLogger().handlers:
             handler.flush()
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-
-def handle_tool_call(tool_call):
-    if tool_call.function.name == "fetch_reg":
-        return {"result": "Sample reg data: SEC FIT21 requires custody audits."}
-    return {"error": "Unknown tool"}
 
 if __name__ == "__main__":
     import uvicorn
