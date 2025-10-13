@@ -880,6 +880,7 @@ async def get_facets(contract_address: str, request: Request, username: str = Qu
                 handler.flush()
             raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
+## section 3 ##
 def run_echidna(temp_path):
     """Run Echidna fuzzing on the Solidity file and return results."""
     config_path = None
