@@ -203,12 +203,11 @@ async def get_csrf_token(request: Request):
             token = generate_csrf_token()
             request.session["csrf_token"] = token
             logger.info(f"Generated new CSRF token: {token}")
-        else:
-            logger.debug(f"Reusing existing CSRF token: {token}")
+        logger.debug(f"Returning CSRF token: {token}")
         logger.debug("Flushing log file after CSRF token generation")
         for handler in logging.getLogger().handlers:
             handler.flush()
-        return token
+        return {"csrf_token": token}
     except Exception as e:
         logger.error(f"Error generating CSRF token: {str(e)}")
         logger.debug("Flushing log file after CSRF error")
@@ -221,6 +220,10 @@ async def verify_csrf_token(request: Request):
     if request.method in ["POST", "PUT", "DELETE"]:
         token = request.headers.get("X-CSRF-Token")
         session_token = request.session.get("csrf_token")
+        if not session_token:
+            session_token = generate_csrf_token()
+            request.session["csrf_token"] = session_token
+            logger.info(f"Generated new CSRF token for session: {session_token}")
         if not token or token != session_token:
             logger.error(f"CSRF validation failed: Provided={token}, Expected={session_token}")
             logger.debug("Flushing log file after CSRF validation failure")
@@ -576,15 +579,15 @@ async def reset_usage(request: Request, username: str = Query(None), db: Session
         raise HTTPException(status_code=500, detail=f"Failed to reset usage: {str(e)}")
 
 @app.get("/ui", response_class=HTMLResponse)
-async def read_ui(request: Request, session_id: str = Query(None), tier: str = Query(None), has_diamond: bool = Query(False), temp_id: str = Query(None), username: str = Query(None)):
+async def read_ui(request: Request, session_id: str = Query(None), tier: str = Query(None), has_diamond: bool = Query(False), temp_id: str = Query(None), username: str = Query(None), upgrade: str = Query(None), message: str = Query(None)):
     try:
         session_username = request.session.get("username")
-        logger.debug(f"UI request, session_id={session_id}, tier={tier}, has_diamond={has_diamond}, temp_id={temp_id}, username={username}, session_username={session_username}, session: {request.session}")
+        logger.debug(f"UI request, session_id={session_id}, tier={tier}, has_diamond={has_diamond}, temp_id={temp_id}, username={username}, session_username={session_username}, upgrade={upgrade}, message={message}, session: {request.session}")
         if session_id:
             effective_username = username or session_username
             if not effective_username:
                 logger.error("No username provided for post-payment redirect; redirecting to login")
-                return RedirectResponse(url="/auth")
+                return RedirectResponse(url="/auth?redirect_reason=no_username")
             if temp_id:
                 logger.info(f"Processing post-payment redirect for Diamond audit, username={effective_username}, session_id={session_id}, temp_id={temp_id}")
                 return RedirectResponse(url=f"/complete-diamond-audit?session_id={session_id}&temp_id={temp_id}&username={effective_username}")
@@ -592,11 +595,19 @@ async def read_ui(request: Request, session_id: str = Query(None), tier: str = Q
                 logger.info(f"Processing post-payment redirect for tier upgrade, username={effective_username}, session_id={session_id}, tier={tier}, has_diamond={has_diamond}")
                 return RedirectResponse(url=f"/complete-tier-checkout?session_id={session_id}&tier={tier}&has_diamond={has_diamond}&username={effective_username}")
         with open("templates/index.html", "r") as f:
+            html_content = f.read()
+            if upgrade:
+                status = "success" if upgrade == "success" else "error"
+                message = message or ("Tier upgrade completed" if status == "success" else "Tier upgrade failed")
+                html_content = html_content.replace(
+                    '<div class="usage-warning" aria-live="assertive">',
+                    f'<div class="usage-warning {status}" aria-live="assertive"><p>{message}</p>'
+                )
             logger.info(f"Loading UI from: {os.path.abspath('templates/index.html')}")
             logger.debug("Flushing log file after loading UI")
             for handler in logging.getLogger().handlers:
                 handler.flush()
-            return HTMLResponse(content=f.read())
+            return HTMLResponse(content=html_content)
     except FileNotFoundError:
         logger.error("UI file not found: templates/index.html")
         logger.debug("Flushing log file after UI file error")
@@ -875,17 +886,18 @@ async def create_checkout_session(username: str = Query(None), temp_id: str = Qu
 @app.get("/complete-tier-checkout")
 async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query(...), has_diamond: bool = Query(False), username: str = Query(None), request: Request = None, db: Session = Depends(get_db)):
     session_username = request.session.get("username")
-    logger.debug(f"Complete-tier-checkout request: Query username={username}, Session username={session_username}, session: {request.session}")
+    logger.debug(f"Complete-tier-checkout request: Query username={username}, Session username={session_username}, session_id={session_id}, tier={tier}, has_diamond={has_diamond}, session: {request.session}")
     effective_username = username or session_username
     if not effective_username:
-        logger.error("No username provided for /complete-tier-checkout; redirecting to login")
-        raise HTTPException(status_code=401, detail="Please login to continue")
+        logger.error(f"No username provided for /complete-tier-checkout; redirecting to login. Session: {request.session}")
+        return RedirectResponse(url="/auth?redirect_reason=no_username")
     user = db.query(User).filter(User.username == effective_username).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        logger.error(f"User {effective_username} not found for /complete-tier-checkout")
+        return RedirectResponse(url="/auth?redirect_reason=user_not_found")
     if not STRIPE_API_KEY:
         logger.error(f"Tier upgrade checkout failed for {effective_username}: STRIPE_API_KEY not set")
-        raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again or contact support.")
+        return RedirectResponse(url="/ui?upgrade=error&message=Payment%20processing%20unavailable")
     try:
         session = stripe.checkout.Session.retrieve(session_id)
         if session.payment_status == 'paid':
@@ -900,12 +912,16 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
             logger.debug("Flushing log file after tier upgrade completion")
             for handler in logging.getLogger().handlers:
                 handler.flush()
-            return RedirectResponse(url="/ui")  # Redirect to UI after completion
+            return RedirectResponse(url="/ui?upgrade=success")
         else:
-            raise HTTPException(status_code=400, detail="Payment not completed")
+            logger.error(f"Payment not completed for {effective_username}, session_id={session_id}, payment_status={session.payment_status}")
+            return RedirectResponse(url="/ui?upgrade=failed")
     except Exception as e:
-        logger.error(f"Tier upgrade checkout failed for {effective_username}: {str(e)}")
-        raise HTTPException(status_code=503, detail=f"Failed to complete tier upgrade: Payment processing error. Please try again or contact support.")
+        logger.error(f"Tier upgrade checkout failed for {effective_username}: {str(e)}, session_id={session_id}")
+        logger.debug("Flushing log file after tier upgrade error")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        return RedirectResponse(url=f"/ui?upgrade=error&message={str(e)}")
 
 @app.get("/upgrade")
 async def upgrade_page():
@@ -1049,10 +1065,12 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
                     user.stripe_subscription_item_id = item.id
             usage_tracker.set_tier(tier, has_diamond, username, db)
             usage_tracker.reset_usage(username, db)
+            request.session["username"] = username  # Ensure session persists
             logger.info(f"Tier upgrade completed for {username} to {tier}, has_diamond: {has_diamond}, session: {request.session}")
             db.commit()
         elif temp_id:
             logger.info(f"Payment completed for {username}, starting audit for temp_id {temp_id}, session: {request.session}")
+            request.session["username"] = username  # Ensure session persists
         logger.debug("Flushing log file after webhook processing")
         for handler in logging.getLogger().handlers:
             handler.flush()
@@ -1065,13 +1083,14 @@ async def complete_diamond_audit(session_id: str = Query(...), temp_id: str = Qu
     effective_username = username or session_username
     if not effective_username:
         logger.error("No username provided for /complete-diamond-audit; redirecting to login")
-        raise HTTPException(status_code=401, detail="Please login to continue")
+        return RedirectResponse(url="/auth?redirect_reason=no_username")
     user = db.query(User).filter(User.username == effective_username).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        logger.error(f"User {effective_username} not found for /complete-diamond-audit")
+        return RedirectResponse(url="/auth?redirect_reason=user_not_found")
     if not STRIPE_API_KEY:
         logger.error(f"Complete diamond audit failed for {effective_username}: STRIPE_API_KEY not set")
-        raise HTTPException(status_code=503, detail="Payment processing is currently unavailable. Please try again or contact support.")
+        return RedirectResponse(url="/ui?upgrade=error&message=Payment%20processing%20unavailable")
     try:
         session = stripe.checkout.Session.retrieve(session_id)
         if session.payment_status == 'paid':
@@ -1086,12 +1105,13 @@ async def complete_diamond_audit(session_id: str = Query(...), temp_id: str = Qu
             logger.debug("Flushing log file after diamond audit completion")
             for handler in logging.getLogger().handlers:
                 handler.flush()
-            return RedirectResponse(url="/ui")  # Redirect to UI after completion
+            return RedirectResponse(url="/ui?upgrade=success")
         else:
-            raise HTTPException(status_code=400, detail="Payment not completed")
+            logger.error(f"Payment not completed for {effective_username}, session_id={session_id}, payment_status={session.payment_status}")
+            return RedirectResponse(url="/ui?upgrade=failed")
     except Exception as e:
         logger.error(f"Complete diamond audit failed for {effective_username}: {str(e)}")
-        raise HTTPException(status_code=503, detail=f"Failed to complete audit: Payment processing error. Please try again or contact support.")
+        return RedirectResponse(url=f"/ui?upgrade=error&message={str(e)}")
 
 @app.post("/diamond-audit")
 async def diamond_audit(file: UploadFile = File(...), username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
