@@ -22,6 +22,56 @@ function waitForDOM(selectors, callback, maxAttempts = 10, interval = 100) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Fetch CSRF token with retry
+    const fetchCsrfToken = async (attempt = 1, maxAttempts = 3) => {
+        try {
+            const response = await fetch(`/csrf-token?_=${Date.now()}`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'Cache-Control': 'no-cache'
+                },
+                credentials: 'include'
+            });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(`Failed to fetch CSRF token: ${response.status} ${errorData.detail || response.statusText}`);
+            }
+            const data = await response.json();
+            if (!data.csrf_token || data.csrf_token === 'undefined') {
+                throw new Error('Invalid CSRF token received');
+            }
+            localStorage.setItem('csrfToken', data.csrf_token);
+            console.log(`[DEBUG] CSRF token fetched and stored: ${data.csrf_token}, time=${new Date().toISOString()}`);
+            return data.csrf_token;
+        } catch (error) {
+            console.error(`CSRF token fetch error (attempt ${attempt}/${maxAttempts}): ${error.message}`);
+            if (attempt < maxAttempts) {
+                console.log(`Retrying CSRF token fetch in 1s...`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                return fetchCsrfToken(attempt + 1, maxAttempts);
+            }
+            console.error('Max CSRF fetch attempts reached.');
+            throw error;
+        }
+    };
+
+    // Wrapper to ensure fresh CSRF token for POST requests
+    const withCsrfToken = async (fetchFn) => {
+        const token = await fetchCsrfToken();
+        return fetchFn(token);
+    };
+
+    // Initialize CSRF token on load
+    fetchCsrfToken().catch(error => {
+        const messageDiv = document.querySelector('.auth-message');
+        if (messageDiv) {
+            messageDiv.classList.remove('is-hidden', 'is-success');
+            messageDiv.classList.add('is-danger');
+            messageDiv.textContent = `Error setting up secure connection: ${error.message}`;
+        }
+    });
+
     waitForDOM({
         authToggle: '#auth-toggle',
         authForms: '#auth-forms',
@@ -32,49 +82,6 @@ document.addEventListener('DOMContentLoaded', () => {
         signinForm: '#signin-form',
         signupForm: '#signup-form'
     }, ({ authToggle, authForms, messageDiv, logoutSection, logoutButton, tabs, signinForm, signupForm }) => {
-        // Fetch CSRF token with retry
-        const fetchCsrfToken = async (attempt = 1, maxAttempts = 3) => {
-            try {
-                const response = await fetch(`/csrf-token?_=${Date.now()}`, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                        'Cache-Control': 'no-cache'
-                    },
-                    credentials: 'include'
-                });
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(`Failed to fetch CSRF token: ${response.status} ${errorData.detail || response.statusText}`);
-                }
-                const data = await response.json();
-                if (!data.csrf_token || data.csrf_token === 'undefined') {
-                    throw new Error('Invalid CSRF token received');
-                }
-                localStorage.setItem('csrfToken', data.csrf_token);
-                console.log(`[DEBUG] CSRF token fetched: ${data.csrf_token}, time=${new Date().toISOString()}`);
-                return data.csrf_token;
-            } catch (error) {
-                console.error(`CSRF token fetch error (attempt ${attempt}/${maxAttempts}): ${error.message}`);
-                if (attempt < maxAttempts) {
-                    console.log(`Retrying CSRF token fetch in 1s...`);
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    return fetchCsrfToken(attempt + 1, maxAttempts);
-                }
-                console.error('Max CSRF fetch attempts reached.');
-                messageDiv.classList.remove('is-hidden', 'is-success');
-                messageDiv.classList.add('is-danger');
-                messageDiv.textContent = `Error setting up secure connection: ${error.message}`;
-                throw error;
-            }
-        };
-
-        // Wrapper to ensure fresh CSRF token for POST requests
-        const withCsrfToken = async (fetchFn) => {
-            const token = await fetchCsrfToken();
-            return fetchFn(token);
-        };
-
         // Toggle auth forms
         authToggle.addEventListener('click', () => {
             const isVisible = authForms.style.visibility === 'visible';
@@ -148,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         method: 'POST',
                         headers: { 
                             'Content-Type': 'application/json',
-                            'X-CSRF-Token': token || localStorage.getItem('csrfToken')
+                            'X-CSRF-Token': token
                         },
                         body: JSON.stringify({ password }),
                         credentials: 'include'
@@ -252,7 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         method: 'POST',
                         headers: { 
                             'Content-Type': 'application/json',
-                            'X-CSRF-Token': token || localStorage.getItem('csrfToken')
+                            'X-CSRF-Token': token
                         },
                         body: JSON.stringify({ email, password }),
                         credentials: 'include'
