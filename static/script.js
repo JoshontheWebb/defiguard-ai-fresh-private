@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Wrapper to ensure fresh CSRF token for POST requests
     const withCsrfToken = async (fetchFn) => {
-        await new Promise(resolve => setTimeout(resolve, 100)); // Ensure token storage
+        await new Promise(resolve => setTimeout(resolve, 100));
         let token;
         try {
             token = await fetchCsrfToken();
@@ -240,7 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const errorData = await response.json().catch(() => ({}));
                     throw new Error(errorData.detail || `Failed to complete ${tempId ? 'Diamond audit' : 'tier upgrade'}`);
                 }
-                localStorage.setItem('username', username); // Persist username
+                localStorage.setItem('username', username);
                 usageWarning.textContent = `Successfully completed ${tempId ? 'Diamond audit' : 'tier upgrade'}`;
                 usageWarning.classList.add('success');
                 console.log(`[DEBUG] Post-payment completed: endpoint=${endpoint}, time=${new Date().toISOString()}`);
@@ -433,6 +433,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const effectiveTier = selectedTier === 'diamond' ? 'pro' : selectedTier;
             console.log(`[DEBUG] Initiating tier switch: username=${username}, tier=${effectiveTier}, has_diamond=${hasDiamond}, time=${new Date().toISOString()}`);
             try {
+                const requestBody = JSON.stringify({
+                    username: username,
+                    tier: effectiveTier,
+                    has_diamond: hasDiamond
+                });
+                console.log(`[DEBUG] Sending /create-tier-checkout request with body: ${requestBody}, time=${new Date().toISOString()}`);
                 const response = await fetch('/create-tier-checkout', {
                     method: 'POST',
                     headers: {
@@ -441,14 +447,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         'Accept': 'application/json'
                     },
                     credentials: 'include',
-                    body: JSON.stringify({
-                        username: username,
-                        tier: effectiveTier,
-                        has_diamond: hasDiamond
-                    })
+                    body: requestBody
                 });
+                console.log(`[DEBUG] /create-tier-checkout response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
+                    console.error(`[ERROR] /create-tier-checkout failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
                     throw new Error(errorData.detail || `Failed to initiate tier upgrade: ${response.status}`);
                 }
                 const data = await response.json();
@@ -468,6 +472,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!token) {
                 usageWarning.textContent = 'Unable to establish secure connection.';
                 usageWarning.classList.add('error');
+                console.error(`[ERROR] No CSRF token for diamond audit, time=${new Date().toISOString()}`);
                 return;
             }
             const fileInput = document.querySelector('#file');
@@ -475,32 +480,36 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!file) {
                 usageWarning.textContent = 'Please select a file for Diamond audit';
                 usageWarning.classList.add('error');
+                console.error(`[ERROR] No file selected for diamond audit, time=${new Date().toISOString()}`);
                 return;
             }
             const username = localStorage.getItem('username');
             if (!username) {
-                console.error('[ERROR] No username found, redirecting to /auth');
+                console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
                 window.location.href = '/auth';
                 return;
             }
             const formData = new FormData();
             formData.append('file', file);
             try {
+                console.log(`[DEBUG] Sending /diamond-audit request for username=${username}, time=${new Date().toISOString()}`);
                 const response = await fetch(`/diamond-audit?username=${encodeURIComponent(username)}`, {
                     method: 'POST',
                     headers: { 'X-CSRF-Token': token },
                     body: formData,
                     credentials: 'include'
                 });
+                console.log(`[DEBUG] /diamond-audit response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
+                    console.error(`[ERROR] /diamond-audit failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
                     throw new Error(errorData.detail || 'Diamond audit request failed');
                 }
                 const data = await response.json();
+                console.log(`[DEBUG] Redirecting to Stripe for Diamond audit, session_url=${data.session_url}, time=${new Date().toISOString()}`);
                 window.location.href = data.session_url;
-                console.log(`[DEBUG] Redirecting to Stripe for Diamond audit, time=${new Date().toISOString()}`);
             } catch (error) {
-                console.error('Diamond audit error:', error);
+                console.error(`[ERROR] Diamond audit error: ${error.message}, time=${new Date().toISOString()}`);
                 usageWarning.textContent = `Error initiating Diamond audit: ${error.message}`;
                 usageWarning.classList.add('error');
             }
@@ -584,6 +593,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 loading.classList.remove('show');
                 usageWarning.textContent = 'Unable to establish secure connection.';
                 usageWarning.classList.add('error');
+                console.error(`[ERROR] No CSRF token for audit, time=${new Date().toISOString()}`);
                 return;
             }
             loading.classList.add('show');
@@ -598,11 +608,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 loading.classList.remove('show');
                 usageWarning.textContent = 'Please select a file to audit';
                 usageWarning.classList.add('error');
+                console.error(`[ERROR] No file selected for audit, time=${new Date().toISOString()}`);
                 return;
             }
             const username = localStorage.getItem('username');
             if (!username) {
-                console.error('[ERROR] No username found, redirecting to /auth');
+                console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
                 window.location.href = '/auth';
                 loading.classList.remove('show');
                 usageWarning.textContent = 'Please sign in to perform an audit';
@@ -622,9 +633,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (!token) {
                             usageWarning.textContent = 'Unable to establish secure connection.';
                             usageWarning.classList.add('error');
+                            console.error(`[ERROR] No CSRF token for upgrade, time=${new Date().toISOString()}`);
                             return;
                         }
                         try {
+                            const requestBody = JSON.stringify({
+                                username: username,
+                                tier: 'pro',
+                                has_diamond: true
+                            });
+                            console.log(`[DEBUG] Sending /create-tier-checkout request with body: ${requestBody}, time=${new Date().toISOString()}`);
                             const response = await fetch('/create-tier-checkout', {
                                 method: 'POST',
                                 headers: {
@@ -633,14 +651,12 @@ document.addEventListener('DOMContentLoaded', () => {
                                     'Accept': 'application/json'
                                 },
                                 credentials: 'include',
-                                body: JSON.stringify({
-                                    username: username,
-                                    tier: 'pro',
-                                    has_diamond: true
-                                })
+                                body: requestBody
                             });
+                            console.log(`[DEBUG] /create-tier-checkout response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
                             if (!response.ok) {
                                 const errorData = await response.json().catch(() => ({}));
+                                console.error(`[ERROR] /create-tier-checkout failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
                                 throw new Error(errorData.detail || 'Failed to initiate tier upgrade');
                             }
                             const data = await response.json();
@@ -668,9 +684,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (!token) {
                             usageWarning.textContent = 'Unable to establish secure connection.';
                             usageWarning.classList.add('error');
+                            console.error(`[ERROR] No CSRF token for upgrade, time=${new Date().toISOString()}`);
                             return;
                         }
                         try {
+                            const requestBody = JSON.stringify({
+                                username: username,
+                                tier: 'beginner',
+                                has_diamond: false
+                            });
+                            console.log(`[DEBUG] Sending /create-tier-checkout request with body: ${requestBody}, time=${new Date().toISOString()}`);
                             const response = await fetch('/create-tier-checkout', {
                                 method: 'POST',
                                 headers: {
@@ -679,14 +702,12 @@ document.addEventListener('DOMContentLoaded', () => {
                                     'Accept': 'application/json'
                                 },
                                 credentials: 'include',
-                                body: JSON.stringify({
-                                    username: username,
-                                    tier: 'beginner',
-                                    has_diamond: false
-                                })
+                                body: requestBody
                             });
+                            console.log(`[DEBUG] /create-tier-checkout response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
                             if (!response.ok) {
                                 const errorData = await response.json().catch(() => ({}));
+                                console.error(`[ERROR] /create-tier-checkout failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
                                 throw new Error(errorData.detail || 'Failed to initiate tier upgrade');
                             }
                             const data = await response.json();
@@ -704,14 +725,17 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const formData = new FormData(auditForm);
             try {
+                console.log(`[DEBUG] Sending /audit request for username=${username}, time=${new Date().toISOString()}`);
                 const response = await fetch(`/audit?username=${encodeURIComponent(username)}`, {
                     method: 'POST',
                     headers: { 'X-CSRF-Token': token },
                     body: formData,
                     credentials: 'include'
                 });
+                console.log(`[DEBUG] /audit response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
+                    console.error(`[ERROR] /audit failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
                     if (errorData.session_url) {
                         console.log(`[DEBUG] Redirecting to Stripe for audit limit/file size upgrade, session_url=${errorData.session_url}, time=${new Date().toISOString()}`);
                         window.location.href = errorData.session_url;
@@ -723,7 +747,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 handleAuditResponse(data);
                 await fetchTierData();
             } catch (error) {
-                console.error('Audit error:', error);
+                console.error(`[ERROR] Audit error: ${error.message}, time=${new Date().toISOString()}`);
                 loading.classList.remove('show');
                 usageWarning.textContent = `Error initiating audit: ${error.message}`;
                 usageWarning.classList.add('error');

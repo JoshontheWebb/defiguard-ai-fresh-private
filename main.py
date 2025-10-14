@@ -31,18 +31,18 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 from fastapi_csrf_protect import CsrfProtect
 from fastapi_csrf_protect.exceptions import CsrfProtectError
-from pydantic import BaseModel  # Ensure BaseModel is imported
+from pydantic import BaseModel
 
 # Ensure logging directory exists
 LOG_DIR = "/opt/render/project/data"
-os.makedirs(LOG_DIR, exist_ok=True)  # Create directory if it doesn't exist
+os.makedirs(LOG_DIR, exist_ok=True)
 
 # Initialize logging
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(os.path.join(LOG_DIR, 'debug.log')),  # Use Render persistent disk
+        logging.FileHandler(os.path.join(LOG_DIR, 'debug.log')),
         logging.StreamHandler()
     ]
 )
@@ -52,6 +52,18 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="DeFiGuard AI", description="Predictive DeFi Compliance Auditor")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/templates", StaticFiles(directory="templates"), name="templates")
+
+# Debug route registration at startup
+@app.on_event("startup")
+async def log_routes():
+    routes = [route.path for route in app.routes]
+    logger.info(f"Registered routes: {routes}")
+    if "/create-tier-checkout" in routes:
+        logger.info("Confirmed: /create-tier-checkout is registered")
+    else:
+        logger.error("Error: /create-tier-checkout is NOT registered")
+    for handler in logging.getLogger().handlers:
+        handler.flush()
 
 # CSRF Protection
 @CsrfProtect.load_config
@@ -66,7 +78,7 @@ def get_csrf_config():
     ]
 
 # Database setup
-DATABASE_URL = "sqlite:////opt/render/project/data/users.db"  # Persistent disk path
+DATABASE_URL = "sqlite:////opt/render/project/data/users.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -97,12 +109,15 @@ def get_db():
 # Validate environment variables
 required_env_vars = [
     "GROK_API_KEY", "INFURA_PROJECT_ID", "STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET",
-    "STRIPE_PRICE_PRO", "STRIPE_PRICE_BEGINNER", "STRIPE_PRICE_DIAMOND", "STRIPE_METERED_PRICE_DIAMOND"
+    "STRIPE_PRICE_PRO", "STRIPE_PRICE_BEGINNER", "STRIPE_PRICE_DIAMOND"
 ]
 missing_vars = [var for var in required_env_vars if not os.getenv(var)]
 if missing_vars:
-    logger.error(f"Missing environment variables: {', '.join(missing_vars)}")
-    raise RuntimeError(f"Missing environment variables: {', '.join(missing_vars)}")
+    logger.error(f"Missing critical environment variables: {', '.join(missing_vars)}")
+    raise RuntimeError(f"Missing critical environment variables: {', '.join(missing_vars)}")
+
+if not os.getenv("STRIPE_METERED_PRICE_DIAMOND"):
+    logger.warning("STRIPE_METERED_PRICE_DIAMOND not set; Diamond audit overage billing will be disabled")
 
 # Initialize clients
 client = OpenAI(api_key=os.getenv("GROK_API_KEY"))
@@ -184,7 +199,6 @@ AUDIT_SCHEMA = {
     "required": ["risk_score", "issues", "predictions", "recommendations"]
 }
 
-# CSRF Token Generation
 async def get_csrf_token(request: Request) -> str:
     token = request.session.get('csrf_token')
     if not token:
@@ -225,7 +239,8 @@ async def get_csrf(request: Request):
         for handler in logging.getLogger().handlers:
             handler.flush()
         raise HTTPException(status_code=500, detail=f"Failed to generate CSRF token: {str(e)}")
-     ## Section 2 ##
+       
+ ## Section 2 ##
 import os.path
 DATA_DIR = "/opt/render/project/data"  # Render persistent disk
 USAGE_STATE_FILE = os.path.join(DATA_DIR, "usage_state.json")
