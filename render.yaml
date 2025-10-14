@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: defiguard-ai
+    env: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port 8000
+    envVars:
+      - key: GROK_API_KEY
+        sync: false
+      - key: INFURA_PROJECT_ID
+        sync: false
+      - key: STRIPE_API_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_PRO
+        sync: false
+      - key: STRIPE_PRICE_BEGINNER
+        sync: false
+      - key: STRIPE_PRICE_DIAMOND
+        sync: false
+      - key: STRIPE_METERED_PRICE_DIAMOND
+        sync: false
+      - key: CSRF_SECRET_KEY
+        sync: false
+    disks:
+      - name: data
+        mountPath: /opt/render/project/data
+        sizeGB: 1
+  - type: redis
+    name: defiguard-redis
+    ipAllowList: []
+    plan: free
