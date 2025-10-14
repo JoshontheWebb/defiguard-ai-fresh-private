@@ -205,10 +205,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const username = urlParams.get('username') || localStorage.getItem('username');
         const upgradeStatus = urlParams.get('upgrade');
         const message = urlParams.get('message');
+        console.log(`[DEBUG] Handling post-payment redirect: session_id=${sessionId}, tier=${tier}, has_diamond=${hasDiamond}, temp_id=${tempId}, username=${username}, upgrade=${upgradeStatus}, message=${message}, time=${new Date().toISOString()}`);
         if (upgradeStatus) {
             usageWarning.textContent = message || (upgradeStatus === 'success' ? 'Tier upgrade completed' : 'Tier upgrade failed');
             usageWarning.classList.add(upgradeStatus === 'success' ? 'success' : 'error');
-            console.log(`[DEBUG] Post-payment redirect handled: upgrade=${upgradeStatus}, message=${message}, time=${new Date().toISOString()}`);
+            console.log(`[DEBUG] Post-payment status: upgrade=${upgradeStatus}, message=${message}, time=${new Date().toISOString()}`);
             window.history.replaceState({}, document.title, '/ui');
             await fetchTierData();
             return;
@@ -224,15 +225,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     endpoint = '/complete-tier-checkout';
                     query = `session_id=${encodeURIComponent(sessionId)}&tier=${encodeURIComponent(tier)}&has_diamond=${hasDiamond}&username=${encodeURIComponent(username)}`;
                 } else {
-                    console.error('[ERROR] Invalid post-payment redirect: missing tier or temp_id');
+                    console.error(`[ERROR] Invalid post-payment redirect: missing tier or temp_id, time=${new Date().toISOString()}`);
                     usageWarning.textContent = 'Error: Invalid payment redirect parameters';
                     usageWarning.classList.add('error');
                     return;
                 }
-                console.log(`[DEBUG] Processing post-payment redirect to ${endpoint}?${query}, time=${new Date().toISOString()}`);
+                console.log(`[DEBUG] Fetching ${endpoint}?${query}, time=${new Date().toISOString()}`);
                 const response = await fetch(`${endpoint}?${query}`, {
                     method: 'GET',
-                    headers: { 'Accept': 'application/json' },
+                    headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
                     credentials: 'include'
                 });
                 if (!response.ok) {
@@ -240,20 +241,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     throw new Error(errorData.detail || `Failed to complete ${tempId ? 'Diamond audit' : 'tier upgrade'}`);
                 }
                 localStorage.setItem('username', username); // Persist username
-                const data = await response.json();
-                usageWarning.textContent = data.message || `Successfully completed ${tempId ? 'Diamond audit' : 'tier upgrade'}`;
+                usageWarning.textContent = `Successfully completed ${tempId ? 'Diamond audit' : 'tier upgrade'}`;
                 usageWarning.classList.add('success');
-                console.log(`[DEBUG] Post-payment completed: ${data.message}, time=${new Date().toISOString()}`);
+                console.log(`[DEBUG] Post-payment completed: endpoint=${endpoint}, time=${new Date().toISOString()}`);
                 await fetchTierData();
                 window.history.replaceState({}, document.title, '/ui');
             } catch (error) {
-                console.error(`[ERROR] Post-payment redirect error: ${error.message}, time=${new Date().toISOString()}`);
+                console.error(`[ERROR] Post-payment redirect error: ${error.message}, endpoint=${endpoint}, time=${new Date().toISOString()}`);
                 usageWarning.textContent = `Error completing ${tempId ? 'Diamond audit' : 'tier upgrade'}: ${error.message}`;
                 usageWarning.classList.add('error');
                 if (error.message.includes('User not found') || error.message.includes('Please login')) {
+                    console.log(`[DEBUG] Redirecting to /auth due to user not found, time=${new Date().toISOString()}`);
                     window.location.href = '/auth?redirect_reason=post_payment';
                 }
             }
+        } else {
+            console.warn(`[DEBUG] No post-payment redirect params found: session_id=${sessionId}, username=${username}, time=${new Date().toISOString()}`);
         }
     };
 
@@ -400,44 +403,59 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Handle tier switching
     tierSwitchButton?.addEventListener('click', () => {
-        const result = withCsrfToken(async (token) => {
+        withCsrfToken(async (token) => {
             if (!token) {
                 usageWarning.textContent = 'Unable to establish secure connection.';
                 usageWarning.classList.add('error');
+                console.error(`[ERROR] No CSRF token for tier switch, time=${new Date().toISOString()}`);
                 return;
             }
             const selectedTier = tierSelect?.value;
             if (!selectedTier) {
-                console.error('[ERROR] tierSelect element not found');
+                console.error(`[ERROR] tierSelect element not found, time=${new Date().toISOString()}`);
                 usageWarning.textContent = 'Error: Tier selection unavailable';
                 usageWarning.classList.add('error');
                 return;
             }
+            if (!['beginner', 'pro', 'diamond'].includes(selectedTier)) {
+                console.error(`[ERROR] Invalid tier selected: ${selectedTier}, time=${new Date().toISOString()}`);
+                usageWarning.textContent = `Error: Invalid tier '${selectedTier}'. Choose beginner, pro, or diamond`;
+                usageWarning.classList.add('error');
+                return;
+            }
+            const username = localStorage.getItem('username');
+            if (!username) {
+                console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
+                window.location.href = '/auth';
+                return;
+            }
+            const hasDiamond = selectedTier === 'diamond';
+            const effectiveTier = selectedTier === 'diamond' ? 'pro' : selectedTier;
+            console.log(`[DEBUG] Initiating tier switch: username=${username}, tier=${effectiveTier}, has_diamond=${hasDiamond}, time=${new Date().toISOString()}`);
             try {
-                const username = localStorage.getItem('username');
-                if (!username) {
-                    console.error('[ERROR] No username found, redirecting to /auth');
-                    window.location.href = '/auth';
-                    return;
-                }
-                const hasDiamond = selectedTier === 'diamond';
-                const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=${selectedTier === 'diamond' ? 'pro' : selectedTier}&has_diamond=${hasDiamond}`, {
+                const response = await fetch('/create-tier-checkout', {
                     method: 'POST',
                     headers: {
+                        'Content-Type': 'application/json',
                         'X-CSRF-Token': token,
                         'Accept': 'application/json'
                     },
-                    credentials: 'include'
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        username: username,
+                        tier: effectiveTier,
+                        has_diamond: hasDiamond
+                    })
                 });
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.detail || 'Failed to initiate tier upgrade');
+                    throw new Error(errorData.detail || `Failed to initiate tier upgrade: ${response.status}`);
                 }
                 const data = await response.json();
+                console.log(`[DEBUG] Stripe checkout session created: session_url=${data.session_url}, time=${new Date().toISOString()}`);
                 window.location.href = data.session_url;
-                console.log(`[DEBUG] Redirecting to Stripe for tier upgrade: ${selectedTier}, has_diamond=${hasDiamond}, time=${new Date().toISOString()}`);
             } catch (error) {
-                console.error('Tier switch error:', error);
+                console.error(`[ERROR] Tier switch error: ${error.message}, time=${new Date().toISOString()}`);
                 usageWarning.textContent = `Error initiating tier upgrade: ${error.message}`;
                 usageWarning.classList.add('error');
             }
@@ -607,20 +625,29 @@ document.addEventListener('DOMContentLoaded', () => {
                             return;
                         }
                         try {
-                            const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=pro&has_diamond=true`, {
+                            const response = await fetch('/create-tier-checkout', {
                                 method: 'POST',
-                                headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' },
-                                credentials: 'include'
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-Token': token,
+                                    'Accept': 'application/json'
+                                },
+                                credentials: 'include',
+                                body: JSON.stringify({
+                                    username: username,
+                                    tier: 'pro',
+                                    has_diamond: true
+                                })
                             });
                             if (!response.ok) {
                                 const errorData = await response.json().catch(() => ({}));
                                 throw new Error(errorData.detail || 'Failed to initiate tier upgrade');
                             }
                             const data = await response.json();
+                            console.log(`[DEBUG] Redirecting to Stripe for Pro + Diamond upgrade due to file size, session_url=${data.session_url}, time=${new Date().toISOString()}`);
                             window.location.href = data.session_url;
-                            console.log(`[DEBUG] Redirecting to Stripe for Pro + Diamond upgrade due to file size, time=${new Date().toISOString()}`);
                         } catch (error) {
-                            console.error('Upgrade error:', error);
+                            console.error(`[ERROR] Upgrade error: ${error.message}, time=${new Date().toISOString()}`);
                             usageWarning.textContent = `Error initiating upgrade: ${error.message}`;
                             usageWarning.classList.add('error');
                         }
@@ -644,20 +671,29 @@ document.addEventListener('DOMContentLoaded', () => {
                             return;
                         }
                         try {
-                            const response = await fetch(`/create-tier-checkout?username=${encodeURIComponent(username)}&tier=beginner`, {
+                            const response = await fetch('/create-tier-checkout', {
                                 method: 'POST',
-                                headers: { 'X-CSRF-Token': token, 'Accept': 'application/json' },
-                                credentials: 'include'
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-Token': token,
+                                    'Accept': 'application/json'
+                                },
+                                credentials: 'include',
+                                body: JSON.stringify({
+                                    username: username,
+                                    tier: 'beginner',
+                                    has_diamond: false
+                                })
                             });
                             if (!response.ok) {
                                 const errorData = await response.json().catch(() => ({}));
                                 throw new Error(errorData.detail || 'Failed to initiate tier upgrade');
                             }
                             const data = await response.json();
+                            console.log(`[DEBUG] Redirecting to Stripe for Beginner upgrade due to audit limit, session_url=${data.session_url}, time=${new Date().toISOString()}`);
                             window.location.href = data.session_url;
-                            console.log(`[DEBUG] Redirecting to Stripe for Beginner upgrade due to audit limit, time=${new Date().toISOString()}`);
                         } catch (error) {
-                            console.error('Upgrade error:', error);
+                            console.error(`[ERROR] Upgrade error: ${error.message}, time=${new Date().toISOString()}`);
                             usageWarning.textContent = `Error initiating upgrade: ${error.message}`;
                             usageWarning.classList.add('error');
                         }
@@ -677,8 +713,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
                     if (errorData.session_url) {
+                        console.log(`[DEBUG] Redirecting to Stripe for audit limit/file size upgrade, session_url=${errorData.session_url}, time=${new Date().toISOString()}`);
                         window.location.href = errorData.session_url;
-                        console.log(`[DEBUG] Redirecting to Stripe for audit limit/file size upgrade, time=${new Date().toISOString()}`);
                         return;
                     }
                     throw new Error(errorData.detail || 'Audit request failed');

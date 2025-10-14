@@ -623,6 +623,8 @@ async def get_csrf(request: Request):
         raise HTTPException(status_code=500, detail=f"Failed to generate CSRF token: {str(e)}")
 
 ## Section 4.3: User and Tier Management Endpoints ##
+import urllib.parse  # Added for URL-safe encoding
+
 @app.post("/signup/{username}")
 async def signup(username: str, request: Request, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
@@ -746,11 +748,12 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
             payment_method_types=['card'],
             line_items=line_items,
             mode='subscription',
-            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={tier}&has_diamond={str(has_diamond).lower()}&username={username}',
+            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(username)}',
             cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
             metadata={'username': username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
         )
         logger.info(f"Redirecting {username} to Stripe checkout for {tier} tier, has_diamond: {has_diamond}, session: {request.session}")
+        logger.debug(f"Success URL: {session.url}, params: tier={tier}, has_diamond={has_diamond}, username={username}")
         logger.debug("Flushing log file after tier checkout redirect")
         for handler in logging.getLogger().handlers:
             handler.flush()
@@ -808,8 +811,8 @@ async def create_tier_checkout(username: str = Query(None), tier: str = Query(..
             payment_method_types=['card'],
             line_items=line_items,
             mode='subscription',
-            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={tier}&has_diamond={str(has_diamond).lower()}&username={effective_username}',
-            cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
+            success_url=f'/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(effective_username)}',
+            cancel_url='/ui',
             metadata={'username': effective_username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
         )
         logger.info(f"Created Stripe checkout session for {effective_username} to {tier}, has_diamond: {has_diamond}, session: {request.session}")
@@ -854,8 +857,8 @@ async def create_checkout_session(username: str = Query(None), temp_id: str = Qu
                 'quantity': 1,
             }],
             mode='subscription',
-            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-diamond-audit?session_id={{CHECKOUT_SESSION_ID}}&temp_id={temp_id}&username={effective_username}',
-            cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
+            success_url=f'/complete-diamond-audit?session_id={{CHECKOUT_SESSION_ID}}&temp_id={urllib.parse.quote(temp_id)}&username={urllib.parse.quote(effective_username)}',
+            cancel_url='/ui',
             metadata={'temp_id': temp_id, 'username': effective_username}
         )
         logger.info(f"Stripe Checkout session created for {effective_username} with temp_id {temp_id}, session: {request.session}")
@@ -885,7 +888,7 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
         return RedirectResponse(url="/ui?upgrade=error&message=Payment%20processing%20unavailable")
     try:
         session = stripe.checkout.Session.retrieve(session_id)
-        logger.debug(f"Retrieved Stripe session: {session_id}, payment_status: {session.payment_status}")
+        logger.debug(f"Retrieved Stripe session: {session_id}, payment_status={session.payment_status}, metadata={session.metadata}")
         if session.payment_status == 'paid':
             result = usage_tracker.set_tier(tier, has_diamond, effective_username, db)
             user.stripe_subscription_id = session.subscription
@@ -894,7 +897,7 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
                     user.stripe_subscription_item_id = item.id
             usage_tracker.reset_usage(effective_username, db)
             db.commit()
-            logger.info(f"Tier upgrade completed for {effective_username} to {tier}, has_diamond: {has_diamond}, session: {request.session}")
+            logger.info(f"Tier upgrade completed for {effective_username} to {tier}, has_diamond={has_diamond}, session: {request.session}")
             logger.debug("Flushing log file after tier upgrade completion")
             for handler in logging.getLogger().handlers:
                 handler.flush()
@@ -907,8 +910,8 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
         logger.debug("Flushing log file after tier upgrade error")
         for handler in logging.getLogger().handlers:
             handler.flush()
-        return RedirectResponse(url=f"/ui?upgrade=error&message={str(e)}")
-    
+        return RedirectResponse(url=f"/ui?upgrade=error&message={urllib.parse.quote(str(e))}")
+        
 ## Section 4.4: Webhook Endpoint ##
 @app.post("/webhook")
 async def webhook(request: Request, db: Session = Depends(get_db)):
