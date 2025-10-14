@@ -1200,15 +1200,15 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
 
     raw_response = None
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    code_bytes = None
+    file_size = 0
+    temp_path = None
+
     try:
         # File reading block
-        try:
-            code_bytes = await file.read()
-            file_size = len(code_bytes)
-            logger.debug(f"File read: {file_size} bytes for user {effective_username}")
-        except Exception as e:
-            logger.error(f"File read failed for {effective_username}: {str(e)}")
-            raise HTTPException(status_code=400, detail=f"File read failed: {str(e)}")
+        code_bytes = await file.read()
+        file_size = len(code_bytes)
+        logger.debug(f"File read: {file_size} bytes for user {effective_username}")
 
         current_tier = user.tier
         overage_cost = None
@@ -1317,7 +1317,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 handler.flush()
             raise HTTPException(status_code=400, detail="Empty file uploaded.")
 
-        temp_path = None
         try:
             with NamedTemporaryFile(delete=False, suffix=".sol", dir=os.path.join(DATA_DIR, "temp_files")) as temp_file:
                 temp_file.write(code_bytes)
@@ -1487,26 +1486,13 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             if temp_path and os.path.exists(temp_path):
                 os.unlink(temp_path)
     except Exception as e:
-        if raw_response is not None:
-            logger.error(f"Error Raw Grok Response: {raw_response[:200]}")
-            with open(os.path.join(DATA_DIR, 'debug.log'), 'a') as f:
-                f.write(f"[{timestamp}] DEBUG: Error Raw Response: {raw_response}\n")
-                f.flush()
-        logger.error(f"Audit error: {str(e)}")
+        logger.error(f"File read or audit error for {effective_username}: {str(e)}")
         logger.debug("Flushing log file after audit error")
         for handler in logging.getLogger().handlers:
             handler.flush()
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-
-@app.get("/", response_class=HTMLResponse)
-async def read_root():
-    logger.debug("Root endpoint accessed, redirecting to /ui")
-    logger.debug("Flushing log file after root access")
-    for handler in logging.getLogger().handlers:
-        handler.flush()
-    return HTMLResponse(content="<script>window.location.href='/ui';</script>")
-
-## Section 4.6: Main Entry Point ##
+    
+    ## Section 4.6: Main Entry Point ##
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
