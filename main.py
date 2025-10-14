@@ -1197,103 +1197,110 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
     if not user:
         logger.error(f"Audit failed: User {effective_username} not found")
         raise HTTPException(status_code=401, detail="Please login to continue")
-    code_bytes = await file.read()
-    file_size = len(code_bytes)
-    logger.debug(f"File read: {file_size} bytes for user {effective_username}")
-    current_tier = user.tier
-    overage_cost = None
-    if file_size > 1024 * 1024 and not user.has_diamond:
-        overage_cost = usage_tracker.calculate_diamond_overage(file_size) / 100
-        raise HTTPException(
-            status_code=400,
-            detail=f"Access to Diamond audits is only available on Pro tier with Diamond add-on. Upgrade to Pro + Diamond ($200/mo + $50/mo + ${overage_cost:.2f} overage for this file)."
-        )
-    limits = {"free": FREE_LIMIT, "beginner": BEGINNER_LIMIT, "pro": PRO_LIMIT, "diamond": PRO_LIMIT}
-    try:
-        current_count = usage_tracker.increment(file_size, effective_username, db)
-        logger.info(f"Audit request {current_count} processed for contract {contract_address} with tier {current_tier} for user {effective_username}")
-        logger.debug("Flushing log file after audit request")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-    except HTTPException as e:
-        if e.status_code == 400 and "exceeds" in e.detail:
-            logger.info(f"File size exceeds limit for {effective_username}; redirecting to upgrade")
-            temp_id = str(uuid.uuid4())
-            temp_dir = os.path.join(DATA_DIR, "temp_files")
-            os.makedirs(temp_dir, exist_ok=True)
-            temp_path = os.path.join(temp_dir, f"{temp_id}.sol")
-            try:
-                with open(temp_path, "wb") as f:
-                    f.write(code_bytes)
-            except PermissionError as e:
-                logger.error(f"Failed to write temp file: {str(e)}")
-                raise HTTPException(status_code=500, detail="Failed to save temporary file due to permissions")
-            if not STRIPE_API_KEY:
-                logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: STRIPE_API_KEY not set")
-                os.unlink(temp_path)
-                raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
-            if not all([STRIPE_PRICE_PRO, STRIPE_PRICE_DIAMOND]):
-                logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: Missing STRIPE_PRICE_PRO or STRIPE_PRICE_DIAMOND")
-                os.unlink(temp_path)
-                raise HTTPException(status_code=503, detail="Payment processing unavailable: Missing Stripe price IDs in environment variables.")
-            try:
-                session = stripe.checkout.Session.create(
-                    payment_method_types=['card'],
-                    line_items=[{
-                        'price': STRIPE_PRICE_PRO,
-                        'quantity': 1,
-                    }, {
-                        'price': STRIPE_PRICE_DIAMOND,
-                        'quantity': 1,
-                    }],
-                    mode='subscription',
-                    success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=pro&has_diamond=true',
-                    cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
-                    metadata={'username': effective_username, 'tier': 'pro', 'has_diamond': 'true'}
-                )
-                logger.info(f"Redirecting {effective_username} to Stripe checkout for Pro tier with Diamond add-on due to file size")
-                logger.debug("Flushing log file after upgrade redirect")
-                for handler in logging.getLogger().handlers:
-                    handler.flush()
-                return {"session_url": session.url}
-            except Exception as e:
-                logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: {str(e)}")
-                os.unlink(temp_path)
-                raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
-        elif e.status_code == 403 and "Usage limit exceeded" in e.detail:
-            logger.info(f"Usage limit exceeded for {effective_username}; redirecting to upgrade")
-            if not STRIPE_API_KEY:
-                logger.error(f"Stripe checkout creation failed for {effective_username} Beginner upgrade: STRIPE_API_KEY not set")
-                raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
-            if not STRIPE_PRICE_BEGINNER:
-                logger.error(f"Stripe checkout creation failed for {effective_username} Beginner upgrade: STRIPE_PRICE_BEGINNER not set")
-                raise HTTPException(status_code=503, detail="Payment processing unavailable: Missing STRIPE_PRICE_BEGINNER in environment variables.")
-            try:
-                session = stripe.checkout.Session.create(
-                    payment_method_types=['card'],
-                    line_items=[{
-                        'price': STRIPE_PRICE_BEGINNER,
-                        'quantity': 1,
-                    }],
-                    mode='subscription',
-                    success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=beginner',
-                    cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
-                    metadata={'username': effective_username, 'tier': 'beginner'}
-                )
-                logger.info(f"Redirecting {effective_username} to Stripe checkout for Beginner tier due to usage limit")
-                logger.debug("Flushing log file after upgrade redirect")
-                for handler in logging.getLogger().handlers:
-                    handler.flush()
-                return {"session_url": session.url}
-            except Exception as e:
-                logger.error(f"Stripe checkout creation failed for {effective_username} Beginner upgrade: {str(e)}")
-                raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
-        else:
-            raise e
 
     raw_response = None
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
+        # File reading block
+        try:
+            code_bytes = await file.read()
+            file_size = len(code_bytes)
+            logger.debug(f"File read: {file_size} bytes for user {effective_username}")
+        except Exception as e:
+            logger.error(f"File read failed for {effective_username}: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"File read failed: {str(e)}")
+
+        current_tier = user.tier
+        overage_cost = None
+        if file_size > 1024 * 1024 and not user.has_diamond:
+            overage_cost = usage_tracker.calculate_diamond_overage(file_size) / 100
+            raise HTTPException(
+                status_code=400,
+                detail=f"Access to Diamond audits is only available on Pro tier with Diamond add-on. Upgrade to Pro + Diamond ($200/mo + $50/mo + ${overage_cost:.2f} overage for this file)."
+            )
+        limits = {"free": FREE_LIMIT, "beginner": BEGINNER_LIMIT, "pro": PRO_LIMIT, "diamond": PRO_LIMIT}
+        try:
+            current_count = usage_tracker.increment(file_size, effective_username, db)
+            logger.info(f"Audit request {current_count} processed for contract {contract_address} with tier {current_tier} for user {effective_username}")
+            logger.debug("Flushing log file after audit request")
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+        except HTTPException as e:
+            if e.status_code == 400 and "exceeds" in e.detail:
+                logger.info(f"File size exceeds limit for {effective_username}; redirecting to upgrade")
+                temp_id = str(uuid.uuid4())
+                temp_dir = os.path.join(DATA_DIR, "temp_files")
+                os.makedirs(temp_dir, exist_ok=True)
+                temp_path = os.path.join(temp_dir, f"{temp_id}.sol")
+                try:
+                    with open(temp_path, "wb") as f:
+                        f.write(code_bytes)
+                except PermissionError as e:
+                    logger.error(f"Failed to write temp file: {str(e)}")
+                    raise HTTPException(status_code=500, detail="Failed to save temporary file due to permissions")
+                if not STRIPE_API_KEY:
+                    logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: STRIPE_API_KEY not set")
+                    os.unlink(temp_path)
+                    raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
+                if not all([STRIPE_PRICE_PRO, STRIPE_PRICE_DIAMOND]):
+                    logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: Missing STRIPE_PRICE_PRO or STRIPE_PRICE_DIAMOND")
+                    os.unlink(temp_path)
+                    raise HTTPException(status_code=503, detail="Payment processing unavailable: Missing Stripe price IDs in environment variables.")
+                try:
+                    session = stripe.checkout.Session.create(
+                        payment_method_types=['card'],
+                        line_items=[{
+                            'price': STRIPE_PRICE_PRO,
+                            'quantity': 1,
+                        }, {
+                            'price': STRIPE_PRICE_DIAMOND,
+                            'quantity': 1,
+                        }],
+                        mode='subscription',
+                        success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=pro&has_diamond=true',
+                        cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
+                        metadata={'username': effective_username, 'tier': 'pro', 'has_diamond': 'true'}
+                    )
+                    logger.info(f"Redirecting {effective_username} to Stripe checkout for Pro tier with Diamond add-on due to file size")
+                    logger.debug("Flushing log file after upgrade redirect")
+                    for handler in logging.getLogger().handlers:
+                        handler.flush()
+                    return {"session_url": session.url}
+                except Exception as e:
+                    logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: {str(e)}")
+                    os.unlink(temp_path)
+                    raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
+            elif e.status_code == 403 and "Usage limit exceeded" in e.detail:
+                logger.info(f"Usage limit exceeded for {effective_username}; redirecting to upgrade")
+                if not STRIPE_API_KEY:
+                    logger.error(f"Stripe checkout creation failed for {effective_username} Beginner upgrade: STRIPE_API_KEY not set")
+                    raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
+                if not STRIPE_PRICE_BEGINNER:
+                    logger.error(f"Stripe checkout creation failed for {effective_username} Beginner upgrade: STRIPE_PRICE_BEGINNER not set")
+                    raise HTTPException(status_code=503, detail="Payment processing unavailable: Missing STRIPE_PRICE_BEGINNER in environment variables.")
+                try:
+                    session = stripe.checkout.Session.create(
+                        payment_method_types=['card'],
+                        line_items=[{
+                            'price': STRIPE_PRICE_BEGINNER,
+                            'quantity': 1,
+                        }],
+                        mode='subscription',
+                        success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=beginner',
+                        cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
+                        metadata={'username': effective_username, 'tier': 'beginner'}
+                    )
+                    logger.info(f"Redirecting {effective_username} to Stripe checkout for Beginner tier due to usage limit")
+                    logger.debug("Flushing log file after upgrade redirect")
+                    for handler in logging.getLogger().handlers:
+                        handler.flush()
+                    return {"session_url": session.url}
+                except Exception as e:
+                    logger.error(f"Stripe checkout creation failed for {effective_username} Beginner upgrade: {str(e)}")
+                    raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
+            else:
+                raise e
+
         logger.info("Starting audit process...")
         try:
             code_str = code_bytes.decode('utf-8')
