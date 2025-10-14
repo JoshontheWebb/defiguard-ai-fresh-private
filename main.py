@@ -623,13 +623,19 @@ async def get_csrf(request: Request):
         raise HTTPException(status_code=500, detail=f"Failed to generate CSRF token: {str(e)}")
 
 ## Section 4.3: User and Tier Management Endpoints ##
-import urllib.parse  # Added for URL-safe encoding
+from fastapi import Body  # Added for JSON body
+from pydantic import BaseModel  # Already imported in Section 1, but for clarity
+
+class TierUpgradeRequest(BaseModel):
+    username: Optional[str] = None
+    tier: str
+    has_diamond: bool = False
 
 @app.post("/signup/{username}")
 async def signup(username: str, request: Request, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
     logger.debug(f"Signup request for {username}, session: {request.session}")
-    if not re.match(r"^[a-zA-Z0-9_]{3,20}$", username):
+    if not re.match(r"^[a-zA-F0-9_]{3,20}$", username):
         raise HTTPException(status_code=400, detail="Username must be 3-20 alphanumeric characters or underscores")
     data = await request.json()
     email = data.get("email")
@@ -748,8 +754,8 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
             payment_method_types=['card'],
             line_items=line_items,
             mode='subscription',
-            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(username)}',
-            cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
+            success_url=f'/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(username)}',
+            cancel_url='/ui',
             metadata={'username': username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
         )
         logger.info(f"Redirecting {username} to Stripe checkout for {tier} tier, has_diamond: {has_diamond}, session: {request.session}")
@@ -769,17 +775,19 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
         raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
 
 @app.post("/create-tier-checkout")
-async def create_tier_checkout(username: str = Query(None), tier: str = Query(...), has_diamond: bool = Query(False), request: Request = None, db: Session = Depends(get_db)):
+async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), request: Request = None, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
     session_username = request.session.get("username")
-    logger.debug(f"Create-tier-checkout request for {username}, tier: {tier}, has_diamond: {has_diamond}, session: {request.session}")
-    effective_username = username or session_username
+    logger.debug(f"Create-tier-checkout request with body: {tier_request}, session: {request.session}")
+    effective_username = tier_request.username or session_username
     if not effective_username:
         logger.error("No username provided for /create-tier-checkout; redirecting to login")
         raise HTTPException(status_code=401, detail="Please login to continue")
     user = db.query(User).filter(User.username == effective_username).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    tier = tier_request.tier
+    has_diamond = tier_request.has_diamond
     if tier not in level_map:
         raise HTTPException(status_code=400, detail=f"Invalid tier: {tier}. Use 'free', 'beginner', 'pro', or 'diamond'")
     if tier == "diamond" and user.tier != "pro":
@@ -911,7 +919,7 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
         for handler in logging.getLogger().handlers:
             handler.flush()
         return RedirectResponse(url=f"/ui?upgrade=error&message={urllib.parse.quote(str(e))}")
-        
+            
 ## Section 4.4: Webhook Endpoint ##
 @app.post("/webhook")
 async def webhook(request: Request, db: Session = Depends(get_db)):
