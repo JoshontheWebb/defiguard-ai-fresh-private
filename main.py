@@ -1204,12 +1204,20 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
     file_size = 0
     temp_path = None
 
+    # File reading block
     try:
-        # File reading block
         code_bytes = await file.read()
         file_size = len(code_bytes)
         logger.debug(f"File read: {file_size} bytes for user {effective_username}")
+    except Exception as e:
+        logger.error(f"File read failed for {effective_username}: {str(e)}")
+        logger.debug("Flushing log file after file read error")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        raise HTTPException(status_code=400, detail=f"File read failed: {str(e)}")
 
+    # Main audit processing block
+    try:
         current_tier = user.tier
         overage_cost = None
         if file_size > 1024 * 1024 and not user.has_diamond:
@@ -1323,8 +1331,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 temp_path = temp_file.name
                 if platform.system() == "Windows":
                     temp_path = temp_path.replace("/", "\\")
-            context = ""
-            fuzzing_results = []
             try:
                 logger.info("Starting Slither analysis...")
                 @retry(stop_after_attempt(3), wait_fixed(2))
@@ -1486,7 +1492,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             if temp_path and os.path.exists(temp_path):
                 os.unlink(temp_path)
     except Exception as e:
-        logger.error(f"File read or audit error for {effective_username}: {str(e)}")
+        logger.error(f"Audit error for {effective_username}: {str(e)}")
         logger.debug("Flushing log file after audit error")
         for handler in logging.getLogger().handlers:
             handler.flush()
