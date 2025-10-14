@@ -33,12 +33,16 @@ from fastapi_csrf_protect import CsrfProtect
 from fastapi_csrf_protect.exceptions import CsrfProtectError
 from pydantic import BaseModel  # Ensure BaseModel is imported
 
+# Ensure logging directory exists
+LOG_DIR = "/opt/render/project/data"
+os.makedirs(LOG_DIR, exist_ok=True)  # Create directory if it doesn't exist
+
 # Initialize logging
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('/opt/render/project/data/debug.log'),  # Use Render persistent disk
+        logging.FileHandler(os.path.join(LOG_DIR, 'debug.log')),  # Use Render persistent disk
         logging.StreamHandler()
     ]
 )
@@ -221,7 +225,7 @@ async def get_csrf(request: Request):
         for handler in logging.getLogger().handlers:
             handler.flush()
         raise HTTPException(status_code=500, detail=f"Failed to generate CSRF token: {str(e)}")
-    ## Section 2 ##
+     ## Section 2 ##
 import os.path
 DATA_DIR = "/opt/render/project/data"  # Render persistent disk
 USAGE_STATE_FILE = os.path.join(DATA_DIR, "usage_state.json")
