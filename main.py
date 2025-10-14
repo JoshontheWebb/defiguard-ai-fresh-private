@@ -1203,6 +1203,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
     code_bytes = None
     file_size = 0
     temp_path = None
+    context = ""
+    fuzzing_results = []
 
     # File reading block
     try:
@@ -1216,7 +1218,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             handler.flush()
         raise HTTPException(status_code=400, detail=f"File read failed: {str(e)}")
 
-    # Main audit processing block
+    # Validate file size and tier
     try:
         current_tier = user.tier
         overage_cost = None
@@ -1308,7 +1310,15 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
             else:
                 raise e
+    except Exception as e:
+        logger.error(f"Tier or usage check error for {effective_username}: {str(e)}")
+        logger.debug("Flushing log file after tier/usage error")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        raise e
 
+    # Audit processing block
+    try:
         logger.info("Starting audit process...")
         try:
             code_str = code_bytes.decode('utf-8')
@@ -1331,6 +1341,14 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 temp_path = temp_file.name
                 if platform.system() == "Windows":
                     temp_path = temp_path.replace("/", "\\")
+        except Exception as e:
+            logger.error(f"Failed to create temp file: {str(e)}")
+            logger.debug("Flushing log file after temp file error")
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+            raise HTTPException(status_code=500, detail=f"Failed to create temporary file: {str(e)}")
+
+        try:
             try:
                 logger.info("Starting Slither analysis...")
                 @retry(stop_after_attempt(3), wait_fixed(2))
@@ -1434,70 +1452,70 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                             logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
                     db.commit()
                 return {"report": aggregated, "risk_score": str(aggregated["risk_score"]), "overage_cost": overage_cost}
-            logger.info("Calling Grok API...")
-            if not GROK_API_KEY:
-                logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
-                raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
-            prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=code_str, details=details, tier="diamond" if user.has_diamond else current_tier)
-            response = client.chat.completions.create(
-                model="grok-4",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {"schema": AUDIT_SCHEMA},
-                    "strict": True
-                }
-            )
-            logger.info("API response received.")
-            if response.choices and response.choices[0].message.content:
-                raw_response = response.choices[0].message.content
-                logger.info(f"Raw Grok Response: {raw_response[:200]}")
-                with open(os.path.join(DATA_DIR, 'debug.log'), 'a') as f:
-                    f.write(f"[{timestamp}] DEBUG: Raw Grok Response: {raw_response}\n")
-                    f.flush()
-                audit_json = json.loads(raw_response)
-                if user.has_diamond:
-                    audit_json["remediation_roadmap"] = "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review."
-                audit_json["fuzzing_results"] = fuzzing_results
-                user = db.query(User).filter(User.username == effective_username).first()
-                if user:
-                    history = json.loads(user.audit_history)
-                    history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": audit_json["risk_score"]})
-                    user.audit_history = json.dumps(history)
-                    overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
-                    if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
-                        try:
-                            stripe.SubscriptionItem.create_usage_record(
-                                user.stripe_subscription_item_id,
-                                quantity=int(overage_mb),
-                                timestamp=int(time.time()),
-                                action='increment'
-                            )
-                            logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
-                        except Exception as e:
-                            logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
-                    db.commit()
-                logger.debug("Flushing log file after successful audit")
-                for handler in logging.getLogger().handlers:
-                    handler.flush()
-                return {"report": audit_json, "risk_score": str(audit_json.get("risk_score", "N/A")), "overage_cost": overage_cost}
             else:
-                logger.error("No response from Grok API")
-                logger.debug("Flushing log file after no API response")
-                for handler in logging.getLogger().handlers:
-                    handler.flush()
-                raise HTTPException(status_code=500, detail="No response from Grok API")
+                logger.info("Calling Grok API...")
+                if not GROK_API_KEY:
+                    logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
+                    raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
+                prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=code_str, details=details, tier="diamond" if user.has_diamond else current_tier)
+                response = client.chat.completions.create(
+                    model="grok-4",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {"schema": AUDIT_SCHEMA},
+                        "strict": True
+                    }
+                )
+                logger.info("API response received.")
+                if response.choices and response.choices[0].message.content:
+                    raw_response = response.choices[0].message.content
+                    logger.info(f"Raw Grok Response: {raw_response[:200]}")
+                    with open(os.path.join(DATA_DIR, 'debug.log'), 'a') as f:
+                        f.write(f"[{timestamp}] DEBUG: Raw Grok Response: {raw_response}\n")
+                        f.flush()
+                    audit_json = json.loads(raw_response)
+                    if user.has_diamond:
+                        audit_json["remediation_roadmap"] = "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review."
+                    audit_json["fuzzing_results"] = fuzzing_results
+                    user = db.query(User).filter(User.username == effective_username).first()
+                    if user:
+                        history = json.loads(user.audit_history)
+                        history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": audit_json["risk_score"]})
+                        user.audit_history = json.dumps(history)
+                        overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
+                        if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
+                            try:
+                                stripe.SubscriptionItem.create_usage_record(
+                                    user.stripe_subscription_item_id,
+                                    quantity=int(overage_mb),
+                                    timestamp=int(time.time()),
+                                    action='increment'
+                                )
+                                logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
+                            except Exception as e:
+                                logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
+                        db.commit()
+                    logger.debug("Flushing log file after successful audit")
+                    for handler in logging.getLogger().handlers:
+                        handler.flush()
+                    return {"report": audit_json, "risk_score": str(audit_json.get("risk_score", "N/A")), "overage_cost": overage_cost}
+                else:
+                    logger.error("No response from Grok API")
+                    logger.debug("Flushing log file after no API response")
+                    for handler in logging.getLogger().handlers:
+                        handler.flush()
+                    raise HTTPException(status_code=500, detail="No response from Grok API")
         finally:
             if temp_path and os.path.exists(temp_path):
                 os.unlink(temp_path)
     except Exception as e:
-        logger.error(f"Audit error for {effective_username}: {str(e)}")
+        logger.error(f"Audit processing error for {effective_username}: {str(e)}")
         logger.debug("Flushing log file after audit error")
         for handler in logging.getLogger().handlers:
             handler.flush()
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-    
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")    
     ## Section 4.6: Main Entry Point ##
 if __name__ == "__main__":
     import uvicorn
