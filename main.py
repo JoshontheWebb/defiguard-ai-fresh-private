@@ -978,15 +978,27 @@ async def upload_temp(file: UploadFile = File(...), username: str = Query(None),
     temp_dir = os.path.join(DATA_DIR, "temp_files")
     os.makedirs(temp_dir, exist_ok=True)
     temp_path = os.path.join(temp_dir, f"{temp_id}.sol")
-    code_bytes = await file.read()
-    file_size = len(code_bytes)
     try:
+        code_bytes = await file.read()
+        file_size = len(code_bytes)
         with open(temp_path, "wb") as f:
             f.write(code_bytes)
     except PermissionError as e:
         logger.error(f"Failed to write temp file: {str(e)}")
+        logger.debug("Flushing log file after temp file error")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
         raise HTTPException(status_code=500, detail="Failed to save temporary file due to permissions")
+    except Exception as e:
+        logger.error(f"Upload temp file failed for {effective_username}: {str(e)}")
+        logger.debug("Flushing log file after upload temp error")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        raise HTTPException(status_code=500, detail=f"Failed to upload temporary file: {str(e)}")
     logger.info(f"Temporary file uploaded for {effective_username}: {temp_id}, size: {file_size / 1024 / 1024:.2f}MB")
+    logger.debug("Flushing log file after successful upload")
+    for handler in logging.getLogger().handlers:
+        handler.flush()
     return {"temp_id": temp_id, "file_size": file_size}
 
 @app.get("/complete-diamond-audit")
@@ -1041,66 +1053,91 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(None
     user = db.query(User).filter(User.username == effective_username).first()
     if not user or not user.has_diamond:
         raise HTTPException(status_code=403, detail="Diamond audit requires Diamond add-on")
-    code_bytes = await file.read()
-    file_size = len(code_bytes)
-    if file_size > 50 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File size exceeds 50MB limit")
-    overage_cost = usage_tracker.calculate_diamond_overage(file_size)
-    logger.info(f"Preparing Diamond audit for {effective_username} with overage ${overage_cost / 100:.2f} for file size {file_size / 1024 / 1024:.2f}MB")
-    temp_id = str(uuid.uuid4())
-    temp_dir = os.path.join(DATA_DIR, "temp_files")
-    os.makedirs(temp_dir, exist_ok=True)
-    temp_path = os.path.join(temp_dir, f"{temp_id}.sol")
     try:
-        with open(temp_path, "wb") as f:
-            f.write(code_bytes)
-    except PermissionError as e:
-        logger.error(f"Failed to write temp file: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to save temporary file due to permissions")
-    if not STRIPE_API_KEY:
-        logger.error(f"Stripe checkout creation failed for {effective_username} Diamond audit: STRIPE_API_KEY not set")
-        os.unlink(temp_path)
-        raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
-    if not STRIPE_METERED_PRICE_DIAMOND:
-        logger.error(f"Stripe checkout creation failed for {effective_username} Diamond audit: STRIPE_METERED_PRICE_DIAMOND not set")
-        os.unlink(temp_path)
-        raise HTTPException(status_code=503, detail="Payment processing unavailable: Missing STRIPE_METERED_PRICE_DIAMOND in environment variables.")
-    try:
-        session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
-            line_items=[{
-                'price': STRIPE_METERED_PRICE_DIAMOND,
-                'quantity': 1,
-            }],
-            mode='subscription',
-            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-diamond-audit?session_id={{CHECKOUT_SESSION_ID}}&temp_id={temp_id}&username={effective_username}',
-            cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
-            metadata={'temp_id': temp_id, 'username': effective_username}
-        )
-        logger.info(f"Redirecting {effective_username} to Stripe checkout for Diamond audit overage, session: {request.session}")
-        logger.debug("Flushing log file after Diamond checkout redirect")
+        code_bytes = await file.read()
+        file_size = len(code_bytes)
+        if file_size > 50 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File size exceeds 50MB limit")
+        overage_cost = usage_tracker.calculate_diamond_overage(file_size)
+        logger.info(f"Preparing Diamond audit for {effective_username} with overage ${overage_cost / 100:.2f} for file size {file_size / 1024 / 1024:.2f}MB")
+        temp_id = str(uuid.uuid4())
+        temp_dir = os.path.join(DATA_DIR, "temp_files")
+        os.makedirs(temp_dir, exist_ok=True)
+        temp_path = os.path.join(temp_dir, f"{temp_id}.sol")
+        try:
+            with open(temp_path, "wb") as f:
+                f.write(code_bytes)
+        except PermissionError as e:
+            logger.error(f"Failed to write temp file: {str(e)}")
+            raise HTTPException(status_code=500, detail="Failed to save temporary file due to permissions")
+        if not STRIPE_API_KEY:
+            logger.error(f"Stripe checkout creation failed for {effective_username} Diamond audit: STRIPE_API_KEY not set")
+            os.unlink(temp_path)
+            raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
+        if not STRIPE_METERED_PRICE_DIAMOND:
+            logger.error(f"Stripe checkout creation failed for {effective_username} Diamond audit: STRIPE_METERED_PRICE_DIAMOND not set")
+            os.unlink(temp_path)
+            raise HTTPException(status_code=503, detail="Payment processing unavailable: Missing STRIPE_METERED_PRICE_DIAMOND in environment variables.")
+        try:
+            session = stripe.checkout.Session.create(
+                payment_method_types=['card'],
+                line_items=[{
+                    'price': STRIPE_METERED_PRICE_DIAMOND,
+                    'quantity': 1,
+                }],
+                mode='subscription',
+                success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-diamond-audit?session_id={{CHECKOUT_SESSION_ID}}&temp_id={temp_id}&username={effective_username}',
+                cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
+                metadata={'temp_id': temp_id, 'username': effective_username}
+            )
+            logger.info(f"Redirecting {effective_username} to Stripe checkout for Diamond audit overage, session: {request.session}")
+            logger.debug("Flushing log file after Diamond checkout redirect")
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+            return {"session_url": session.url}
+        except Exception as e:
+            logger.error(f"Stripe checkout creation failed for {effective_username} Diamond audit: {str(e)}")
+            os.unlink(temp_path)
+            raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
+    except Exception as e:
+        logger.error(f"Diamond audit error for {effective_username}: {str(e)}")
+        logger.debug("Flushing log file after diamond audit error")
         for handler in logging.getLogger().handlers:
             handler.flush()
-        return {"session_url": session.url}
-    except Exception as e:
-        logger.error(f"Stripe checkout creation failed for {effective_username} Diamond audit: {str(e)}")
-        os.unlink(temp_path)
-        raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 @app.get("/api/audit")
 async def api_audit(username: str, api_key: str, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == username).first()
-    if not user or user.api_key != api_key or user.tier != "pro":
-        raise HTTPException(status_code=403, detail="API access requires Pro tier and valid API key")
-    return {"message": "API audit endpoint (Pro tier)"}
+    try:
+        user = db.query(User).filter(User.username == username).first()
+        if not user or user.api_key != api_key or user.tier != "pro":
+            raise HTTPException(status_code=403, detail="API access requires Pro tier and valid API key")
+        logger.info(f"API audit endpoint accessed by {username}")
+        logger.debug("Flushing log file after API audit")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        return {"message": "API audit endpoint (Pro tier)"}
+    except Exception as e:
+        logger.error(f"API audit error for {username}: {str(e)}")
+        logger.debug("Flushing log file after API audit error")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 @app.get("/upgrade")
 async def upgrade_page():
-    logger.debug("Upgrade page accessed")
-    logger.debug("Flushing log file after upgrade page access")
-    for handler in logging.getLogger().handlers:
-        handler.flush()
-    return {"message": "Upgrade at /ui for Beginner ($50/mo), Pro ($200/mo), or Diamond add-on ($50/mo with Pro)."}
+    try:
+        logger.debug("Upgrade page accessed")
+        logger.debug("Flushing log file after upgrade page access")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        return {"message": "Upgrade at /ui for Beginner ($50/mo), Pro ($200/mo), or Diamond add-on ($50/mo with Pro)."}
+    except Exception as e:
+        logger.error(f"Upgrade page error: {str(e)}")
+        logger.debug("Flushing log file after upgrade page error")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 @app.get("/facets/{contract_address}")
 async def get_facets(contract_address: str, request: Request, username: str = Query(None), db: Session = Depends(get_db)):
@@ -1174,14 +1211,12 @@ async def get_facets(contract_address: str, request: Request, username: str = Qu
             for handler in logging.getLogger().handlers:
                 handler.flush()
             raise HTTPException(status_code=500, detail=f"Failed to fetch facets: {str(e)}")
-        except HTTPException as e:
-            raise e
-        except Exception as e:
-            logger.error(f"Unexpected error in /facets: {str(e)}")
-            logger.debug("Flushing log file after unexpected /facets error")
-            for handler in logging.getLogger().handlers:
-                handler.flush()
-            raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+    except Exception as e:
+        logger.error(f"Facet endpoint error for {username or 'anonymous'}: {str(e)}")
+        logger.debug("Flushing log file after facet endpoint error")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 ## Section 4.6: Main Audit Endpoint ##
 @app.post("/audit", response_model=AuditResponse)
@@ -1450,7 +1485,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                             logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
                         except Exception as e:
                             logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
-                    db.commit()
+                        db.commit()
                 return {"report": aggregated, "risk_score": str(aggregated["risk_score"]), "overage_cost": overage_cost}
             else:
                 logger.info("Calling Grok API...")
@@ -1496,7 +1531,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                                 logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
                             except Exception as e:
                                 logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
-                        db.commit()
+                            db.commit()
                     logger.debug("Flushing log file after successful audit")
                     for handler in logging.getLogger().handlers:
                         handler.flush()
@@ -1515,8 +1550,23 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         logger.debug("Flushing log file after audit error")
         for handler in logging.getLogger().handlers:
             handler.flush()
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")    
-    ## Section 4.6: Main Entry Point ##
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+@app.get("/", response_class=HTMLResponse)
+async def read_root():
+    try:
+        logger.debug("Root endpoint accessed, redirecting to /ui")
+        logger.debug("Flushing log file after root access")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        return HTMLResponse(content="<script>window.location.href='/ui';</script>")
+    except Exception as e:
+        logger.error(f"Root endpoint error: {str(e)}")
+        logger.debug("Flushing log file after root error")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+        ## Section 4.6: Main Entry Point ##
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
