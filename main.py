@@ -116,6 +116,12 @@ if missing_vars:
     logger.error(f"Missing critical environment variables: {', '.join(missing_vars)}")
     raise RuntimeError(f"Missing critical environment variables: {', '.join(missing_vars)}")
 
+# Log specific Stripe price IDs
+stripe_vars = ["STRIPE_PRICE_PRO", "STRIPE_PRICE_BEGINNER", "STRIPE_PRICE_DIAMOND", "STRIPE_METERED_PRICE_DIAMOND"]
+for var in stripe_vars:
+    value = os.getenv(var)
+    logger.info(f"Environment variable {var}: {'set' if value else 'NOT set'}")
+
 if not os.getenv("STRIPE_METERED_PRICE_DIAMOND"):
     logger.warning("STRIPE_METERED_PRICE_DIAMOND not set; Diamond audit overage billing will be disabled")
 
@@ -239,7 +245,7 @@ async def get_csrf(request: Request):
         for handler in logging.getLogger().handlers:
             handler.flush()
         raise HTTPException(status_code=500, detail=f"Failed to generate CSRF token: {str(e)}")
-       
+           
  ## Section 2 ##
 import os.path
 DATA_DIR = "/opt/render/project/data"  # Render persistent disk
@@ -638,8 +644,9 @@ async def get_csrf(request: Request):
         raise HTTPException(status_code=500, detail=f"Failed to generate CSRF token: {str(e)}")
 
 ## Section 4.3: User and Tier Management Endpoints ##
-from fastapi import Body  # Added for JSON body
-from pydantic import BaseModel  # Already imported in Section 1, but for clarity
+from fastapi import Body
+from pydantic import BaseModel
+import urllib.parse
 
 class TierUpgradeRequest(BaseModel):
     username: Optional[str] = None
@@ -650,7 +657,7 @@ class TierUpgradeRequest(BaseModel):
 async def signup(username: str, request: Request, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
     logger.debug(f"Signup request for {username}, session: {request.session}")
-    if not re.match(r"^[a-zA-F0-9_]{3,20}$", username):
+    if not re.match(r"^[a-zA-Z0-9_]{3,20}$", username):
         raise HTTPException(status_code=400, detail="Username must be 3-20 alphanumeric characters or underscores")
     data = await request.json()
     email = data.get("email")
@@ -752,10 +759,12 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
             "diamond": STRIPE_PRICE_DIAMOND
         }.get(tier, None)
         if not price_id:
+            logger.error(f"Invalid price_id for tier {tier}: price_id={price_id}")
             raise HTTPException(status_code=400, detail="Cannot downgrade or select invalid tier")
         if not all([STRIPE_PRICE_BEGINNER, STRIPE_PRICE_PRO, STRIPE_PRICE_DIAMOND]):
-            logger.error(f"Stripe checkout creation failed for {username} to {tier}: Missing Stripe price IDs")
-            raise HTTPException(status_code=503, detail="Payment processing unavailable: Missing Stripe price IDs in environment variables.")
+            missing_prices = [var for var in ["STRIPE_PRICE_BEGINNER", "STRIPE_PRICE_PRO", "STRIPE_PRICE_DIAMOND"] if not globals()[var]]
+            logger.error(f"Stripe checkout creation failed for {username} to {tier}: Missing Stripe price IDs: {', '.join(missing_prices)}")
+            raise HTTPException(status_code=503, detail=f"Payment processing unavailable: Missing Stripe price IDs: {', '.join(missing_prices)}")
         line_items = [{
             'price': price_id,
             'quantity': 1,
@@ -765,6 +774,7 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
                 'price': STRIPE_PRICE_DIAMOND,
                 'quantity': 1,
             })
+        logger.debug(f"Creating Stripe checkout session for {username} to {tier}, line_items={line_items}")
         session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=line_items,
@@ -817,10 +827,12 @@ async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), req
             "diamond": STRIPE_PRICE_DIAMOND
         }.get(tier, None)
         if not price_id:
+            logger.error(f"Invalid price_id for tier {tier}: price_id={price_id}")
             raise HTTPException(status_code=400, detail="Cannot downgrade or select invalid tier")
         if not all([STRIPE_PRICE_BEGINNER, STRIPE_PRICE_PRO, STRIPE_PRICE_DIAMOND]):
-            logger.error(f"Stripe checkout creation failed for {effective_username} to {tier}: Missing Stripe price IDs")
-            raise HTTPException(status_code=503, detail="Payment processing unavailable: Missing Stripe price IDs in environment variables.")
+            missing_prices = [var for var in ["STRIPE_PRICE_BEGINNER", "STRIPE_PRICE_PRO", "STRIPE_PRICE_DIAMOND"] if not globals()[var]]
+            logger.error(f"Stripe checkout creation failed for {effective_username} to {tier}: Missing Stripe price IDs: {', '.join(missing_prices)}")
+            raise HTTPException(status_code=503, detail=f"Payment processing unavailable: Missing Stripe price IDs: {', '.join(missing_prices)}")
         line_items = [{
             'price': price_id,
             'quantity': 1,
@@ -830,6 +842,7 @@ async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), req
                 'price': STRIPE_PRICE_DIAMOND,
                 'quantity': 1,
             })
+        logger.debug(f"Creating Stripe checkout session for {effective_username} to {tier}, line_items={line_items}")
         session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=line_items,
@@ -873,6 +886,7 @@ async def create_checkout_session(username: str = Query(None), temp_id: str = Qu
         logger.error(f"Stripe session creation failed for {effective_username}: STRIPE_METERED_PRICE_DIAMOND not set")
         raise HTTPException(status_code=503, detail="Payment processing unavailable: Missing STRIPE_METERED_PRICE_DIAMOND in environment variables.")
     try:
+        logger.debug(f"Creating Stripe checkout session for {effective_username} with temp_id={temp_id}, price_id={STRIPE_METERED_PRICE_DIAMOND}")
         session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             line_items=[{
@@ -934,7 +948,7 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
         for handler in logging.getLogger().handlers:
             handler.flush()
         return RedirectResponse(url=f"/ui?upgrade=error&message={urllib.parse.quote(str(e))}")
-            
+                
 ## Section 4.4: Webhook Endpoint ##
 @app.post("/webhook")
 async def webhook(request: Request, db: Session = Depends(get_db)):
@@ -1321,9 +1335,10 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     os.unlink(temp_path)
                     raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
                 if not all([STRIPE_PRICE_PRO, STRIPE_PRICE_DIAMOND]):
-                    logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: Missing STRIPE_PRICE_PRO or STRIPE_PRICE_DIAMOND")
+                    missing_prices = [var for var in ["STRIPE_PRICE_PRO", "STRIPE_PRICE_DIAMOND"] if not globals()[var]]
+                    logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: Missing Stripe price IDs: {', '.join(missing_prices)}")
                     os.unlink(temp_path)
-                    raise HTTPException(status_code=503, detail="Payment processing unavailable: Missing Stripe price IDs in environment variables.")
+                    raise HTTPException(status_code=503, detail=f"Payment processing unavailable: Missing Stripe price IDs: {', '.join(missing_prices)}")
                 try:
                     session = stripe.checkout.Session.create(
                         payment_method_types=['card'],
@@ -1335,8 +1350,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                             'quantity': 1,
                         }],
                         mode='subscription',
-                        success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=pro&has_diamond=true',
-                        cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
+                        success_url=f'https://defiguard-ai-fresh-private.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=pro&has_diamond=true',
+                        cancel_url='https://defiguard-ai-fresh-private.onrender.com/ui',
                         metadata={'username': effective_username, 'tier': 'pro', 'has_diamond': 'true'}
                     )
                     logger.info(f"Redirecting {effective_username} to Stripe checkout for Pro tier with Diamond add-on due to file size")
@@ -1364,8 +1379,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                             'quantity': 1,
                         }],
                         mode='subscription',
-                        success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=beginner',
-                        cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
+                        success_url=f'https://defiguard-ai-fresh-private.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=beginner',
+                        cancel_url='https://defiguard-ai-fresh-private.onrender.com/ui',
                         metadata={'username': effective_username, 'tier': 'beginner'}
                     )
                     logger.info(f"Redirecting {effective_username} to Stripe checkout for Beginner tier due to usage limit")
@@ -1404,7 +1419,9 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             raise HTTPException(status_code=400, detail="Empty file uploaded.")
 
         try:
-            with NamedTemporaryFile(delete=False, suffix=".sol", dir=os.path.join(DATA_DIR, "temp_files")) as temp_file:
+            temp_dir = os.path.join(DATA_DIR, "temp_files")
+            os.makedirs(temp_dir, exist_ok=True)  # Ensure temp_files directory exists
+            with NamedTemporaryFile(delete=False, suffix=".sol", dir=temp_dir) as temp_file:
                 temp_file.write(code_bytes)
                 temp_path = temp_file.name
                 if platform.system() == "Windows":
@@ -1585,21 +1602,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             handler.flush()
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
-@app.get("/", response_class=HTMLResponse)
-async def read_root():
-    try:
-        logger.debug("Root endpoint accessed, redirecting to /ui")
-        logger.debug("Flushing log file after root access")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        return HTMLResponse(content="<script>window.location.href='/ui';</script>")
-    except Exception as e:
-        logger.error(f"Root endpoint error: {str(e)}")
-        logger.debug("Flushing log file after root error")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-        ## Section 4.6: Main Entry Point ##
+## Section 4.6: Main Entry Point ##
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
