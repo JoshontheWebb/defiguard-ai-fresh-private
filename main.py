@@ -813,6 +813,7 @@ async def create_tier_checkout(username: str = Query(None), tier: str = Query(..
             metadata={'username': effective_username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
         )
         logger.info(f"Created Stripe checkout session for {effective_username} to {tier}, has_diamond: {has_diamond}, session: {request.session}")
+        logger.debug(f"Success URL: {session.url}, params: tier={tier}, has_diamond={has_diamond}, username={effective_username}")
         logger.debug("Flushing log file after tier checkout creation")
         for handler in logging.getLogger().handlers:
             handler.flush()
@@ -858,6 +859,7 @@ async def create_checkout_session(username: str = Query(None), temp_id: str = Qu
             metadata={'temp_id': temp_id, 'username': effective_username}
         )
         logger.info(f"Stripe Checkout session created for {effective_username} with temp_id {temp_id}, session: {request.session}")
+        logger.debug(f"Success URL: {session.url}, params: temp_id={temp_id}, username={effective_username}")
         logger.debug("Flushing log file after checkout session creation")
         for handler in logging.getLogger().handlers:
             handler.flush()
@@ -883,6 +885,7 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
         return RedirectResponse(url="/ui?upgrade=error&message=Payment%20processing%20unavailable")
     try:
         session = stripe.checkout.Session.retrieve(session_id)
+        logger.debug(f"Retrieved Stripe session: {session_id}, payment_status: {session.payment_status}")
         if session.payment_status == 'paid':
             result = usage_tracker.set_tier(tier, has_diamond, effective_username, db)
             user.stripe_subscription_id = session.subscription
@@ -905,7 +908,7 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
         for handler in logging.getLogger().handlers:
             handler.flush()
         return RedirectResponse(url=f"/ui?upgrade=error&message={str(e)}")
-
+    
 ## Section 4.4: Webhook Endpoint ##
 @app.post("/webhook")
 async def webhook(request: Request, db: Session = Depends(get_db)):
