@@ -1236,14 +1236,15 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 except PermissionError as e:
                     logger.error(f"Failed to write temp file: {str(e)}")
                     raise HTTPException(status_code=500, detail="Failed to save temporary file due to permissions")
+                finally:
+                    if temp_path and os.path.exists(temp_path):
+                        os.unlink(temp_path)
                 if not STRIPE_API_KEY:
                     logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: STRIPE_API_KEY not set")
-                    os.unlink(temp_path)
                     raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
                 if not all([STRIPE_PRICE_PRO, STRIPE_PRICE_DIAMOND]):
                     missing_prices = [var for var in ["STRIPE_PRICE_PRO", "STRIPE_PRICE_DIAMOND"] if not globals()[var]]
                     logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: Missing Stripe price IDs: {', '.join(missing_prices)}")
-                    os.unlink(temp_path)
                     raise HTTPException(status_code=503, detail=f"Payment processing unavailable: Missing Stripe price IDs: {', '.join(missing_prices)}")
                 try:
                     session = stripe.checkout.Session.create(
@@ -1267,7 +1268,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     return {"session_url": session.url}
                 except Exception as e:
                     logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: {str(e)}")
-                    os.unlink(temp_path)
                     raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
             elif e.status_code == 403 and "Usage limit exceeded" in e.detail:
                 logger.info(f"Usage limit exceeded for {effective_username}; redirecting to upgrade")
@@ -1441,6 +1441,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     except Exception as e:
                         logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
                     db.commit()
+            if temp_path and os.path.exists(temp_path):
+                os.unlink(temp_path)
             return {"report": aggregated, "risk_score": str(aggregated["risk_score"]), "overage_cost": overage_cost}
         else:
             logger.info("Calling Grok API...")
@@ -1487,9 +1489,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                         except Exception as e:
                             logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
                         db.commit()
-                logger.debug("Flushing log file after successful audit")
-                for handler in logging.getLogger().handlers:
-                    handler.flush()
+                if temp_path and os.path.exists(temp_path):
+                    os.unlink(temp_path)
                 return {"report": audit_json, "risk_score": str(audit_json.get("risk_score", "N/A")), "overage_cost": overage_cost}
             else:
                 logger.error("No response from Grok API")
@@ -1497,16 +1498,10 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 for handler in logging.getLogger().handlers:
                     handler.flush()
                 raise HTTPException(status_code=500, detail="No response from Grok API")
-        finally:
-            if temp_path and os.path.exists(temp_path):
-                os.unlink(temp_path)
-    except Exception as e:
-        logger.error(f"Audit processing error for {effective_username}: {str(e)}")
-        logger.debug("Flushing log file after audit error")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-    
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
+                
 ## Section 4.6: Main Entry Point ##
 if __name__ == "__main__":
     import uvicorn
