@@ -29,8 +29,6 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 import uvicorn
 from eth_account import Account
 from eth_account.messages import encode_defunct
-from fastapi_csrf_protect import CsrfProtect
-from fastapi_csrf_protect.exceptions import CsrfProtectError
 from pydantic import BaseModel
 
 # Ensure logging directory exists
@@ -65,17 +63,47 @@ async def log_routes():
     for handler in logging.getLogger().handlers:
         handler.flush()
 
-# CSRF Protection
-@CsrfProtect.load_config
-def get_csrf_config():
-    return [
-        ("secret_key", os.getenv("CSRF_SECRET_KEY", secrets.token_urlsafe(32))),
-        ("token_location", "header"),
-        ("cookie_secure", True),
-        ("cookie_samesite", "strict"),
-        ("cookie_key", "csrf_token"),
-        ("header_name", "X-CSRF-Token")
-    ]
+# Manual CSRF Protection
+async def get_csrf_token(request: Request) -> str:
+    token = request.session.get('csrf_token')
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session['csrf_token'] = token
+        logger.debug(f"Generated new CSRF token: {token}, session: {request.session}")
+    else:
+        logger.debug(f"Reusing existing CSRF token: {token}, session: {request.session}")
+    return token
+
+async def verify_csrf_token(request: Request):
+    provided_token = request.headers.get('X-CSRF-Token')
+    expected_token = request.session.get('csrf_token')
+    logger.debug(f"Verifying CSRF token: Provided={provided_token}, Expected={expected_token}, session: {request.session}")
+    if not provided_token or provided_token != expected_token:
+        logger.error(f"CSRF validation failed: Provided={provided_token}, Expected={expected_token}")
+        raise HTTPException(status_code=403, detail="CSRF token validation failed")
+    logger.debug("CSRF token verified successfully")
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+
+@app.get("/csrf-token")
+async def get_csrf(request: Request):
+    try:
+        logger.debug(f"Received /csrf-token request from {request.client.host}, headers: {request.headers}, cookies: {request.cookies}, session: {request.session}")
+        token = await get_csrf_token(request)
+        if not isinstance(token, str):
+            logger.error(f"Invalid CSRF token generated: {token}, type={type(token)}")
+            raise HTTPException(status_code=500, detail="Failed to generate valid CSRF token")
+        logger.info(f"Returning CSRF token: {token}")
+        logger.debug("Flushing log file after returning CSRF token")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        return {"csrf_token": token}
+    except Exception as e:
+        logger.error(f"CSRF endpoint error: {str(e)}")
+        logger.debug("Flushing log file after CSRF endpoint error")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        raise HTTPException(status_code=500, detail=f"Failed to generate CSRF token: {str(e)}")
 
 # Database setup
 DATABASE_URL = "sqlite:////opt/render/project/data/users.db"
@@ -205,47 +233,6 @@ AUDIT_SCHEMA = {
     "required": ["risk_score", "issues", "predictions", "recommendations"]
 }
 
-async def get_csrf_token(request: Request) -> str:
-    token = request.session.get('csrf_token')
-    if not token:
-        token = str(uuid.uuid4())
-        request.session['csrf_token'] = token
-        logger.debug(f"Generated new CSRF token: {token}, session: {request.session}")
-    else:
-        logger.debug(f"Reusing existing CSRF token: {token}, session: {request.session}")
-    return token
-
-async def verify_csrf_token(request: Request):
-    provided_token = request.headers.get('X-CSRF-Token')
-    expected_token = request.session.get('csrf_token')
-    logger.debug(f"Verifying CSRF token: Provided={provided_token}, Expected={expected_token}, session: {request.session}")
-    if not provided_token or provided_token != expected_token:
-        logger.error(f"CSRF validation failed: Provided={provided_token}, Expected={expected_token}")
-        raise HTTPException(status_code=403, detail="CSRF token validation failed")
-    logger.debug("CSRF token verified successfully")
-    for handler in logging.getLogger().handlers:
-        handler.flush()
-
-@app.get("/csrf-token")
-async def get_csrf(request: Request):
-    try:
-        logger.debug(f"Received /csrf-token request from {request.client.host}, headers: {request.headers}, cookies: {request.cookies}, session: {request.session}")
-        token = await get_csrf_token(request)
-        if not isinstance(token, str):
-            logger.error(f"Invalid CSRF token generated: {token}, type={type(token)}")
-            raise HTTPException(status_code=500, detail="Failed to generate valid CSRF token")
-        logger.info(f"Returning CSRF token: {token}")
-        logger.debug("Flushing log file after returning CSRF token")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        return {"csrf_token": token}
-    except Exception as e:
-        logger.error(f"CSRF endpoint error: {str(e)}")
-        logger.debug("Flushing log file after CSRF endpoint error")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        raise HTTPException(status_code=500, detail=f"Failed to generate CSRF token: {str(e)}")
-           
  ## Section 2 ##
 import os.path
 DATA_DIR = "/opt/render/project/data"  # Render persistent disk
@@ -613,36 +600,27 @@ async def read_ui(request: Request, session_id: str = Query(None), tier: str = Q
 async def read_auth(request: Request):
     try:
         logger.debug(f"Auth page accessed, session: {request.session}")
+        # Generate CSRF token for the auth page
+        token = await get_csrf_token(request)
         with open("templates/auth.html", "r") as f:
+            html_content = f.read()
+            # Embed CSRF token in a hidden input for client-side use
+            html_content = html_content.replace(
+                '</form>',
+                f'<input type="hidden" name="csrf_token" value="{token}"></form>'
+            )
             logger.info(f"Loading auth from: {os.path.abspath('templates/auth.html')}")
             logger.debug("Flushing log file after loading auth")
             for handler in logging.getLogger().handlers:
                 handler.flush()
-            return HTMLResponse(content=f.read())
+            return HTMLResponse(content=html_content)
     except FileNotFoundError:
         logger.error("Auth file not found: templates/auth.html")
         logger.debug("Flushing log file after auth file error")
         for handler in logging.getLogger().handlers:
             handler.flush()
         return HTMLResponse(content="<h1>Auth file not found. Check templates folder.</h1>")
-
-@app.get("/csrf-token")
-async def get_csrf(request: Request):
-    try:
-        logger.debug(f"Received /csrf-token request from {request.client.host}, headers: {request.headers}, cookies: {request.cookies}, session: {request.session}")
-        token = await get_csrf_token(request)
-        logger.info(f"Returning CSRF token: {token}")
-        logger.debug("Flushing log file after returning CSRF token")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        return {"csrf_token": token}
-    except Exception as e:
-        logger.error(f"CSRF endpoint error: {str(e)}")
-        logger.debug("Flushing log file after CSRF endpoint error")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        raise HTTPException(status_code=500, detail=f"Failed to generate CSRF token: {str(e)}")
-
+    
 ## Section 4.3: User and Tier Management Endpoints ##
 from fastapi import Body
 from pydantic import BaseModel
@@ -662,8 +640,12 @@ async def signup(username: str, request: Request, db: Session = Depends(get_db))
     data = await request.json()
     email = data.get("email")
     password = data.get("password")
-    if not email or not username or not password:
-        raise HTTPException(status_code=400, detail="Email, username, and password are required")
+    csrf_token = data.get("csrf_token")
+    if not email or not username or not password or not csrf_token:
+        raise HTTPException(status_code=400, detail="Email, username, password, and CSRF token are required")
+    if request.session.get('csrf_token') != csrf_token:
+        logger.error(f"CSRF validation failed for signup: Provided={csrf_token}, Expected={request.session.get('csrf_token')}")
+        raise HTTPException(status_code=403, detail="CSRF token validation failed")
     if db.query(User).filter(User.username == username).first():
         raise HTTPException(status_code=400, detail="Username already exists")
     password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -685,6 +667,12 @@ async def signin(username: str, request: Request, db: Session = Depends(get_db))
         raise HTTPException(status_code=400, detail="Invalid username format")
     data = await request.json()
     password = data.get("password")
+    csrf_token = data.get("csrf_token")
+    if not password or not csrf_token:
+        raise HTTPException(status_code=400, detail="Password and CSRF token are required")
+    if request.session.get('csrf_token') != csrf_token:
+        logger.error(f"CSRF validation failed for signin: Provided={csrf_token}, Expected={request.session.get('csrf_token')}")
+        raise HTTPException(status_code=403, detail="CSRF token validation failed")
     user = db.query(User).filter(User.username == username).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -779,8 +767,8 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
             payment_method_types=['card'],
             line_items=line_items,
             mode='subscription',
-            success_url=f'/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(username)}',
-            cancel_url='/ui',
+            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(username)}',
+            cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
             metadata={'username': username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
         )
         logger.info(f"Redirecting {username} to Stripe checkout for {tier} tier, has_diamond: {has_diamond}, session: {request.session}")
@@ -847,8 +835,8 @@ async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), req
             payment_method_types=['card'],
             line_items=line_items,
             mode='subscription',
-            success_url=f'/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(effective_username)}',
-            cancel_url='/ui',
+            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(effective_username)}',
+            cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
             metadata={'username': effective_username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
         )
         logger.info(f"Created Stripe checkout session for {effective_username} to {tier}, has_diamond: {has_diamond}, session: {request.session}")
@@ -866,89 +854,7 @@ async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), req
     except Exception as e:
         logger.error(f"Stripe checkout creation failed for {effective_username} to {tier}: {str(e)}")
         raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
-
-@app.post("/create-checkout-session")
-async def create_checkout_session(username: str = Query(None), temp_id: str = Query(...), price: int = Query(...), request: Request = None, db: Session = Depends(get_db)):
-    await verify_csrf_token(request)
-    session_username = request.session.get("username")
-    logger.debug(f"Create-checkout-session request: Query username={username}, Session username={session_username}, temp_id={temp_id}, session: {request.session}")
-    effective_username = username or session_username
-    if not effective_username:
-        logger.error("No username provided for /create-checkout-session; redirecting to login")
-        raise HTTPException(status_code=401, detail="Please login to continue")
-    user = db.query(User).filter(User.username == effective_username).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    if not STRIPE_API_KEY:
-        logger.error(f"Stripe session creation failed for {effective_username}: STRIPE_API_KEY not set")
-        raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
-    if not STRIPE_METERED_PRICE_DIAMOND:
-        logger.error(f"Stripe session creation failed for {effective_username}: STRIPE_METERED_PRICE_DIAMOND not set")
-        raise HTTPException(status_code=503, detail="Payment processing unavailable: Missing STRIPE_METERED_PRICE_DIAMOND in environment variables.")
-    try:
-        logger.debug(f"Creating Stripe checkout session for {effective_username} with temp_id={temp_id}, price_id={STRIPE_METERED_PRICE_DIAMOND}")
-        session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
-            line_items=[{
-                'price': STRIPE_METERED_PRICE_DIAMOND,
-                'quantity': 1,
-            }],
-            mode='subscription',
-            success_url=f'/complete-diamond-audit?session_id={{CHECKOUT_SESSION_ID}}&temp_id={urllib.parse.quote(temp_id)}&username={urllib.parse.quote(effective_username)}',
-            cancel_url='/ui',
-            metadata={'temp_id': temp_id, 'username': effective_username}
-        )
-        logger.info(f"Stripe Checkout session created for {effective_username} with temp_id {temp_id}, session: {request.session}")
-        logger.debug(f"Success URL: {session.url}, params: temp_id={temp_id}, username={effective_username}")
-        logger.debug("Flushing log file after checkout session creation")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        return {"session_url": session.url}
-    except Exception as e:
-        logger.error(f"Stripe session creation failed for {effective_username}: {str(e)}")
-        raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
-
-@app.get("/complete-tier-checkout")
-async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query(...), has_diamond: bool = Query(False), username: str = Query(None), request: Request = None, db: Session = Depends(get_db)):
-    session_username = request.session.get("username")
-    logger.debug(f"Complete-tier-checkout request: Query username={username}, Session username={session_username}, session_id={session_id}, tier={tier}, has_diamond={has_diamond}, session: {request.session}")
-    effective_username = username or session_username
-    if not effective_username:
-        logger.error(f"No username provided for /complete-tier-checkout; redirecting to login. Session: {request.session}")
-        return RedirectResponse(url="/auth?redirect_reason=no_username")
-    user = db.query(User).filter(User.username == effective_username).first()
-    if not user:
-        logger.error(f"User {effective_username} not found for /complete-tier-checkout")
-        return RedirectResponse(url="/auth?redirect_reason=user_not_found")
-    if not STRIPE_API_KEY:
-        logger.error(f"Tier upgrade checkout failed for {effective_username}: STRIPE_API_KEY not set")
-        return RedirectResponse(url="/ui?upgrade=error&message=Payment%20processing%20unavailable")
-    try:
-        session = stripe.checkout.Session.retrieve(session_id)
-        logger.debug(f"Retrieved Stripe session: {session_id}, payment_status={session.payment_status}, metadata={session.metadata}")
-        if session.payment_status == 'paid':
-            result = usage_tracker.set_tier(tier, has_diamond, effective_username, db)
-            user.stripe_subscription_id = session.subscription
-            for item in stripe.Subscription.retrieve(session.subscription).get('items', {}).get('data', []):
-                if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
-                    user.stripe_subscription_item_id = item.id
-            usage_tracker.reset_usage(effective_username, db)
-            db.commit()
-            logger.info(f"Tier upgrade completed for {effective_username} to {tier}, has_diamond={has_diamond}, session: {request.session}")
-            logger.debug("Flushing log file after tier upgrade completion")
-            for handler in logging.getLogger().handlers:
-                handler.flush()
-            return RedirectResponse(url="/ui?upgrade=success")
-        else:
-            logger.error(f"Payment not completed for {effective_username}, session_id={session_id}, payment_status={session.payment_status}")
-            return RedirectResponse(url="/ui?upgrade=failed")
-    except Exception as e:
-        logger.error(f"Tier upgrade checkout failed for {effective_username}: {str(e)}, session_id={session_id}")
-        logger.debug("Flushing log file after tier upgrade error")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        return RedirectResponse(url=f"/ui?upgrade=error&message={urllib.parse.quote(str(e))}")
-                
+                    
 ## Section 4.4: Webhook Endpoint ##
 @app.post("/webhook")
 async def webhook(request: Request, db: Session = Depends(get_db)):
@@ -1133,7 +1039,7 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(None
                     'quantity': 1,
                 }],
                 mode='subscription',
-                success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-diamond-audit?session_id={{CHECKOUT_SESSION_ID}}&temp_id={temp_id}&username={effective_username}',
+                success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-diamond-audit?session_id={{CHECKOUT_SESSION_ID}}&temp_id={urllib.parse.quote(temp_id)}&username={urllib.parse.quote(effective_username)}',
                 cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
                 metadata={'temp_id': temp_id, 'username': effective_username}
             )
@@ -1264,7 +1170,7 @@ async def get_facets(contract_address: str, request: Request, username: str = Qu
         for handler in logging.getLogger().handlers:
             handler.flush()
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-
+    
 ## Section 4.6: Main Audit Endpoint ##
 @app.post("/audit", response_model=AuditResponse)
 async def audit_contract(file: UploadFile = File(...), contract_address: str = None, username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
@@ -1350,8 +1256,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                             'quantity': 1,
                         }],
                         mode='subscription',
-                        success_url=f'https://defiguard-ai-fresh-private.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=pro&has_diamond=true',
-                        cancel_url='https://defiguard-ai-fresh-private.onrender.com/ui',
+                        success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=pro&has_diamond=true',
+                        cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
                         metadata={'username': effective_username, 'tier': 'pro', 'has_diamond': 'true'}
                     )
                     logger.info(f"Redirecting {effective_username} to Stripe checkout for Pro tier with Diamond add-on due to file size")
@@ -1379,8 +1285,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                             'quantity': 1,
                         }],
                         mode='subscription',
-                        success_url=f'https://defiguard-ai-fresh-private.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=beginner',
-                        cancel_url='https://defiguard-ai-fresh-private.onrender.com/ui',
+                        success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=beginner',
+                        cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
                         metadata={'username': effective_username, 'tier': 'beginner'}
                     )
                     logger.info(f"Redirecting {effective_username} to Stripe checkout for Beginner tier due to usage limit")
@@ -1434,94 +1340,139 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             raise HTTPException(status_code=500, detail=f"Failed to create temporary file: {str(e)}")
 
         try:
-            try:
-                logger.info("Starting Slither analysis...")
-                @retry(stop_after_attempt(3), wait_fixed(2))
-                def analyze_slither(temp_path, attempt_number=1):
-                    logger.info(f"Slither retry attempt {attempt_number}")
-                    return Slither(temp_path)
-                slither = analyze_slither(temp_path, attempt_number=1)
-                logger.info("Slither analysis completed.")
-                findings = []
-                for contract in slither.contracts:
-                    logger.debug(f"Processing contract: {contract.name}")
-                    for detector in slither.detectors:
-                        findings.extend(detector.detect())
-                context = json.dumps([finding.to_json() for finding in findings]).replace('"', '\\"') if findings else "No static issues found"
-            except SlitherError as e:
-                logger.error(f"Slither analysis failed: {str(e)}")
-                logger.debug("Flushing log file after Slither error")
+            logger.info("Starting Slither analysis...")
+            @retry(stop_after_attempt(3), wait_fixed(2))
+            def analyze_slither(temp_path, attempt_number=1):
+                logger.info(f"Slither retry attempt {attempt_number}")
+                return Slither(temp_path)
+            slither = analyze_slither(temp_path, attempt_number=1)
+            logger.info("Slither analysis completed.")
+            findings = []
+            for contract in slither.contracts:
+                logger.debug(f"Processing contract: {contract.name}")
+                for detector in slither.detectors:
+                    findings.extend(detector.detect())
+            context = json.dumps([finding.to_json() for finding in findings]).replace('"', '\\"') if findings else "No static issues found"
+        except SlitherError as e:
+            logger.error(f"Slither analysis failed: {str(e)}")
+            logger.debug("Flushing log file after Slither error")
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+            context = "Slither analysis failed; proceeding with raw code"
+
+        if usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["fuzzing"]:
+            logger.info("Starting Echidna fuzzing...")
+            echidna_output = run_echidna(temp_path)
+            fuzzing_results = [
+                {"vulnerability": "Potential issue", "description": echidna_output["fuzzing_results"]}
+            ] if isinstance(echidna_output["fuzzing_results"], str) else echidna_output["fuzzing_results"]
+            context += f"\nEchidna fuzzing results: {json.dumps(fuzzing_results)}"
+        else:
+            logger.info(f"Fuzzing skipped for {current_tier} tier")
+
+        if contract_address and not usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["onchain"]:
+            logger.warning(f"On-chain analysis denied for {effective_username} (tier: {current_tier}, has_diamond: {user.has_diamond})")
+            logger.debug("Flushing log file after onchain tier check")
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+            raise HTTPException(status_code=403, detail="On-chain analysis requires Beginner tier or higher.")
+
+        details = "Uploaded Solidity code for analysis."
+        if contract_address:
+            if not INFURA_PROJECT_ID:
+                logger.error(f"On-chain analysis failed for {effective_username}: INFURA_PROJECT_ID not set")
+                raise HTTPException(status_code=503, detail="On-chain analysis unavailable: Please set INFURA_PROJECT_ID in environment variables.")
+            if not w3.is_address(contract_address):
+                logger.error(f"Invalid Ethereum address: {contract_address}")
+                logger.debug("Flushing log file after invalid address")
                 for handler in logging.getLogger().handlers:
                     handler.flush()
-                context = "Slither analysis failed; proceeding with raw code"
-
-            if usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["fuzzing"]:
-                logger.info("Starting Echidna fuzzing...")
-                echidna_output = run_echidna(temp_path)
-                fuzzing_results = [
-                    {"vulnerability": "Potential issue", "description": echidna_output["fuzzing_results"]}
-                ] if isinstance(echidna_output["fuzzing_results"], str) else echidna_output["fuzzing_results"]
-                context += f"\nEchidna fuzzing results: {json.dumps(fuzzing_results)}"
+                raise HTTPException(status_code=400, detail="Invalid Ethereum address.")
+            onchain_code = w3.eth.get_code(contract_address)
+            if onchain_code:
+                details += f" On-chain code fetched for {contract_address} (bytecode length: {len(onchain_code)})."
             else:
-                logger.info(f"Fuzzing skipped for {current_tier} tier")
+                details += f" No deployed code found at {contract_address}."
 
-            if contract_address and not usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["onchain"]:
-                logger.warning(f"On-chain analysis denied for {effective_username} (tier: {current_tier}, has_diamond: {user.has_diamond})")
-                logger.debug("Flushing log file after onchain tier check")
-                for handler in logging.getLogger().handlers:
-                    handler.flush()
-                raise HTTPException(status_code=403, detail="On-chain analysis requires Beginner tier or higher.")
-
-            details = "Uploaded Solidity code for analysis."
-            if contract_address:
-                if not INFURA_PROJECT_ID:
-                    logger.error(f"On-chain analysis failed for {effective_username}: INFURA_PROJECT_ID not set")
-                    raise HTTPException(status_code=503, detail="On-chain analysis unavailable: Please set INFURA_PROJECT_ID in environment variables.")
-                if not w3.is_address(contract_address):
-                    logger.error(f"Invalid Ethereum address: {contract_address}")
-                    logger.debug("Flushing log file after invalid address")
-                    for handler in logging.getLogger().handlers:
-                        handler.flush()
-                    raise HTTPException(status_code=400, detail="Invalid Ethereum address.")
-                onchain_code = w3.eth.get_code(contract_address)
-                if onchain_code:
-                    details += f" On-chain code fetched for {contract_address} (bytecode length: {len(onchain_code)})."
-                else:
-                    details += f" No deployed code found at {contract_address}."
-
-            if user.has_diamond and file_size > 1024 * 1024:
-                chunks = [code_str[i:i+500000] for i in range(0, len(code_str), 500000)]
-                results = []
-                if not GROK_API_KEY:
-                    logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
-                    raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
-                for i, chunk in enumerate(chunks):
-                    logger.info(f"Processing chunk {i+1}/{len(chunks)}...")
-                    prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=chunk, details=details, tier="diamond")
-                    response = client.chat.completions.create(
-                        model="grok-4",
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=0.0,
-                        response_format={
-                            "type": "json_schema",
-                            "json_schema": {"schema": AUDIT_SCHEMA},
-                            "strict": True
-                        }
-                    )
-                    if response.choices and response.choices[0].message.content:
-                        results.append(json.loads(response.choices[0].message.content))
-                aggregated = {
-                    "risk_score": max(r["risk_score"] for r in results),
-                    "issues": sum([r["issues"] for r in results], []),
-                    "predictions": sum([r["predictions"] for r in results], []),
-                    "recommendations": sum([r["recommendations"] for r in results], []),
-                    "remediation_roadmap": "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review.",
-                    "fuzzing_results": fuzzing_results
+        if user.has_diamond and file_size > 1024 * 1024:
+            chunks = [code_str[i:i+500000] for i in range(0, len(code_str), 500000)]
+            results = []
+            if not GROK_API_KEY:
+                logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
+                raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
+            for i, chunk in enumerate(chunks):
+                logger.info(f"Processing chunk {i+1}/{len(chunks)}...")
+                prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=chunk, details=details, tier="diamond")
+                response = client.chat.completions.create(
+                    model="grok-4",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {"schema": AUDIT_SCHEMA},
+                        "strict": True
+                    }
+                )
+                if response.choices and response.choices[0].message.content:
+                    results.append(json.loads(response.choices[0].message.content))
+            aggregated = {
+                "risk_score": max(r["risk_score"] for r in results),
+                "issues": sum([r["issues"] for r in results], []),
+                "predictions": sum([r["predictions"] for r in results], []),
+                "recommendations": sum([r["recommendations"] for r in results], []),
+                "remediation_roadmap": "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review.",
+                "fuzzing_results": fuzzing_results
+            }
+            user = db.query(User).filter(User.username == effective_username).first()
+            if user:
+                history = json.loads(user.audit_history)
+                history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": aggregated["risk_score"]})
+                user.audit_history = json.dumps(history)
+                overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
+                if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
+                    try:
+                        stripe.SubscriptionItem.create_usage_record(
+                            user.stripe_subscription_item_id,
+                            quantity=int(overage_mb),
+                            timestamp=int(time.time()),
+                            action='increment'
+                        )
+                        logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
+                    except Exception as e:
+                        logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
+                    db.commit()
+            return {"report": aggregated, "risk_score": str(aggregated["risk_score"]), "overage_cost": overage_cost}
+        else:
+            logger.info("Calling Grok API...")
+            if not GROK_API_KEY:
+                logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
+                raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
+            prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=code_str, details=details, tier="diamond" if user.has_diamond else current_tier)
+            response = client.chat.completions.create(
+                model="grok-4",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {"schema": AUDIT_SCHEMA},
+                    "strict": True
                 }
+            )
+            logger.info("API response received.")
+            if response.choices and response.choices[0].message.content:
+                raw_response = response.choices[0].message.content
+                logger.info(f"Raw Grok Response: {raw_response[:200]}")
+                with open(os.path.join(DATA_DIR, 'debug.log'), 'a') as f:
+                    f.write(f"[{timestamp}] DEBUG: Raw Grok Response: {raw_response}\n")
+                    f.flush()
+                audit_json = json.loads(raw_response)
+                if user.has_diamond:
+                    audit_json["remediation_roadmap"] = "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review."
+                audit_json["fuzzing_results"] = fuzzing_results
                 user = db.query(User).filter(User.username == effective_username).first()
                 if user:
                     history = json.loads(user.audit_history)
-                    history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": aggregated["risk_score"]})
+                    history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": audit_json["risk_score"]})
                     user.audit_history = json.dumps(history)
                     overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
                     if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
@@ -1536,62 +1487,16 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                         except Exception as e:
                             logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
                         db.commit()
-                return {"report": aggregated, "risk_score": str(aggregated["risk_score"]), "overage_cost": overage_cost}
+                logger.debug("Flushing log file after successful audit")
+                for handler in logging.getLogger().handlers:
+                    handler.flush()
+                return {"report": audit_json, "risk_score": str(audit_json.get("risk_score", "N/A")), "overage_cost": overage_cost}
             else:
-                logger.info("Calling Grok API...")
-                if not GROK_API_KEY:
-                    logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
-                    raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
-                prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=code_str, details=details, tier="diamond" if user.has_diamond else current_tier)
-                response = client.chat.completions.create(
-                    model="grok-4",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.0,
-                    response_format={
-                        "type": "json_schema",
-                        "json_schema": {"schema": AUDIT_SCHEMA},
-                        "strict": True
-                    }
-                )
-                logger.info("API response received.")
-                if response.choices and response.choices[0].message.content:
-                    raw_response = response.choices[0].message.content
-                    logger.info(f"Raw Grok Response: {raw_response[:200]}")
-                    with open(os.path.join(DATA_DIR, 'debug.log'), 'a') as f:
-                        f.write(f"[{timestamp}] DEBUG: Raw Grok Response: {raw_response}\n")
-                        f.flush()
-                    audit_json = json.loads(raw_response)
-                    if user.has_diamond:
-                        audit_json["remediation_roadmap"] = "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review."
-                    audit_json["fuzzing_results"] = fuzzing_results
-                    user = db.query(User).filter(User.username == effective_username).first()
-                    if user:
-                        history = json.loads(user.audit_history)
-                        history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": audit_json["risk_score"]})
-                        user.audit_history = json.dumps(history)
-                        overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
-                        if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
-                            try:
-                                stripe.SubscriptionItem.create_usage_record(
-                                    user.stripe_subscription_item_id,
-                                    quantity=int(overage_mb),
-                                    timestamp=int(time.time()),
-                                    action='increment'
-                                )
-                                logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
-                            except Exception as e:
-                                logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
-                            db.commit()
-                    logger.debug("Flushing log file after successful audit")
-                    for handler in logging.getLogger().handlers:
-                        handler.flush()
-                    return {"report": audit_json, "risk_score": str(audit_json.get("risk_score", "N/A")), "overage_cost": overage_cost}
-                else:
-                    logger.error("No response from Grok API")
-                    logger.debug("Flushing log file after no API response")
-                    for handler in logging.getLogger().handlers:
-                        handler.flush()
-                    raise HTTPException(status_code=500, detail="No response from Grok API")
+                logger.error("No response from Grok API")
+                logger.debug("Flushing log file after no API response")
+                for handler in logging.getLogger().handlers:
+                    handler.flush()
+                raise HTTPException(status_code=500, detail="No response from Grok API")
         finally:
             if temp_path and os.path.exists(temp_path):
                 os.unlink(temp_path)
@@ -1601,7 +1506,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         for handler in logging.getLogger().handlers:
             handler.flush()
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-
+    
 ## Section 4.6: Main Entry Point ##
 if __name__ == "__main__":
     import uvicorn

@@ -172,7 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             'Content-Type': 'application/json',
                             'X-CSRF-Token': token
                         },
-                        body: JSON.stringify({ password }),
+                        body: JSON.stringify({ password, csrf_token: token }),
                         credentials: 'include'
                     });
                     const data = await response.json();
@@ -285,7 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             'Content-Type': 'application/json',
                             'X-CSRF-Token': token
                         },
-                        body: JSON.stringify({ email, password }),
+                        body: JSON.stringify({ email, password, csrf_token: token }),
                         credentials: 'include'
                     });
                     const data = await response.json();
