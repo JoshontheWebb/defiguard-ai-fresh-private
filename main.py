@@ -1950,7 +1950,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
     finally:
         if temp_path and os.path.exists(temp_path):
             os.unlink(temp_path)
-            
+                       
 ## Section 4.6: Main Entry Point ##
 if __name__ == "__main__":
     import uvicorn
