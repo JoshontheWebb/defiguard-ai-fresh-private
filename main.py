@@ -480,7 +480,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         if user.has_diamond and file_size > 1024 * 1024:
             chunks = [code_str[i:i+500000] for i in range(0, len(code_str), 500000)]
             results = []
-            if not GROK_API_KEY:
+            if not os.getenv("GROK_API_KEY"):
                 logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
                 raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
             for i, chunk in enumerate(chunks):
@@ -536,7 +536,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             return {"report": aggregated, "risk_score": str(aggregated["risk_score"]), "overage_cost": overage_cost}
         else:
             logger.info("Calling Grok API...")
-            if not GROK_API_KEY:
+            if not os.getenv("GROK_API_KEY"):
                 logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
                 raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
             try:
@@ -1635,7 +1635,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
     if not user:
         logger.error(f"Audit failed: User {effective_username} not found")
         raise HTTPException(status_code=401, detail="Please login to continue")
-
     raw_response = None
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     code_bytes = None
@@ -1643,7 +1642,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
     temp_path = None
     context = ""
     fuzzing_results = []
-
     # File reading block
     try:
         code_bytes = await file.read()
@@ -1655,7 +1653,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         for handler in logging.getLogger().handlers:
             handler.flush()
         raise HTTPException(status_code=400, detail=f"File read failed: {str(e)}")
-
     # Validate file size and tier
     try:
         current_tier = user.tier
@@ -1755,7 +1752,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         for handler in logging.getLogger().handlers:
             handler.flush()
         raise e
-
     # Audit processing block
     try:
         logger.info("Starting audit process...")
@@ -1773,7 +1769,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             for handler in logging.getLogger().handlers:
                 handler.flush()
             raise HTTPException(status_code=400, detail="Empty file uploaded.")
-
         try:
             temp_dir = os.path.join(DATA_DIR, "temp_files")
             os.makedirs(temp_dir, exist_ok=True)
@@ -1788,7 +1783,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             for handler in logging.getLogger().handlers:
                 handler.flush()
             raise HTTPException(status_code=500, detail=f"Failed to create temporary file: {str(e)}")
-
         try:
             logger.info("Starting Slither analysis...")
             @retry(stop_after_attempt=3, wait_fixed=2)
@@ -1809,7 +1803,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             for handler in logging.getLogger().handlers:
                 handler.flush()
             context = "Slither analysis failed; proceeding with raw code"
-
         if usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["fuzzing"]:
             logger.info("Starting Echidna fuzzing...")
             echidna_output = run_echidna(temp_path)
@@ -1819,14 +1812,12 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             context += f"\nEchidna fuzzing results: {json.dumps(fuzzing_results)}"
         else:
             logger.info(f"Fuzzing skipped for {current_tier} tier")
-
         if contract_address and not usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["onchain"]:
             logger.warning(f"On-chain analysis denied for {effective_username} (tier: {current_tier}, has_diamond: {user.has_diamond})")
             logger.debug("Flushing log file after onchain tier check")
             for handler in logging.getLogger().handlers:
                 handler.flush()
             raise HTTPException(status_code=403, detail="On-chain analysis requires Beginner tier or higher.")
-
         details = "Uploaded Solidity code for analysis."
         if contract_address:
             if not INFURA_PROJECT_ID:
@@ -1843,7 +1834,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 details += f" On-chain code fetched for {contract_address} (bytecode length: {len(onchain_code)})."
             else:
                 details += f" No deployed code found at {contract_address}."
-
         if user.has_diamond and file_size > 1024 * 1024:
             chunks = [code_str[i:i+500000] for i in range(0, len(code_str), 500000)]
             results = []
@@ -1950,7 +1940,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
     finally:
         if temp_path and os.path.exists(temp_path):
             os.unlink(temp_path)
-                        
+                       
 ## Section 4.6: Main Entry Point ##
 if __name__ == "__main__":
     import uvicorn
