@@ -1686,15 +1686,14 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 except PermissionError as e:
                     logger.error(f"Failed to write temp file: {str(e)}")
                     raise HTTPException(status_code=500, detail="Failed to save temporary file due to permissions")
-                finally:
-                    if temp_path and os.path.exists(temp_path):
-                        os.unlink(temp_path)
                 if not STRIPE_API_KEY:
                     logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: STRIPE_API_KEY not set")
+                    os.unlink(temp_path)
                     raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
                 if not all([STRIPE_PRICE_PRO, STRIPE_PRICE_DIAMOND]):
                     missing_prices = [var for var in ["STRIPE_PRICE_PRO", "STRIPE_PRICE_DIAMOND"] if not globals()[var]]
                     logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: Missing Stripe price IDs: {', '.join(missing_prices)}")
+                    os.unlink(temp_path)
                     raise HTTPException(status_code=503, detail=f"Payment processing unavailable: Missing Stripe price IDs: {', '.join(missing_prices)}")
                 try:
                     session = stripe.checkout.Session.create(
@@ -1707,8 +1706,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                             'quantity': 1,
                         }],
                         mode='subscription',
-                        success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=pro&has_diamond=true',
-                        cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
+                        success_url=f'https://defiguard-ai-fresh-private.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=pro&has_diamond=true',
+                        cancel_url='https://defiguard-ai-fresh-private.onrender.com/ui',
                         metadata={'username': effective_username, 'tier': 'pro', 'has_diamond': 'true'}
                     )
                     logger.info(f"Redirecting {effective_username} to Stripe checkout for Pro tier with Diamond add-on due to file size")
@@ -1718,6 +1717,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     return {"session_url": session.url}
                 except Exception as e:
                     logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: {str(e)}")
+                    os.unlink(temp_path)
                     raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
             elif e.status_code == 403 and "Usage limit exceeded" in e.detail:
                 logger.info(f"Usage limit exceeded for {effective_username}; redirecting to upgrade")
@@ -1735,8 +1735,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                             'quantity': 1,
                         }],
                         mode='subscription',
-                        success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=beginner',
-                        cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
+                        success_url=f'https://defiguard-ai-fresh-private.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=beginner',
+                        cancel_url='https://defiguard-ai-fresh-private.onrender.com/ui',
                         metadata={'username': effective_username, 'tier': 'beginner'}
                     )
                     logger.info(f"Redirecting {effective_username} to Stripe checkout for Beginner tier due to usage limit")
@@ -1776,7 +1776,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
 
         try:
             temp_dir = os.path.join(DATA_DIR, "temp_files")
-            os.makedirs(temp_dir, exist_ok=True)  # Ensure temp_files directory exists
+            os.makedirs(temp_dir, exist_ok=True)
             with NamedTemporaryFile(delete=False, suffix=".sol", dir=temp_dir) as temp_file:
                 temp_file.write(code_bytes)
                 temp_path = temp_file.name
@@ -1791,7 +1791,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
 
         try:
             logger.info("Starting Slither analysis...")
-            @retry(stop_after_attempt(3), wait_fixed(2))
+            @retry(stop_after_attempt=3, wait_fixed=2)
             def analyze_slither(temp_path, attempt_number=1):
                 logger.info(f"Slither retry attempt {attempt_number}")
                 return Slither(temp_path)
@@ -1847,7 +1847,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         if user.has_diamond and file_size > 1024 * 1024:
             chunks = [code_str[i:i+500000] for i in range(0, len(code_str), 500000)]
             results = []
-            if not GROK_API_KEY:
+            if not os.getenv("GROK_API_KEY"):
                 logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
                 raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
             for i, chunk in enumerate(chunks):
@@ -1891,12 +1891,10 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     except Exception as e:
                         logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
                     db.commit()
-            if temp_path and os.path.exists(temp_path):
-                os.unlink(temp_path)
             return {"report": aggregated, "risk_score": str(aggregated["risk_score"]), "overage_cost": overage_cost}
         else:
             logger.info("Calling Grok API...")
-            if not GROK_API_KEY:
+            if not os.getenv("GROK_API_KEY"):
                 logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
                 raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
             prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=code_str, details=details, tier="diamond" if user.has_diamond else current_tier)
@@ -1939,8 +1937,9 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                         except Exception as e:
                             logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
                         db.commit()
-                if temp_path and os.path.exists(temp_path):
-                    os.unlink(temp_path)
+                logger.debug("Flushing log file after successful audit")
+                for handler in logging.getLogger().handlers:
+                    handler.flush()
                 return {"report": audit_json, "risk_score": str(audit_json.get("risk_score", "N/A")), "overage_cost": overage_cost}
             else:
                 logger.error("No response from Grok API")
@@ -1951,7 +1950,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
     finally:
         if temp_path and os.path.exists(temp_path):
             os.unlink(temp_path)
-
+            
 ## Section 4.6: Main Entry Point ##
 if __name__ == "__main__":
     import uvicorn
