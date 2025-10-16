@@ -252,10 +252,6 @@ Protocol Details: {details}.
 Tier: {tier}.
 Return the analysis in the exact JSON schema provided. For Beginner/Pro, include detailed predictions and recommendations. For Pro, add advanced regulatory insights and fuzzing results. For Diamond add-on, include formal verification, exploit simulation, threat modeling, fuzzing results, and a remediation roadmap.
 """
-```
-
-<xaiArtifact artifact_id="458958d9-9c87-4b43-989c-1a637dddf95d" artifact_version_id="466ecdd7-c41a-4150-835a-b91261f3341e" title="main.py_section4.6" contentType="text/python">
-```python
 ## Section 4.6: Main Audit Endpoint ##
 @app.post("/audit", response_model=AuditResponse)
 async def audit_contract(file: UploadFile = File(...), contract_address: str = None, username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
