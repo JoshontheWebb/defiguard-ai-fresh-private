@@ -605,7 +605,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
     finally:
         if temp_path and os.path.exists(temp_path):
             os.unlink(temp_path)
-            
+
  ## Section 2 ##
 import os.path
 DATA_DIR = "/opt/render/project/data"  # Render persistent disk
