@@ -1136,8 +1136,8 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
             payment_method_types=['card'],
             line_items=line_items,
             mode='subscription',
-            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(username)}',
-            cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
+            success_url=f'https://defiguard-ai-fresh-private.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(username)}',
+            cancel_url='https://defiguard-ai-fresh-private.onrender.com/ui',
             metadata={'username': username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
         )
         logger.info(f"Redirecting {username} to Stripe checkout for {tier} tier, has_diamond: {has_diamond}, session: {request.session}")
@@ -1204,8 +1204,8 @@ async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), req
             payment_method_types=['card'],
             line_items=line_items,
             mode='subscription',
-            success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(effective_username)}',
-            cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
+            success_url=f'https://defiguard-ai-fresh-private.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(effective_username)}',
+            cancel_url='https://defiguard-ai-fresh-private.onrender.com/ui',
             metadata={'username': effective_username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
         )
         logger.info(f"Created Stripe checkout session for {effective_username} to {tier}, has_diamond: {has_diamond}, session: {request.session}")
@@ -1223,7 +1223,88 @@ async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), req
     except Exception as e:
         logger.error(f"Stripe checkout creation failed for {effective_username} to {tier}: {str(e)}")
         raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
-                    
+
+@app.post("/create-checkout-session")
+async def create_checkout_session(username: str = Query(None), temp_id: str = Query(...), price: int = Query(...), request: Request = None, db: Session = Depends(get_db)):
+    await verify_csrf_token(request)
+    session_username = request.session.get("username")
+    logger.debug(f"Create-checkout-session request: Query username={username}, Session username={session_username}, temp_id={temp_id}, session: {request.session}")
+    effective_username = username or session_username
+    if not effective_username:
+        logger.error("No username provided for /create-checkout-session; redirecting to login")
+        raise HTTPException(status_code=401, detail="Please login to continue")
+    user = db.query(User).filter(User.username == effective_username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not STRIPE_API_KEY:
+        logger.error(f"Stripe session creation failed for {effective_username}: STRIPE_API_KEY not set")
+        raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
+    if not STRIPE_METERED_PRICE_DIAMOND:
+        logger.error(f"Stripe session creation failed for {effective_username}: STRIPE_METERED_PRICE_DIAMOND not set")
+        raise HTTPException(status_code=503, detail="Payment processing unavailable: Missing STRIPE_METERED_PRICE_DIAMOND in environment variables.")
+    try:
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            line_items=[{
+                'price': STRIPE_METERED_PRICE_DIAMOND,
+                'quantity': 1,
+            }],
+            mode='subscription',
+            success_url=f'https://defiguard-ai-fresh-private.onrender.com/complete-diamond-audit?session_id={{CHECKOUT_SESSION_ID}}&temp_id={urllib.parse.quote(temp_id)}&username={urllib.parse.quote(effective_username)}',
+            cancel_url='https://defiguard-ai-fresh-private.onrender.com/ui',
+            metadata={'temp_id': temp_id, 'username': effective_username}
+        )
+        logger.info(f"Redirecting {effective_username} to Stripe checkout for Diamond audit overage, session: {request.session}")
+        logger.debug("Flushing log file after Diamond checkout redirect")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        return {"session_url": session.url}
+    except Exception as e:
+        logger.error(f"Stripe checkout creation failed for {effective_username} Diamond audit: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
+
+@app.get("/complete-tier-checkout")
+async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query(...), has_diamond: bool = Query(False), username: str = Query(None), request: Request = None, db: Session = Depends(get_db)):
+    session_username = request.session.get("username")
+    logger.debug(f"Complete-tier-checkout request: Query username={username}, Session username={session_username}, session_id={session_id}, tier={tier}, has_diamond={has_diamond}, session: {request.session}")
+    effective_username = username or session_username
+    if not effective_username:
+        logger.error(f"No username provided for /complete-tier-checkout; redirecting to login. Session: {request.session}")
+        return RedirectResponse(url="/auth?redirect_reason=no_username")
+    user = db.query(User).filter(User.username == effective_username).first()
+    if not user:
+        logger.error(f"User {effective_username} not found for /complete-tier-checkout")
+        return RedirectResponse(url="/auth?redirect_reason=user_not_found")
+    if not STRIPE_API_KEY:
+        logger.error(f"Tier upgrade checkout failed for {effective_username}: STRIPE_API_KEY not set")
+        return RedirectResponse(url="/ui?upgrade=error&message=Payment%20processing%20unavailable")
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+        logger.debug(f"Retrieved Stripe session: {session_id}, payment_status={session.payment_status}, metadata={session.metadata}")
+        if session.payment_status == 'paid':
+            result = usage_tracker.set_tier(tier, has_diamond, effective_username, db)
+            user.stripe_subscription_id = session.subscription
+            for item in stripe.Subscription.retrieve(session.subscription).get('items', {}).get('data', []):
+                if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
+                    user.stripe_subscription_item_id = item.id
+            usage_tracker.reset_usage(effective_username, db)
+            db.commit()
+            request.session["username"] = effective_username
+            logger.info(f"Tier upgrade completed for {effective_username} to {tier}, has_diamond={has_diamond}, session: {request.session}")
+            logger.debug("Flushing log file after tier upgrade completion")
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+            return RedirectResponse(url="/ui?upgrade=success")
+        else:
+            logger.error(f"Payment not completed for {effective_username}, session_id={session_id}, payment_status={session.payment_status}")
+            return RedirectResponse(url="/ui?upgrade=failed")
+    except Exception as e:
+        logger.error(f"Tier upgrade checkout failed for {effective_username}: {str(e)}, session_id={session_id}")
+        logger.debug("Flushing log file after tier upgrade error")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+        return RedirectResponse(url=f"/ui?upgrade=error&message={urllib.parse.quote(str(e))}")
+                        
 ## Section 4.4: Webhook Endpoint ##
 @app.post("/webhook")
 async def webhook(request: Request, db: Session = Depends(get_db)):
