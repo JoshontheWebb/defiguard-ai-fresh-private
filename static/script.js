@@ -158,18 +158,16 @@ document.addEventListener('DOMContentLoaded', () => {
         // Section5: Hamburger Menu
         console.log(`[DEBUG] Initializing hamburger menu: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
         if (hamburger && sidebar && mainContent) {
-            document.addEventListener('click', (e) => { // Event delegation for robustness
-                if (e.target.closest('#hamburger')) {
-                    try {
-                        sidebar.classList.toggle('open');
-                        hamburger.classList.toggle('open');
-                        mainContent.style.marginLeft = sidebar.classList.contains('open') ? '270px' : '0';
-                        console.log(`[DEBUG] Hamburger menu toggled: sidebar.open=${sidebar.classList.contains('open')}, mainContent.marginLeft=${mainContent.style.marginLeft}, time=${new Date().toISOString()}`);
-                    } catch (error) {
-                        console.error(`[ERROR] Hamburger menu toggle failed: ${error.message}, time=${new Date().toISOString()}`);
-                        usageWarning.textContent = `Error with menu: ${error.message}`;
-                        usageWarning.classList.add('error');
-                    }
+            hamburger.addEventListener('click', () => { // Direct event listener on hamburger
+                try {
+                    sidebar.classList.toggle('open');
+                    hamburger.classList.toggle('open');
+                    mainContent.style.marginLeft = sidebar.classList.contains('open') ? '270px' : '0';
+                    console.log(`[DEBUG] Hamburger menu toggled: sidebar.open=${sidebar.classList.contains('open')}, mainContent.marginLeft=${mainContent.style.marginLeft}, time=${new Date().toISOString()}`);
+                } catch (error) {
+                    console.error(`[ERROR] Hamburger menu toggle failed: ${error.message}, time=${new Date().toISOString()}`);
+                    usageWarning.textContent = `Error with menu: ${error.message}`;
+                    usageWarning.classList.add('error');
                 }
             });
         } else {
