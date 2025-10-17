@@ -768,7 +768,13 @@ const handleSubmit = (event) => {
             }
         }, 2000);
 
-        // Ensure only spinner is used, remove progress bar
+        // Add spinner and remove progress bar
+        let spinner = loading.querySelector('.spinner');
+        if (!spinner) {
+            spinner = document.createElement('div');
+            spinner.className = 'spinner';
+            loading.insertBefore(spinner, loadingText);
+        }
         const progressBar = loading.querySelector('.progress-bar');
         if (progressBar) progressBar.remove();
 
