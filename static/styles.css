@@ -184,7 +184,7 @@ header .logo:hover {
 .hero {
     text-align: center;
     padding: clamp(2rem, 5vw, 3rem) clamp(1rem, 2vw, 1rem);
-    background: linear-gradient(135deg, var(--gradient), var(--overlay-dark));
+    background: var(--gradient); /* Reverted to original gradient */
     color: var(--text-light);
     border-radius: 15px;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
@@ -239,8 +239,8 @@ header .logo:hover {
 .progress-tracker li {
     margin: clamp(0.3rem, 0.5vw, 0.5rem) 0;
     font-size: clamp(0.9rem, 1.5vw, 1rem);
-    color: var(--text-light); /* Improved contrast */
-    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3); /* Subtle glow */
+    color: var(--text-light);
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
 }
 
 .audit-section {
@@ -259,7 +259,7 @@ header .logo:hover {
     color: var(--text-light);
     margin-bottom: clamp(10px, 2vw, 20px);
     font-size: clamp(1.5rem, 3vw, 1.8rem);
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 10px rgba(0, 209, 178, 0.7); /* Neon glow */
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 10px rgba(0, 209, 178, 0.7);
 }
 
 .audit-section form {
@@ -271,7 +271,7 @@ header .logo:hover {
 .audit-section label {
     font-weight: 700;
     color: var(--text-light);
-    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3); /* Subtle glow for contrast */
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
 }
 
 .audit-section input[type="text"],
@@ -282,7 +282,7 @@ header .logo:hover {
     font-size: clamp(0.9rem, 1.5vw, 1rem);
     transition: border-color 0.3s ease, box-shadow 0.3s ease;
     background: var(--glass-bg);
-    color: var(--text-light); /* Ensure text visibility */
+    color: var(--text-light);
 }
 
 .audit-section input[type="text"]:focus,
@@ -313,14 +313,14 @@ header .logo:hover {
 }
 
 .usage-warning p {
-    color: var(--text-light); /* Improved contrast */
+    color: var(--text-light);
     font-size: clamp(0.8rem, 1.2vw, 0.9rem);
     margin-top: clamp(0.3rem, 0.5vw, 0.5rem);
     padding: clamp(0.3rem, 0.5vw, 0.5rem);
     border-radius: 8px;
     background: rgba(239, 68, 68, 0.1);
     border: 1px solid var(--error);
-    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3); /* Glow for readability */
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
 }
 
 .tier-benefits {
@@ -338,14 +338,14 @@ header .logo:hover {
     color: var(--text-light);
     font-size: clamp(1rem, 2vw, 1.2rem);
     margin-bottom: clamp(0.3rem, 0.5vw, 0.5rem);
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 10px rgba(0, 209, 178, 0.7); /* Neon glow */
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 10px rgba(0, 209, 178, 0.7);
 }
 
 .tier-benefits p {
     font-size: clamp(0.8rem, 1.2vw, 0.9rem);
     margin: clamp(0.3rem, 0.5vw, 0.5rem) 0;
-    color: var(--text-light); /* Improved contrast */
-    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3); /* Subtle glow */
+    color: var(--text-light);
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
 }
 
 .tier-benefits a {
@@ -472,8 +472,8 @@ header .logo:hover {
     margin: clamp(0.3rem, 0.5vw, 0.5rem) 0;
     font-size: clamp(0.9rem, 1.5vw, 1rem);
     transition: color 0.3s ease;
-    color: var(--text-light); /* Improved contrast */
-    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3); /* Subtle glow */
+    color: var(--text-light);
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
 }
 
 .predictions-placeholder li:hover,
@@ -500,8 +500,8 @@ header .logo:hover {
 #settings li {
     margin: clamp(0.3rem, 0.5vw, 0.5rem) 0;
     font-size: clamp(0.9rem, 1.5vw, 1rem);
-    color: var(--text-light); /* Improved contrast */
-    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3); /* Subtle glow */
+    color: var(--text-light);
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
 }
 
 #settings a {
@@ -547,7 +547,7 @@ footer a:focus-visible {
     border: 2px solid hsl(0, 0%, 88%);
     background: var(--glass-bg);
     transition: border-color 0.3s ease, box-shadow 0.3s ease;
-    color: var(--text-light); /* Improved contrast */
+    color: var(--text-light);
 }
 
 .upgrade-prompt select {
