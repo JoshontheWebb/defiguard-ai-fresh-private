@@ -179,7 +179,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Section6: Authentication
         const updateAuthStatus = () => {
             const username = localStorage.getItem('username');
-            const sidebar = document.querySelector('#sidebar');
             console.log(`[DEBUG] updateAuthStatus: username=${username}, localStorage=${JSON.stringify(localStorage)}, time=${new Date().toISOString()}`);
             if (!authStatus) {
                 console.error('[ERROR] #auth-status not found in DOM');
