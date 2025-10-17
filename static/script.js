@@ -155,26 +155,28 @@ document.addEventListener('DOMContentLoaded', () => {
             calculateDiamondOverage(file);
         });
 
-        // Section5: Hamburger Menu
-        console.log(`[DEBUG] Initializing hamburger menu: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
-        if (hamburger && sidebar && mainContent) {
-            hamburger.addEventListener('click', () => { // Direct event listener on hamburger
-                try {
-                    sidebar.classList.toggle('open');
-                    hamburger.classList.toggle('open');
-                    mainContent.style.marginLeft = sidebar.classList.contains('open') ? '270px' : '0';
-                    console.log(`[DEBUG] Hamburger menu toggled: sidebar.open=${sidebar.classList.contains('open')}, mainContent.marginLeft=${mainContent.style.marginLeft}, time=${new Date().toISOString()}`);
-                } catch (error) {
-                    console.error(`[ERROR] Hamburger menu toggle failed: ${error.message}, time=${new Date().toISOString()}`);
-                    usageWarning.textContent = `Error with menu: ${error.message}`;
-                    usageWarning.classList.add('error');
-                }
-            });
-        } else {
-            console.error(`[ERROR] Hamburger menu initialization failed: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
-            usageWarning.textContent = 'Error: Menu components not found';
-            usageWarning.classList.add('error');
+        // Section5: Hamburger Menu (replace existing Section5)
+console.log(`[DEBUG] Initializing hamburger menu: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
+if (hamburger && sidebar && mainContent) {
+    document.addEventListener('click', (e) => { // Event delegation
+        if (e.target.closest('#hamburger')) {
+            try {
+                sidebar.classList.toggle('open');
+                hamburger.classList.toggle('open');
+                mainContent.style.marginLeft = sidebar.classList.contains('open') ? '270px' : '0';
+                console.log(`[DEBUG] Hamburger menu toggled: sidebar.open=${sidebar.classList.contains('open')}, mainContent.marginLeft=${mainContent.style.marginLeft}, time=${new Date().toISOString()}`);
+            } catch (error) {
+                console.error(`[ERROR] Hamburger menu toggle failed: ${error.message}, time=${new Date().toISOString()}`);
+                usageWarning.textContent = `Error with menu: ${error.message}`;
+                usageWarning.classList.add('error');
+            }
         }
+    });
+} else {
+    console.error(`[ERROR] Hamburger menu initialization failed: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
+    usageWarning.textContent = 'Error: Menu components not found';
+    usageWarning.classList.add('error');
+}
 
         // Section6: Authentication
         const updateAuthStatus = () => {
@@ -862,14 +864,17 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('[DEBUG] Report downloaded');
         });
 
-        // Section13: Header Scroll Behavior (Fallback)
-        window.addEventListener('scroll', () => {
-            const header = document.querySelector('header');
-            if (window.scrollY > 100) {
-                header.classList.add('scrolled');
-            } else {
-                header.classList.remove('scrolled');
-            }
-        });
+        // Section13: Header Scroll Behavior (replace existing Section13)
+window.addEventListener('scroll', () => {
+    const header = document.querySelector('header');
+    if (!header) return;
+    if (window.scrollY > 100) {
+        header.classList.add('scrolled');
+        if (!header.classList.contains('visible')) header.classList.add('visible'); // Fallback to show on scroll down
+    } else {
+        header.classList.remove('scrolled');
+        header.classList.remove('visible'); // Ensure fade-in on scroll up
+    }
+});
     });
 }
