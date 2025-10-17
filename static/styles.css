@@ -219,7 +219,7 @@ header .logo {
 
 .audit-section label {
     font-weight: 700;
-    color: var(--text-dark);
+    color: var(--text-light);
 }
 
 .audit-section input[type="text"],
@@ -633,4 +633,32 @@ footer a:focus-visible {
     .hero p {
         font-size: 0.9rem;
     }
+}
+
+// Branding Styles
+.logo-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.logo-container img {
+    max-height: 60px;
+    width: auto;
+    transition: transform 0.3s ease;
+}
+
+.logo-container img:hover {
+    transform: scale(1.05);
+}
+
+header .logo {
+    margin: 0;
+    font-size: 0px; /* Hide text if using image logo */
+    background: url('/static/images/defiguard-logo.svg') no-repeat center;
+    background-size: contain;
+    width: 200px;
+    height: 60px;
+    display: inline-block;
 }
