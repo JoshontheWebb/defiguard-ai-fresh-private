@@ -44,14 +44,6 @@ body {
     100% { transform: rotate(360deg); }
 }
 
-.loading p {
-    text-align: center;
-    font-size: 1.2rem;
-    color: var(--text-dark);
-    margin-top: 10px;
-    font-weight: 500;
-}
-
 // Section2: Layout and Components
 header {
     position: sticky;
@@ -282,7 +274,7 @@ header .logo {
     outline-offset: 2px;
 }
 
-.usage-warning {
+.usage-warning p {
     color: var(--error);
     font-size: 0.9rem;
     margin-top: 0.5rem;
@@ -290,7 +282,7 @@ header .logo {
     border-radius: 4px;
 }
 
-.usage-warning.error {
+.usage-warning p.error {
     background-color: rgba(239, 68, 68, 0.1);
     border: 1px solid var(--error);
 }
@@ -564,7 +556,6 @@ footer a:focus-visible {
     outline-offset: 2px;
 }
 
-// Section3: Responsive Design
 @media (max-width: 768px) {
     .sidebar {
         width: 0;
