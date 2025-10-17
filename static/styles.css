@@ -36,7 +36,6 @@ body {
 
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
 
-/* Existing CSS remains, only update header-related rules */
 header {
     position: sticky;
     top: 0;
@@ -44,16 +43,16 @@ header {
     color: var(--text-light);
     padding: 1.5rem;
     text-align: center;
-    z-index: 103; /* Increased to stay above sidebar (102) */
+    z-index: 98; /* Lowered to ensure hamburger (101) is clickable */
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     animation: gradientFlow 10s ease infinite;
     opacity: 1;
-    transition: opacity 0.3s ease; /* Ensure smooth transition */
+    transition: opacity 0.3s ease !important; /* Force transition */
 }
 
-/* Enhanced scroll-driven fade animation with fallback */
+/* Enhanced scroll-driven fade animation */
 @scroll-timeline header-fade {
     time-range: 1s;
     start: rect(0px, 0px, 100px, 0px);
@@ -65,28 +64,28 @@ header {
         animation: fadeOut linear both;
         animation-timeline: header-fade;
     }
+
+    @keyframes fadeOut {
+        from { opacity: 1; }
+        to { opacity: 0; }
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
 }
 
 @supports not (animation-timeline: works) {
     header {
-        transition: opacity 0.3s ease; /* Fallback for non-supporting browsers */
+        transition: opacity 0.3s ease !important; /* Ensure fallback */
     }
     header.scrolled {
-        opacity: 0;
+        opacity: 0 !important; /* Force fade */
     }
     header.visible {
-        opacity: 1;
+        opacity: 1 !important; /* Force reappear */
     }
-}
-
-@keyframes fadeOut {
-    from { opacity: 1; }
-    to { opacity: 0; }
-}
-
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
 }
 
 @keyframes gradientFlow {
@@ -94,8 +93,6 @@ header {
     50% { background: linear-gradient(45deg, #0d47a1, #1a252f); }
     100% { background: linear-gradient(45deg, #1a252f, #0d47a1); }
 }
-
-/* Rest of your CSS remains unchanged */
 
 header .logo {
     font-size: clamp(1.5rem, 5vw, 2rem);

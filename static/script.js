@@ -161,9 +161,11 @@ if (hamburger && sidebar && mainContent) {
     document.addEventListener('click', (e) => {
         const ham = e.target.closest('#hamburger');
         if (ham) {
+            e.preventDefault(); // Prevent default if needed
+            e.stopPropagation(); // Ensure event isn’t blocked by overlays
             try {
                 sidebar.classList.toggle('open');
-                ham.classList.toggle('open'); // Use ham to ensure correct element
+                ham.classList.toggle('open');
                 mainContent.style.marginLeft = sidebar.classList.contains('open') ? '270px' : '0';
                 console.log(`[DEBUG] Hamburger menu toggled: sidebar.open=${sidebar.classList.contains('open')}, mainContent.marginLeft=${mainContent.style.marginLeft}, time=${new Date().toISOString()}`);
             } catch (error) {
@@ -172,7 +174,7 @@ if (hamburger && sidebar && mainContent) {
                 usageWarning.classList.add('error');
             }
         }
-    });
+    }, { capture: true }); // Use capture phase to catch before bubbling
 } else {
     console.error(`[ERROR] Hamburger menu initialization failed: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
     usageWarning.textContent = 'Error: Menu components not found';
@@ -869,13 +871,14 @@ if (hamburger && sidebar && mainContent) {
 window.addEventListener('scroll', () => {
     const header = document.querySelector('header');
     if (!header) return;
+    console.log(`[DEBUG] Header scroll triggered: scrollY=${window.scrollY}, time=${new Date().toISOString()}`); // Debug
     if (window.scrollY > 100) {
-        header.style.opacity = '0'; // Explicit fade out
+        header.style.opacity = '0 !important'; // Force opacity
         header.classList.add('scrolled');
         if (!header.classList.contains('visible')) header.classList.add('visible');
     } else {
-        header.style.opacity = '1'; // Explicit fade in
+        header.style.opacity = '1 !important'; // Force opacity
         header.classList.remove('scrolled');
         header.classList.remove('visible');
     }
-});
+}, { passive: true }); // Improve scroll performance
