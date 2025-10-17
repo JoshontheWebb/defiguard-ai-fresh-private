@@ -106,8 +106,9 @@ document.addEventListener('DOMContentLoaded', () => {
         apiKeySpan: '#api-key-value',
         hamburger: '#hamburger',
         sidebar: '#sidebar',
-        mainContent: '.main-content'
-    }, ({ auditForm, loading, resultsDiv, riskScoreSpan, issuesBody, predictionsList, recommendationsList, fuzzingList, remediationRoadmap, usageWarning, tierInfo, tierDescription, sizeLimit, features, upgradeLink, tierSelect, tierSwitchButton, contractAddressInput, facetWell, downloadReportButton, diamondAuditButton, customReportInput, apiKeySpan, hamburger, sidebar, mainContent }) => {
+        mainContent: '.main-content',
+        logoutSidebar: '#logout-sidebar' // Added logout button selector
+    }, ({ auditForm, loading, resultsDiv, riskScoreSpan, issuesBody, predictionsList, recommendationsList, fuzzingList, remediationRoadmap, usageWarning, tierInfo, tierDescription, sizeLimit, features, upgradeLink, tierSelect, tierSwitchButton, contractAddressInput, facetWell, downloadReportButton, diamondAuditButton, customReportInput, apiKeySpan, hamburger, sidebar, mainContent, logoutSidebar }) => {
         let maxFileSize = null;
         let auditCount = 0;
         let auditLimit = 3;
@@ -854,6 +855,20 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 header.classList.remove('scrolled');
             }
+        });
+
+        // Section14: Logout Functionality
+        logoutSidebar.addEventListener('click', (e) => {
+            e.preventDefault();
+            console.log('[DEBUG] Logout initiated from sidebar, time=${new Date().toISOString()}');
+            localStorage.removeItem('username');
+            localStorage.removeItem('tier');
+            localStorage.removeItem('size_limit');
+            localStorage.removeItem('diamond_feature');
+            localStorage.removeItem('csrfToken');
+            console.log('[DEBUG] Local storage cleared');
+            updateAuthStatus(); // Refresh auth status in sidebar
+            window.location.href = '/auth';
         });
     });
 });

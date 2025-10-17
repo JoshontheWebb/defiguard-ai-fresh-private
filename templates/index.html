@@ -32,6 +32,20 @@
         .pricing-table th {
             background-color: #f2f2f2;
         }
+        .logout-link {
+            color: var(--text-light);
+            text-decoration: none;
+            padding: clamp(10px, 1.5vw, 12px);
+            display: block;
+            border-radius: 8px;
+            transition: background-color 0.3s ease;
+        }
+        .logout-link:hover {
+            background-color: rgba(52, 73, 94, 0.3);
+            color: var(--accent-pink);
+            outline: 2px solid var(--focus-outline);
+            outline-offset: 2px;
+        }
     </style>
 </head>
 <body>
@@ -55,7 +69,7 @@
             <li><a href="#results">Results Dashboard</a></li>
             <li><a href="#settings">Settings</a></li>
             <li id="auth-status"><a href="/auth">Sign In / Create Account</a></li>
-            <li id="logout-button"></li>
+            <li><a href="#" id="logout-sidebar" class="logout-link">Log Out</a></li>
             <li><a href="https://discord.gg/defiguard" target="_blank">Community Support</a></li>
             <li class="priority-support" style="display: none;"><a href="mailto:support@defiguard.ai">Priority Support (Beginner/Pro)</a></li>
         </ul>
