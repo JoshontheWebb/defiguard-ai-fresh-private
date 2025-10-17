@@ -19,6 +19,8 @@
     --glass-bg: rgba(255, 255, 255, 0.1);
     --glass-border: rgba(255, 255, 255, 0.2);
     --overlay-dark: rgba(26, 37, 47, 0.7); /* Dark overlay for contrast */
+    --glow-teal: rgba(0, 209, 178, 0.7);
+    --glow-pink: rgba(255, 64, 129, 0.7);
 }
 
 body {
@@ -43,6 +45,13 @@ header {
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
+    animation: gradientFlow 10s ease infinite;
+}
+
+@keyframes gradientFlow {
+    0% { background: linear-gradient(45deg, #1a252f, #0d47a1); }
+    50% { background: linear-gradient(45deg, #0d47a1, #1a252f); }
+    100% { background: linear-gradient(45deg, #1a252f, #0d47a1); }
 }
 
 header .logo {
@@ -55,11 +64,13 @@ header .logo {
     height: clamp(45px, 7vw, 60px);
     display: inline-block;
     margin: 0 auto;
-    transition: transform 0.3s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    perspective: 1000px;
 }
 
 header .logo:hover {
-    transform: scale(1.05);
+    transform: rotateX(10deg) scale(1.05);
+    box-shadow: 0 0 20px var(--glow-teal), 0 0 30px var(--glow-pink);
 }
 
 .hamburger {
@@ -72,6 +83,7 @@ header .logo:hover {
     width: clamp(30px, 5vw, 35px);
     height: clamp(25px, 4vw, 30px);
     transition: transform 0.3s ease;
+    view-transition-name: hamburger; /* Smooth transition */
 }
 
 .hamburger div {
@@ -81,6 +93,11 @@ header .logo:hover {
     margin: clamp(4px, 0.7vw, 6px) 0;
     transition: all 0.3s ease;
     border-radius: 2px;
+    box-shadow: 0 0 5px var(--glow-teal);
+}
+
+.hamburger:hover div {
+    box-shadow: 0 0 10px var(--glow-pink);
 }
 
 .hamburger.open .bar1 {
@@ -166,7 +183,7 @@ header .logo:hover {
     border-radius: 8px;
     border: 1px solid var(--glass-border);
     position: relative;
-    z-index: 103; /* Ensure above header if overlapping */
+    z-index: 103;
 }
 
 .main-content {
@@ -184,7 +201,7 @@ header .logo:hover {
 .hero {
     text-align: center;
     padding: clamp(2rem, 5vw, 3rem) clamp(1rem, 2vw, 1rem);
-    background: var(--gradient); /* Reverted to original gradient */
+    background: var(--gradient);
     color: var(--text-light);
     border-radius: 15px;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
@@ -195,8 +212,7 @@ header .logo:hover {
 .hero h2 {
     font-size: clamp(1.5rem, 4vw, 2rem);
     margin-bottom: clamp(0.5rem, 1.5vw, 1rem);
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    text-shadow: 0 0 10px rgba(0, 209, 178, 0.7), 0 0 20px rgba(255, 64, 129, 0.5); /* Neon glow */
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 10px rgba(0, 209, 178, 0.7), 0 0 20px rgba(255, 64, 129, 0.5);
 }
 
 .cta-button {
