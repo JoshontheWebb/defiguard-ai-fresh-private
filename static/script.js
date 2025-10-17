@@ -1,5 +1,5 @@
-// Section1: DOM Handling
-function waitForDOM(selectors, callback, maxAttempts = 10, interval = 100) {
+// Section1: DOM Handling (replace existing Section1)
+function waitForDOM(selectors, callback, maxAttempts = 20, interval = 200) { // Increased attempts and interval
     let attempts = 0;
     const elements = {};
     const check = () => {
@@ -15,7 +15,7 @@ function waitForDOM(selectors, callback, maxAttempts = 10, interval = 100) {
             console.log(`[DEBUG] Waiting for DOM elements, attempt ${attempts}/${maxAttempts}, time=${new Date().toISOString()}`);
             setTimeout(check, interval);
         } else {
-            console.error('[ERROR] DOM elements not found:', Object.keys(selectors).filter(k => !elements[k]));
+            console.error('[ERROR] DOM elements not found after max attempts:', Object.keys(selectors).filter(k => !elements[k]));
         }
     };
     check();
@@ -158,11 +158,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Section5: Hamburger Menu (replace existing Section5)
 console.log(`[DEBUG] Initializing hamburger menu: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
 if (hamburger && sidebar && mainContent) {
-    document.addEventListener('click', (e) => { // Event delegation
-        if (e.target.closest('#hamburger')) {
+    document.addEventListener('click', (e) => {
+        const ham = e.target.closest('#hamburger');
+        if (ham) {
             try {
                 sidebar.classList.toggle('open');
-                hamburger.classList.toggle('open');
+                ham.classList.toggle('open'); // Use ham to ensure correct element
                 mainContent.style.marginLeft = sidebar.classList.contains('open') ? '270px' : '0';
                 console.log(`[DEBUG] Hamburger menu toggled: sidebar.open=${sidebar.classList.contains('open')}, mainContent.marginLeft=${mainContent.style.marginLeft}, time=${new Date().toISOString()}`);
             } catch (error) {
@@ -864,17 +865,17 @@ if (hamburger && sidebar && mainContent) {
             console.log('[DEBUG] Report downloaded');
         });
 
-        // Section13: Header Scroll Behavior (replace existing Section13)
+       // Section13: Header Scroll Behavior (replace existing Section13)
 window.addEventListener('scroll', () => {
     const header = document.querySelector('header');
     if (!header) return;
     if (window.scrollY > 100) {
+        header.style.opacity = '0'; // Explicit fade out
         header.classList.add('scrolled');
-        if (!header.classList.contains('visible')) header.classList.add('visible'); // Fallback to show on scroll down
+        if (!header.classList.contains('visible')) header.classList.add('visible');
     } else {
+        header.style.opacity = '1'; // Explicit fade in
         header.classList.remove('scrolled');
-        header.classList.remove('visible'); // Ensure fade-in on scroll up
+        header.classList.remove('visible');
     }
 });
-    });
-}
