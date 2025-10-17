@@ -611,7 +611,9 @@ document.addEventListener('DOMContentLoaded', () => {
             loading.setAttribute('aria-hidden', 'true');
             resultsDiv.setAttribute('aria-hidden', 'false');
             resultsDiv.focus();
-            console.log(`[DEBUG] Audit results displayed, risk_score=${report.risk_score}, overage_cost=${overageCost}, time=${new Date().toISOString()}`);
+            // Elegant scroll to results
+            resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            console.log(`[DEBUG] Audit results displayed and scrolled to, risk_score=${report.risk_score}, overage_cost=${overageCost}, time=${new Date().toISOString()}`);
         };
 
         const handleSubmit = (event) => {
