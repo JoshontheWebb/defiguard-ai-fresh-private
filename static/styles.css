@@ -18,6 +18,7 @@
     --warning: #f59e0b;
     --glass-bg: rgba(255, 255, 255, 0.1);
     --glass-border: rgba(255, 255, 255, 0.2);
+    --overlay-dark: rgba(26, 37, 47, 0.7); /* Dark overlay for contrast */
 }
 
 body {
@@ -38,9 +39,9 @@ header {
     color: var(--text-light);
     padding: 1.5rem;
     text-align: center;
-    z-index: 102;
+    z-index: 100; /* Reduced to allow sidebar text visibility */
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-    backdrop-filter: blur(10px); /* Glassmorphism effect */
+    backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
 }
 
@@ -67,7 +68,7 @@ header .logo:hover {
     position: fixed;
     top: 1rem;
     left: 1rem;
-    z-index: 103;
+    z-index: 101; /* Above header */
     width: clamp(30px, 5vw, 35px);
     height: clamp(25px, 4vw, 30px);
     transition: transform 0.3s ease;
@@ -103,7 +104,7 @@ header .logo:hover {
     color: var(--text-light);
     padding: clamp(15px, 2vw, 20px);
     transition: transform 0.3s ease, width 0.3s ease;
-    z-index: 101;
+    z-index: 102; /* Above header */
     visibility: hidden;
     border-right: 1px solid var(--glass-border);
     backdrop-filter: blur(5px);
@@ -114,7 +115,7 @@ header .logo:hover {
     width: clamp(200px, 25vw, 250px);
     transform: translateX(0);
     visibility: visible;
-    view-transition-name: sidebar; /* View Transition for smooth open */
+    view-transition-name: sidebar;
 }
 
 .sidebar:not(.open) {
@@ -151,7 +152,7 @@ header .logo:hover {
 .sidebar ul li a:focus-visible,
 .sidebar ul li .welcome-message:hover,
 .sidebar ul li .welcome-message:focus-visible {
-    background-color: rgba(52, 73, 94, 0.3); /* Glassmorphism tint */
+    background-color: rgba(52, 73, 94, 0.3);
     color: var(--accent-pink);
     outline: 2px solid var(--focus-outline);
     outline-offset: 2px;
@@ -164,6 +165,8 @@ header .logo:hover {
     padding: 10px;
     border-radius: 8px;
     border: 1px solid var(--glass-border);
+    position: relative;
+    z-index: 103; /* Ensure above header if overlapping */
 }
 
 .main-content {
@@ -181,7 +184,7 @@ header .logo:hover {
 .hero {
     text-align: center;
     padding: clamp(2rem, 5vw, 3rem) clamp(1rem, 2vw, 1rem);
-    background: var(--gradient);
+    background: linear-gradient(135deg, var(--gradient), var(--overlay-dark));
     color: var(--text-light);
     border-radius: 15px;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
@@ -193,6 +196,7 @@ header .logo:hover {
     font-size: clamp(1.5rem, 4vw, 2rem);
     margin-bottom: clamp(0.5rem, 1.5vw, 1rem);
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    text-shadow: 0 0 10px rgba(0, 209, 178, 0.7), 0 0 20px rgba(255, 64, 129, 0.5); /* Neon glow */
 }
 
 .cta-button {
@@ -219,7 +223,7 @@ header .logo:hover {
     max-width: 800px;
     margin: clamp(1rem, 2vw, 2rem) auto;
     padding: clamp(1rem, 2vw, 1.5rem);
-    background: var(--bg-section);
+    background: linear-gradient(135deg, var(--bg-section), var(--overlay-dark));
     border-radius: 15px;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
     backdrop-filter: blur(5px);
@@ -235,12 +239,14 @@ header .logo:hover {
 .progress-tracker li {
     margin: clamp(0.3rem, 0.5vw, 0.5rem) 0;
     font-size: clamp(0.9rem, 1.5vw, 1rem);
+    color: var(--text-light); /* Improved contrast */
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3); /* Subtle glow */
 }
 
 .audit-section {
     max-width: 600px;
     margin: clamp(10px, 2vw, 20px) auto;
-    background: var(--bg-section);
+    background: linear-gradient(135deg, var(--bg-section), var(--overlay-dark));
     padding: clamp(15px, 2vw, 25px);
     border-radius: 15px;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
@@ -253,7 +259,7 @@ header .logo:hover {
     color: var(--text-light);
     margin-bottom: clamp(10px, 2vw, 20px);
     font-size: clamp(1.5rem, 3vw, 1.8rem);
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 10px rgba(0, 209, 178, 0.7); /* Neon glow */
 }
 
 .audit-section form {
@@ -265,6 +271,7 @@ header .logo:hover {
 .audit-section label {
     font-weight: 700;
     color: var(--text-light);
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3); /* Subtle glow for contrast */
 }
 
 .audit-section input[type="text"],
@@ -275,6 +282,7 @@ header .logo:hover {
     font-size: clamp(0.9rem, 1.5vw, 1rem);
     transition: border-color 0.3s ease, box-shadow 0.3s ease;
     background: var(--glass-bg);
+    color: var(--text-light); /* Ensure text visibility */
 }
 
 .audit-section input[type="text"]:focus,
@@ -305,19 +313,20 @@ header .logo:hover {
 }
 
 .usage-warning p {
-    color: var(--error);
+    color: var(--text-light); /* Improved contrast */
     font-size: clamp(0.8rem, 1.2vw, 0.9rem);
     margin-top: clamp(0.3rem, 0.5vw, 0.5rem);
     padding: clamp(0.3rem, 0.5vw, 0.5rem);
     border-radius: 8px;
     background: rgba(239, 68, 68, 0.1);
     border: 1px solid var(--error);
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3); /* Glow for readability */
 }
 
 .tier-benefits {
     margin-top: clamp(0.5rem, 1vw, 1rem);
     padding: clamp(0.5rem, 1vw, 1rem);
-    background: var(--bg-section);
+    background: linear-gradient(135deg, var(--bg-section), var(--overlay-dark));
     border-radius: 15px;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
     backdrop-filter: blur(5px);
@@ -329,12 +338,14 @@ header .logo:hover {
     color: var(--text-light);
     font-size: clamp(1rem, 2vw, 1.2rem);
     margin-bottom: clamp(0.3rem, 0.5vw, 0.5rem);
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 10px rgba(0, 209, 178, 0.7); /* Neon glow */
 }
 
 .tier-benefits p {
     font-size: clamp(0.8rem, 1.2vw, 0.9rem);
     margin: clamp(0.3rem, 0.5vw, 0.5rem) 0;
+    color: var(--text-light); /* Improved contrast */
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3); /* Subtle glow */
 }
 
 .tier-benefits a {
@@ -385,7 +396,7 @@ header .logo:hover {
 .results {
     margin-top: clamp(15px, 2vw, 20px);
     padding: clamp(10px, 1.5vw, 15px);
-    background: var(--bg-section);
+    background: linear-gradient(135deg, var(--bg-section), var(--overlay-dark));
     border-radius: 15px;
     display: none;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
@@ -424,7 +435,7 @@ header .logo:hover {
     width: 100%;
     border-collapse: collapse;
     margin-top: clamp(0.5rem, 1vw, 1rem);
-    background: var(--bg-section);
+    background: linear-gradient(135deg, var(--bg-section), var(--overlay-dark));
     border-radius: 10px;
     overflow: hidden;
 }
@@ -450,7 +461,7 @@ header .logo:hover {
 .recommendations-placeholder ul {
     list-style: none;
     padding: clamp(0.5rem, 1vw, 1rem);
-    background: var(--bg-section);
+    background: linear-gradient(135deg, var(--bg-section), var(--overlay-dark));
     border-radius: 10px;
     margin-top: clamp(0.5rem, 1vw, 1rem);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
@@ -461,6 +472,8 @@ header .logo:hover {
     margin: clamp(0.3rem, 0.5vw, 0.5rem) 0;
     font-size: clamp(0.9rem, 1.5vw, 1rem);
     transition: color 0.3s ease;
+    color: var(--text-light); /* Improved contrast */
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3); /* Subtle glow */
 }
 
 .predictions-placeholder li:hover,
@@ -472,7 +485,7 @@ header .logo:hover {
     max-width: 600px;
     margin: clamp(1rem, 2vw, 2rem) auto;
     padding: clamp(0.5rem, 1vw, 1rem);
-    background: var(--bg-section);
+    background: linear-gradient(135deg, var(--bg-section), var(--overlay-dark));
     border-radius: 15px;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
     backdrop-filter: blur(5px);
@@ -487,6 +500,8 @@ header .logo:hover {
 #settings li {
     margin: clamp(0.3rem, 0.5vw, 0.5rem) 0;
     font-size: clamp(0.9rem, 1.5vw, 1rem);
+    color: var(--text-light); /* Improved contrast */
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3); /* Subtle glow */
 }
 
 #settings a {
@@ -532,11 +547,11 @@ footer a:focus-visible {
     border: 2px solid hsl(0, 0%, 88%);
     background: var(--glass-bg);
     transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    color: var(--text-light); /* Improved contrast */
 }
 
 .upgrade-prompt select {
     width: 100%;
-    color: var(--text-dark);
 }
 
 .upgrade-prompt select:focus,
@@ -599,7 +614,7 @@ footer a:focus-visible {
 #facet-preview {
     margin-top: clamp(15px, 2vw, 20px);
     padding: clamp(10px, 1.5vw, 15px);
-    background: var(--bg-section);
+    background: linear-gradient(135deg, var(--bg-section), var(--overlay-dark));
     border-radius: 15px;
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
     backdrop-filter: blur(5px);
