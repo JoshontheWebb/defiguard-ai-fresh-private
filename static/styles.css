@@ -308,19 +308,44 @@ header .logo {
     display: block;
 }
 
+/* ID 3 & 4: Replace spinner with progress bar */
 .spinner {
-    border: 5px solid #f3f3f3;
-    border-top: 5px solid var(--accent);
-    border-radius: 50%;
-    width: 30px;
-    height: 30px;
-    animation: spin 1s linear infinite;
-    margin: 0 auto;
+    display: none; /* Hide spinner */
 }
 
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+.progress-bar {
+    width: 100%;
+    height: 20px;
+    background-color: #e0e0e0;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 10px 0;
+}
+
+.progress-bar .progress {
+    height: 100%;
+    background-color: var(--accent);
+    width: 0;
+    transition: width 0.1s linear;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 10px;
+}
+
+.progress-text {
+    color: var(--text-light);
+    font-weight: 600;
+}
+
+.loading.show .progress {
+    animation: progressAnimation 5s linear forwards; /* Mock 5s audit */
+}
+
+@keyframes progressAnimation {
+    0% { width: 0%; }
+    100% { width: 100%; }
 }
 
 .results {

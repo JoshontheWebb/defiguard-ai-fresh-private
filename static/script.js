@@ -243,7 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 usageWarning.classList.add(upgradeStatus === 'success' ? 'success' : 'error');
                 console.log(`[DEBUG] Post-payment status: upgrade=${upgradeStatus}, message=${message}, time=${new Date().toISOString()}`);
                 window.history.replaceState({}, document.title, '/ui');
-                await fetchTierData();
+                await fetchTierData(); // ID 8: Immediate feature update on redirect
                 return;
             }
             if (sessionId && username) {
@@ -621,6 +621,194 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const handleSubmit = (event) => {
+            event.preventDefault();
+            withCsrfToken(async (token) => {
+                if (!token) {
+                    loading.classList.remove('show');
+                    usageWarning.textContent = 'Unable to establish secure connection.';
+                    usageWarning.classList.add('error');
+                    console.error(`[ERROR] No CSRF token for audit, time=${new Date().toISOString()}`);
+                    return;
+                }
+                loading.classList.add('show');
+                resultsDiv.classList.remove('show');
+                usageWarning.textContent = '';
+                usageWarning.classList.remove('error', 'success');
+                loading.setAttribute('aria-hidden', 'false');
+                resultsDiv.setAttribute('aria-hidden', 'true');
+                const fileInput = auditForm.querySelector('#file');
+                const file = fileInput.files[0];
+                if (!file) {
+                    loading.classList.remove('show');
+                    usageWarning.textContent = 'Please select a file to audit';
+                    usageWarning.classList.add('error');
+                    console.error(`[ERROR] No file selected for audit, time=${new Date().toISOString()}`);
+                    return;
+                }
+                const username = localStorage.getItem('username');
+                if (!username) {
+                    console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
+                    window.location.href = '/auth';
+                    loading.classList.remove('show');
+                    usageWarning.textContent = 'Please sign in to perform an audit';
+                    usageWarning.classList.add('error');
+                    return;
+                }
+                if (maxFileSize !== null && file.size > maxFileSize) {
+                    loading.classList.remove('show');
+                    const overageCost = calculateDiamondOverage(file);
+                    usageWarning.textContent = `File size (${(file.size / 1024 / 1024).toFixed(2)}MB) exceeds ${maxFileSize === Infinity ? 'unlimited' : (maxFileSize / 1024 / 1024) + 'MB'} limit for your tier. Upgrade to Diamond add-on ($50/mo + $${overageCost.toFixed(2)} overage).`;
+                    usageWarning.classList.add('error');
+                    const upgradeButton = document.createElement('button');
+                    upgradeButton.textContent = 'Upgrade to Pro + Diamond';
+                    upgradeButton.className = 'upgrade-button';
+                    upgradeButton.addEventListener('click', () => {
+                        withCsrfToken(async (token) => {
+                            if (!token) {
+                                usageWarning.textContent = 'Unable to establish secure connection.';
+                                usageWarning.classList.add('error');
+                                console.error(`[ERROR] No CSRF token for upgrade, time=${new Date().toISOString()}`);
+                                return;
+                            }
+                            try {
+                                const requestBody = JSON.stringify({
+                                    username: username,
+                                    tier: 'pro',
+                                    has_diamond: true,
+                                    csrf_token: token
+                                });
+                                console.log(`[DEBUG] Sending /create-tier-checkout request with body: ${requestBody}, time=${new Date().toISOString()}`);
+                                const response = await fetch('/create-tier-checkout', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRF-Token': token,
+                                        'Accept': 'application/json'
+                                    },
+                                    credentials: 'include',
+                                    body: requestBody
+                                });
+                                console.log(`[DEBUG] /create-tier-checkout response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
+                                if (!response.ok) {
+                                    const errorData = await response.json().catch(() => ({}));
+                                    console.error(`[ERROR] /create-tier-checkout failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
+                                    throw new Error(errorData.detail || 'Failed to initiate tier upgrade');
+                                }
+                                const data = await response.json();
+                                console.log(`[DEBUG] Redirecting to Stripe for Pro + Diamond upgrade due to file size, session_url=${data.session_url}, time=${new Date().toISOString()}`);
+                                window.location.href = data.session_url;
+                            } catch (error) {
+                                console.error(`[ERROR] Upgrade error: ${error.message}, time=${new Date().toISOString()}`);
+                                usageWarning.textContent = `Error initiating upgrade: ${error.message}`;
+                                usageWarning.classList.add('error');
+                            }
+                        });
+                    });
+                    usageWarning.appendChild(upgradeButton);
+                    return;
+                }
+                if (auditCount >= auditLimit) {
+                    loading.classList.remove('show');
+                    usageWarning.textContent = `Usage limit exceeded (${auditCount}/${auditLimit} audits). Upgrade your tier.`;
+                    usageWarning.classList.add('error');
+                    const upgradeButton = document.createElement('button');
+                    upgradeButton.textContent = 'Upgrade to Beginner';
+                    upgradeButton.className = 'upgrade-button';
+                    upgradeButton.addEventListener('click', () => {
+                        withCsrfToken(async (token) => {
+                            if (!token) {
+                                usageWarning.textContent = 'Unable to establish secure connection.';
+                                usageWarning.classList.add('error');
+                                console.error(`[ERROR] No CSRF token for upgrade, time=${new Date().toISOString()}`);
+                                return;
+                            }
+                            try {
+                                const requestBody = JSON.stringify({
+                                    username: username,
+                                    tier: 'beginner',
+                                    has_diamond: false,
+                                    csrf_token: token
+                                });
+                                console.log(`[DEBUG] Sending /create-tier-checkout request with body: ${requestBody}, time=${new Date().toISOString()}`);
+                                const response = await fetch('/create-tier-checkout', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRF-Token': token,
+                                        'Accept': 'application/json'
+                                    },
+                                    credentials: 'include',
+                                    body: requestBody
+                                });
+                                console.log(`[DEBUG] /create-tier-checkout response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
+                                if (!response.ok) {
+                                    const errorData = await response.json().catch(() => ({}));
+                                    console.error(`[ERROR] /create-tier-checkout failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
+                                    throw new Error(errorData.detail || 'Failed to initiate tier upgrade');
+                                }
+                                const data = await response.json();
+                                console.log(`[DEBUG] Redirecting to Stripe for Beginner upgrade due to audit limit, session_url=${data.session_url}, time=${new Date().toISOString()}`);
+                                window.location.href = data.session_url;
+                            } catch (error) {
+                                console.error(`[ERROR] Upgrade error: ${error.message}, time=${new Date().toISOString()}`);
+                                usageWarning.textContent = `Error initiating upgrade: ${error.message}`;
+                                usageWarning.classList.add('error');
+                            }
+                        });
+                    });
+                    usageWarning.appendChild(upgradeButton);
+                    return;
+                }
+                const formData = new FormData(auditForm);
+                formData.append('csrf_token', token);
+                try {
+                    console.log(`[DEBUG] Sending /audit request for username=${username}, time=${new Date().toISOString()}`);
+                    const response = await fetch(`/audit?username=${encodeURIComponent(username)}`, {
+                        method: 'POST',
+                        headers: { 'X-CSRF-Token': token },
+                        body: formData,
+                        credentials: 'include'
+                    });
+                    console.log(`[DEBUG] /audit response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        console.error(`[ERROR] /audit failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
+                        if (errorData.session_url) {
+                            console.log(`[DEBUG] Redirecting to Stripe for audit limit/file size upgrade, session_url=${errorData.session_url}, time=${new Date().toISOString()}`);
+                            window.location.href = errorData.session_url;
+                            return;
+                        }
+                        throw new Error(errorData.detail || 'Audit request failed');
+                    }
+                    const data = await response.json();
+                    handleAuditResponse(data);
+                    await fetchTierData();
+                } catch (error) {
+                    console.error(`[ERROR] Audit error: ${error.message}, time=${new Date().toISOString()}`);
+                    loading.classList.remove('show');
+                    usageWarning.textContent = `Error initiating audit: ${error.message}`;
+                    usageWarning.classList.add('error');
+                }
+            });
+        };
+
+        // ID 4: Progress bar logic
+        const updateProgress = (progress) => {
+            const progressElement = loading.querySelector('.progress');
+            const progressText = loading.querySelector('.progress-text');
+            if (progressElement && progressText) {
+                progressElement.style.width = `${progress}%`;
+                progressText.textContent = `${Math.min(progress, 100)}%`; // Cap at 100%
+                if (progress >= 100) {
+                    clearInterval(progressInterval); // Stop when done
+                }
+            }
+        };
+
+        auditForm?.addEventListener('submit', handleSubmit);
+
+        let progressInterval;
+        handleSubmit = (event) => {
             event.preventDefault();
             withCsrfToken(async (token) => {
                 if (!token) {

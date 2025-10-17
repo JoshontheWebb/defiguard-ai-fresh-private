@@ -101,10 +101,14 @@
 
                 <button type="submit">Audit Contract</button>
                 <button type="button" id="diamond-audit" class="diamond-only" style="display: none;">Request Diamond Audit</button>
-                <p id="diamond-price" class="diamond-only" style="display: none;">Diamond Audit Cost: Loading...</p>
+                <div class="loading">
+                    <div class="progress-bar"><span class="progress-text">0%</span></div>
+                    <p>Analyzing...</p>
+                </div>
+                <p id="diamond-price" class="diamond-only" style="display: none;">Diamond Audit Overage: Loading...</p>
             </form>
             <div class="usage-warning" aria-live="assertive">
-                <p>Free tier: Limited audits.</p>
+                <!-- ID 1: Removed <p>Free tier: Limited audits.</p> -->
             </div>
             <div class="upgrade-prompt" aria-live="polite">
                 <h4>Upgrade Your Plan</h4>
@@ -149,10 +153,6 @@
                 <p id="features">Features: Loading...</p>
             </div>
             <div id="facet-preview" class="box pro-diamond-only" style="display: none;"></div>
-            <div class="loading">
-                <div class="spinner"></div>
-                <p>Analyzing...</p>
-            </div>
             <div class="results">
                 <p>Audit Results: (JSON response will appear here)</p>
                 <button id="download-report" style="display: none;">Download Report (Beginner/Pro)</button>
@@ -215,7 +215,7 @@
         <section id="settings">
             <h3>Account Settings</h3>
             <ul>
-                <li>Upgrade Tier: <a href="/upgrade">Beginner ($50/mo), Pro ($200/mo), Diamond add-on ($50/mo with Pro + overage)</a></li>
+                <!-- ID 9: Removed <li>Upgrade Tier: <a href="/upgrade">Beginner ($50/mo), Pro ($200/mo), Diamond add-on ($50/mo with Pro + overage)</a></li> -->
                 <li>View Usage History</li>
                 <li id="api-key" style="display: none;">API Key: <span id="api-key-value">Loading...</span> (Pro only)</li>
             </ul>
@@ -224,8 +224,8 @@
 
     <!-- Footer -->
     <footer>
-        <p>&copy; 2025 DeFiGuard AI. Built with FastAPI & Grok. <a href="https://x.ai/api">API Docs</a></p>
-        <p>Upgrade for unlimited audits: <a href="/upgrade">Details</a></p>
+        <p>&copy; 2025 DeFiGuard AI. Built with FastAPI & Grok.</p>
+        <!-- ID 9: Removed <p>Upgrade for unlimited audits: <a href="/upgrade">Details</a></p> -->
     </footer>
 
     <script src="/static/script.js?_=${Date.now()}"></script>
