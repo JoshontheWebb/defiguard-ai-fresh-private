@@ -108,7 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
         sidebar: '#sidebar',
         mainContent: '.main-content',
         logoutSidebar: '#logout-sidebar',
-        authStatus: '#auth-status' // Added to access the auth status element
+        authStatus: '#auth-status'
     }, ({ auditForm, loading, resultsDiv, riskScoreSpan, issuesBody, predictionsList, recommendationsList, fuzzingList, remediationRoadmap, usageWarning, tierInfo, tierDescription, sizeLimit, features, upgradeLink, tierSelect, tierSwitchButton, contractAddressInput, facetWell, downloadReportButton, diamondAuditButton, customReportInput, apiKeySpan, hamburger, sidebar, mainContent, logoutSidebar, authStatus }) => {
         let maxFileSize = null;
         let auditCount = 0;
@@ -175,6 +175,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             }, { capture: true }); // Use capture phase to catch before bubbling
+            // Fallback: Ensure hamburger is focusable and clickable
+            hamburger.setAttribute('tabindex', '0');
+            hamburger.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    hamburger.click();
+                }
+            });
         } else {
             console.error(`[ERROR] Hamburger menu initialization failed: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
             usageWarning.textContent = 'Error: Menu components not found';
