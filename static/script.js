@@ -156,39 +156,39 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Section5: Hamburger Menu (replace existing Section5)
-console.log(`[DEBUG] Initializing hamburger menu: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
-if (hamburger && sidebar && mainContent) {
-    // Direct click binding with debug
-    hamburger.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        try {
-            const isOpen = sidebar.classList.toggle('open');
-            hamburger.classList.toggle('open');
-            mainContent.style.marginLeft = isOpen ? '270px' : '0';
-            console.log(`[DEBUG] Hamburger toggled: open=${isOpen}, marginLeft=${mainContent.style.marginLeft}, time=${new Date().toISOString()}`);
-        } catch (error) {
-            console.error(`[ERROR] Hamburger toggle failed: ${error.message}, time=${new Date().toISOString()}`);
-            usageWarning.textContent = `Menu error: ${error.message}`;
+        console.log(`[DEBUG] Initializing hamburger menu: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
+        if (hamburger && sidebar && mainContent) {
+            // Direct click binding with debug
+            hamburger.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                try {
+                    const isOpen = sidebar.classList.toggle('open');
+                    hamburger.classList.toggle('open');
+                    mainContent.style.marginLeft = isOpen ? '270px' : '0';
+                    console.log(`[DEBUG] Hamburger toggled: open=${isOpen}, marginLeft=${mainContent.style.marginLeft}, time=${new Date().toISOString()}`);
+                } catch (error) {
+                    console.error(`[ERROR] Hamburger toggle failed: ${error.message}, time=${new Date().toISOString()}`);
+                    usageWarning.textContent = `Menu error: ${error.message}`;
+                    usageWarning.classList.add('error');
+                }
+            }, { capture: true });
+            // Keyboard accessibility
+            hamburger.setAttribute('tabindex', '0');
+            hamburger.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    hamburger.click();
+                    console.log(`[DEBUG] Hamburger toggled via keyboard, time=${new Date().toISOString()}`);
+                }
+            });
+            // Verify element state on init
+            console.log(`[DEBUG] Initial state: sidebar.class=${sidebar.className}, hamburger.class=${hamburger.className}, mainContent.marginLeft=${mainContent.style.marginLeft}`);
+        } else {
+            console.error(`[ERROR] Hamburger menu initialization failed: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
+            usageWarning.textContent = 'Error: Menu components not found';
             usageWarning.classList.add('error');
         }
-    }, { capture: true });
-    // Keyboard accessibility
-    hamburger.setAttribute('tabindex', '0');
-    hamburger.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            hamburger.click();
-            console.log(`[DEBUG] Hamburger toggled via keyboard, time=${new Date().toISOString()}`);
-        }
-    });
-    // Verify element state on init
-    console.log(`[DEBUG] Initial state: sidebar.class=${sidebar.className}, hamburger.class=${hamburger.className}, mainContent.marginLeft=${mainContent.style.marginLeft}`);
-} else {
-    console.error(`[ERROR] Hamburger menu initialization failed: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
-    usageWarning.textContent = 'Error: Menu components not found';
-    usageWarning.classList.add('error');
-}
 
         // Section6: Authentication
         const updateAuthStatus = () => {
