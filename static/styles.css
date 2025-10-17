@@ -83,14 +83,21 @@ header .logo {
     background-color: var(--text-dark);
     color: var(--text-light);
     padding: 20px;
-    transition: width 0.3s, transform 0.3s ease;
+    transition: transform 0.3s ease, width 0.3s ease;
+    z-index: 99; /* Ensure above main content */
+    visibility: hidden; /* Default hidden */
+}
+
+.sidebar.open {
+    width: 250px;
+    transform: translateX(0);
+    visibility: visible; /* Show when open */
 }
 
 .sidebar:not(.open) {
     width: 0;
     transform: translateX(-100%);
     overflow: hidden;
-    visibility: hidden;
 }
 
 .sidebar:not(.open) ul,
