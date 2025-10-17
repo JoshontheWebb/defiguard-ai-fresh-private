@@ -5,20 +5,20 @@
 }
 
 :root {
-    --primary: #1a252f; /* Deep space base */
-    --accent-teal: #00d1b2; /* Neon teal */
-    --accent-pink: #ff4081; /* Neon pink */
-    --bg-light: #e0e5ea; /* Darkened lunar gray */
-    --bg-section: hsl(210, 20%, 98%); /* Soft glassmorphism base */
+    --primary: #1a252f;
+    --accent-teal: #00d1b2;
+    --accent-pink: #ff4081;
+    --bg-light: #e0e5ea;
+    --bg-section: hsl(210, 20%, 98%);
     --text-dark: #2c3e50;
     --text-light: #ffffff;
     --error: #ef4444;
-    --gradient: linear-gradient(45deg, #1a252f, #0d47a1); /* Cosmic blue gradient */
+    --gradient: linear-gradient(45deg, #1a252f, #0d47a1);
     --focus-outline: #3b82f6;
     --warning: #f59e0b;
     --glass-bg: rgba(255, 255, 255, 0.1);
     --glass-border: rgba(255, 255, 255, 0.2);
-    --overlay-dark: rgba(26, 37, 47, 0.7); /* Dark overlay for contrast */
+    --overlay-dark: rgba(26, 37, 47, 0.7);
     --glow-teal: rgba(0, 209, 178, 0.7);
     --glow-pink: rgba(255, 64, 129, 0.7);
 }
@@ -28,10 +28,10 @@ body {
     background-color: var(--bg-light);
     color: var(--text-dark);
     line-height: 1.6;
-    font-size: clamp(16px, 4vw, 18px); /* Fluid typography */
+    font-size: clamp(16px, 4vw, 18px);
     transition: background-color 0.3s ease;
-    height: 200vh; /* Ensure enough scrollable area for animation */
-    overflow-x: hidden; /* Prevent horizontal scroll issues */
+    height: 200vh;
+    overflow-x: hidden;
 }
 
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
@@ -43,16 +43,15 @@ header {
     color: var(--text-light);
     padding: 1.5rem;
     text-align: center;
-    z-index: 98; /* Lowered to ensure hamburger (101) is clickable */
+    z-index: 100; /* Adjusted to ensure hamburger (101) is clickable */
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     animation: gradientFlow 10s ease infinite;
     opacity: 1;
-    transition: opacity 0.3s ease !important; /* Force transition */
+    transition: opacity 0.3s ease !important;
 }
 
-/* Enhanced scroll-driven fade animation */
 @scroll-timeline header-fade {
     time-range: 1s;
     start: rect(0px, 0px, 100px, 0px);
@@ -78,13 +77,13 @@ header {
 
 @supports not (animation-timeline: works) {
     header {
-        transition: opacity 0.3s ease !important; /* Ensure fallback */
+        transition: opacity 0.3s ease !important;
     }
     header.scrolled {
-        opacity: 0 !important; /* Force fade */
+        opacity: 0 !important;
     }
     header.visible {
-        opacity: 1 !important; /* Force reappear */
+        opacity: 1 !important;
     }
 }
 
@@ -106,15 +105,9 @@ header .logo {
     margin: 0 auto;
     transition: transform 0.3s ease, box-shadow 0.3s ease;
     perspective: 1000px;
-    transform-style: preserve-3d; /* Enable 3D space */
-    /* Enhanced 3D text effect */
-    text-shadow: 
-        2px 2px 5px rgba(0, 0, 0, 0.5), /* Base shadow */
-        0 0 10px var(--glow-teal), /* Teal glow */
-        0 0 20px var(--glow-pink), /* Pink glow */
-        4px 4px 10px rgba(0, 0, 0, 0.3), /* Extruded effect */
-        6px 6px 15px rgba(0, 209, 178, 0.4); /* Deeper 3D layer */
-    transform: rotateX(5deg); /* Slight 3D tilt */
+    transform-style: preserve-3d;
+    text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5), 0 0 10px var(--glow-teal), 0 0 20px var(--glow-pink), 4px 4px 10px rgba(0, 0, 0, 0.3), 6px 6px 15px rgba(0, 209, 178, 0.4);
+    transform: rotateX(5deg);
 }
 
 header .logo:hover {
@@ -133,6 +126,7 @@ header .logo:hover {
     height: clamp(25px, 4vw, 30px);
     transition: transform 0.3s ease;
     view-transition-name: hamburger;
+    pointer-events: auto; /* Ensure clicks are registered */
 }
 
 .hamburger div {
@@ -170,7 +164,7 @@ header .logo:hover {
     color: var(--text-light);
     padding: clamp(15px, 2vw, 20px);
     transition: transform 0.3s ease, width 0.3s ease;
-    z-index: 102; /* Above header */
+    z-index: 102;
     visibility: hidden;
     border-right: 1px solid var(--glass-border);
     backdrop-filter: blur(5px);
@@ -241,6 +235,8 @@ header .logo:hover {
     min-height: calc(100vh - 70px);
     transition: margin-left 0.3s ease;
     background: linear-gradient(135deg, var(--bg-light), #e0e7ff);
+    position: relative;
+    z-index: 1;
 }
 
 .sidebar.open + .main-content {
@@ -365,8 +361,8 @@ header .logo:hover {
     font-size: clamp(0.9rem, 1.5vw, 1rem);
     border: 2px solid hsl(0, 0%, 88%);
     background: var(--glass-bg);
-    color: var(--text-dark); /* Changed to dark text for visibility on white dropdown */
-    appearance: none; /* Remove default arrow in some browsers */
+    color: var(--text-dark);
+    appearance: none;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2300d1b2' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 0.5rem center;
@@ -382,14 +378,14 @@ header .logo:hover {
 
 /* Style the dropdown options with dark text (limited by browser support) */
 #tier-select option {
-    background: inherit; /* Inherits from parent if supported, otherwise default white */
-    color: var(--text-dark); /* Dark text for visibility */
+    background: inherit;
+    color: var(--text-dark);
     padding: 0.5rem;
 }
 
 /* Fallback for browsers that don't support option styling */
 #tier-select::-ms-expand {
-    display: none; /* Hide default arrow in IE */
+    display: none;
 }
 
 .audit-section button {
@@ -402,6 +398,7 @@ header .logo:hover {
     font-size: clamp(1rem, 1.5vw, 1.1rem);
     transition: transform 0.2s ease, box-shadow 0.3s ease;
     box-shadow: 0 4px 10px rgba(0, 209, 178, 0.3);
+    pointer-events: auto; /* Ensure buttons are clickable */
 }
 
 .audit-section button:hover,

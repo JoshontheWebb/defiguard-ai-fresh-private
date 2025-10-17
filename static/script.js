@@ -1,5 +1,5 @@
 // Section1: DOM Handling (replace existing Section1)
-function waitForDOM(selectors, callback, maxAttempts = 20, interval = 200) { // Increased attempts and interval
+function waitForDOM(selectors, callback, maxAttempts = 20, interval = 200) {
     let attempts = 0;
     const elements = {};
     const check = () => {
@@ -27,10 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch(`/csrf-token?_=${Date.now()}`, {
                 method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'Cache-Control': 'no-cache'
-                },
+                headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
                 credentials: 'include'
             });
             if (!response.ok) {
@@ -52,8 +49,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 return fetchCsrfToken(attempt + 1, maxAttempts);
             }
-            console.error('Max CSRF fetch attempts reached.');
-            throw error;
+            console.error('Max CSRF fetch attempts reached, proceeding with null token.');
+            return null; // Fallback to allow non-critical actions
         }
     };
 
@@ -64,8 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
             token = await fetchCsrfToken();
             console.log(`[DEBUG] Using CSRF token for POST: ${token}, type=${typeof token}, time=${new Date().toISOString()}`);
         } catch (error) {
-            console.error(`[ERROR] Failed to fetch CSRF token for POST: ${error.message}`);
-            return null;
+            console.error(`[ERROR] Failed to fetch CSRF token for POST: ${error.message}, proceeding with null`);
+            return fetchFn(null); // Allow fallback for UI actions
         }
         return fetchFn(token);
     };
@@ -158,32 +155,26 @@ document.addEventListener('DOMContentLoaded', () => {
         // Section5: Hamburger Menu (replace existing Section5)
         console.log(`[DEBUG] Initializing hamburger menu: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
         if (hamburger && sidebar && mainContent) {
-            // Direct click binding with debug
-            hamburger.addEventListener('click', (e) => {
+            hamburger.addEventListener('click', (e) => { // Direct binding for reliability
                 e.preventDefault();
-                e.stopPropagation();
                 try {
-                    const isOpen = sidebar.classList.toggle('open');
+                    sidebar.classList.toggle('open');
                     hamburger.classList.toggle('open');
-                    mainContent.style.marginLeft = isOpen ? '270px' : '0';
-                    console.log(`[DEBUG] Hamburger toggled: open=${isOpen}, marginLeft=${mainContent.style.marginLeft}, time=${new Date().toISOString()}`);
+                    mainContent.style.marginLeft = sidebar.classList.contains('open') ? '270px' : '0';
+                    console.log(`[DEBUG] Hamburger menu toggled: open=${sidebar.classList.contains('open')}, margin=${mainContent.style.marginLeft}, time=${new Date().toISOString()}`);
                 } catch (error) {
                     console.error(`[ERROR] Hamburger toggle failed: ${error.message}, time=${new Date().toISOString()}`);
                     usageWarning.textContent = `Menu error: ${error.message}`;
                     usageWarning.classList.add('error');
                 }
-            }, { capture: true });
-            // Keyboard accessibility
+            });
             hamburger.setAttribute('tabindex', '0');
             hamburger.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     hamburger.click();
-                    console.log(`[DEBUG] Hamburger toggled via keyboard, time=${new Date().toISOString()}`);
                 }
             });
-            // Verify element state on init
-            console.log(`[DEBUG] Initial state: sidebar.class=${sidebar.className}, hamburger.class=${hamburger.className}, mainContent.marginLeft=${mainContent.style.marginLeft}`);
         } else {
             console.error(`[ERROR] Hamburger menu initialization failed: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
             usageWarning.textContent = 'Error: Menu components not found';
@@ -201,10 +192,10 @@ document.addEventListener('DOMContentLoaded', () => {
             authStatus.textContent = username ? `Signed in as ${username}` : 'Sign In / Create Account';
             if (username) {
                 authStatus.innerHTML = `Signed in as ${username}`;
-                sidebar.classList.add('logged-in'); // Show logout when signed in
+                sidebar.classList.add('logged-in');
             } else {
                 authStatus.innerHTML = '<a href="/auth">Sign In / Create Account</a>';
-                sidebar.classList.remove('logged-in'); // Hide logout when signed out
+                sidebar.classList.remove('logged-in');
             }
         };
 
@@ -249,7 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.removeItem('diamond_feature');
             localStorage.removeItem('csrfToken');
             console.log('[DEBUG] Local storage cleared');
-            updateAuthStatus(); // Refresh auth status and hide logout
+            updateAuthStatus();
             window.location.href = '/auth';
         });
 
@@ -269,7 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 usageWarning.classList.add(upgradeStatus === 'success' ? 'success' : 'error');
                 console.log(`[DEBUG] Post-payment status: upgrade=${upgradeStatus}, message=${message}, time=${new Date().toISOString()}`);
                 window.history.replaceState({}, document.title, '/ui');
-                await fetchTierData(); // ID 8: Immediate feature update on redirect
+                await fetchTierData();
                 return;
             }
             if (sessionId && username) {
@@ -335,10 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const username = localStorage.getItem('username') || '';
                 const response = await fetch(`/facets/${contractAddress}?username=${encodeURIComponent(username)}&_=${Date.now()}`, {
                     method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                        'Cache-Control': 'no-cache'
-                    },
+                    headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
                     credentials: 'include'
                 });
                 if (!response.ok) {
@@ -641,7 +629,6 @@ document.addEventListener('DOMContentLoaded', () => {
             loading.setAttribute('aria-hidden', 'true');
             resultsDiv.setAttribute('aria-hidden', 'false');
             resultsDiv.focus();
-            // Elegant scroll to results
             resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
             console.log(`[DEBUG] Audit results displayed and scrolled to, risk_score=${report.risk_score}, overage_cost=${overageCost}, time=${new Date().toISOString()}`);
         };
@@ -880,15 +867,15 @@ document.addEventListener('DOMContentLoaded', () => {
         window.addEventListener('scroll', () => {
             const header = document.querySelector('header');
             if (!header) return;
-            console.log(`[DEBUG] Header scroll triggered: scrollY=${window.scrollY}, time=${new Date().toISOString()}`); // Debug
+            console.log(`[DEBUG] Header scroll triggered: scrollY=${window.scrollY}, time=${new Date().toISOString()}`);
             if (window.scrollY > 100) {
-                header.style.opacity = '0 !important'; // Force opacity
+                header.style.opacity = '0 !important';
                 header.classList.add('scrolled');
                 if (!header.classList.contains('visible')) header.classList.add('visible');
             } else {
-                header.style.opacity = '1 !important'; // Force opacity
+                header.style.opacity = '1 !important';
                 header.classList.remove('scrolled');
                 header.classList.remove('visible');
             }
-        }, { passive: true }); // Improve scroll performance
-    }); // Closing brace for document.addEventListener
+        }, { passive: true });
+    });
