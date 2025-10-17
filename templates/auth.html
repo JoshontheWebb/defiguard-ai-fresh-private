@@ -5,35 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DeFiGuard AI - Authentication</title>
     <link rel="stylesheet" href="/static/auth.css">
-    <style>
-        body { font-family: Arial, sans-serif; background: #f0f2f5; color: #2c3e50; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
-        .section { padding: 2rem 0; }
-        .title { font-size: 2rem; font-weight: bold; color: #1a252f; text-align: center; }
-        .subtitle { font-size: 1.2rem; color: #2c3e50; text-align: center; }
-        .box { background: #ffffff; border-radius: 0.5rem; padding: 1.5rem; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
-        .tabs ul { display: flex; justify-content: center; list-style: none; border-bottom: 1px solid #dbdbdb; }
-        .tabs li { flex: 1; max-width: 150px; text-align: center; cursor: pointer; }
-        .tabs li.is-active a { border-bottom: 2px solid #00d1b2; color: #00d1b2; }
-        .tabs a { padding: 0.5rem 0; color: #2c3e50; text-decoration: none; }
-        .tabs a:hover { color: #00d1b2; }
-        .button { padding: 12px; background: #00d1b2; color: #ffffff; border: none; border-radius: 6px; cursor: pointer; }
-        .button:hover { background: #009688; }
-        .button.is-danger { background: #ef4444; }
-        .button.is-danger:hover { background: #dc2626; }
-        .field { margin-bottom: 1rem; }
-        .label { font-weight: bold; color: #2c3e50; }
-        .input { padding: 12px; border: 2px solid #e0e0e0; border-radius: 6px; width: 100%; }
-        .input:focus { border-color: #00d1b2; outline: none; }
-        .notification { padding: 1rem; border-radius: 4px; margin-top: 1rem; }
-        .is-success { background: #d1fae5; color: #065f46; }
-        .is-danger { background: #fee2e2; color: #991b1b; }
-        .is-hidden { display: none; }
-        footer { text-align: center; padding: 1rem; background: #1a252f; color: #ffffff; position: fixed; bottom: 0; width: 100%; }
-        #auth-forms { visibility: hidden; opacity: 0; transition: opacity 0.3s ease, visibility 0.3s ease; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-    </style>
 </head>
 <body>
     <header>
@@ -43,7 +14,7 @@
         <section class="section">
             <h1 class="title has-text-centered">Welcome to DeFiGuard AI</h1>
             <h2 class="subtitle has-text-centered">Secure Your DeFi Future</h2>
-            <div class="box" style="max-width: 500px; margin: auto;">
+            <div class="box">
                 <button class="button is-primary cta-button" id="auth-toggle" aria-label="Toggle authentication forms">Sign In or Create Account</button>
                 <div id="auth-forms">
                     <div class="tabs is-centered">
@@ -54,16 +25,17 @@
                     </div>
                     <div id="signin" class="tab-content active">
                         <form id="signin-form">
+                            <input type="hidden" name="csrf_token" id="csrf_token">
                             <div class="field">
                                 <label class="label">Username</label>
                                 <div class="control">
-                                    <input class="input" type="text" id="signin-username" placeholder="Enter username" required autofocus aria-label="Username">
+                                    <input class="input" type="text" id="signin-username" name="username" placeholder="Enter username" required autofocus aria-label="Username">
                                 </div>
                             </div>
                             <div class="field">
                                 <label class="label">Password</label>
                                 <div class="control has-icons-right">
-                                    <input class="input" type="password" id="signin-password" placeholder="Enter password" required aria-label="Password">
+                                    <input class="input" type="password" id="signin-password" name="password" placeholder="Enter password" required aria-label="Password">
                                     <span class="icon is-right is-clickable" id="toggle-signin-password">
                                         <i class="fas fa-eye"></i>
                                     </span>
@@ -78,23 +50,24 @@
                     </div>
                     <div id="signup" class="tab-content">
                         <form id="signup-form">
+                            <input type="hidden" name="csrf_token" id="csrf_token">
                             <div class="field">
                                 <label class="label">Email</label>
                                 <div class="control">
-                                    <input class="input" type="email" id="signup-email" placeholder="Enter email" required autofocus aria-label="Email">
+                                    <input class="input" type="email" id="signup-email" name="email" placeholder="Enter email" required autofocus aria-label="Email">
                                 </div>
                                 <p class="help is-danger" id="email-error" style="display: none;"></p>
                             </div>
                             <div class="field">
                                 <label class="label">Username</label>
                                 <div class="control">
-                                    <input class="input" type="text" id="signup-username" placeholder="Enter username" required aria-label="Username">
+                                    <input class="input" type="text" id="signup-username" name="username" placeholder="Enter username" required aria-label="Username">
                                 </div>
                             </div>
                             <div class="field">
                                 <label class="label">Password</label>
                                 <div class="control has-icons-right">
-                                    <input class="input" type="password" id="signup-password" placeholder="Enter password" required aria-label="Password">
+                                    <input class="input" type="password" id="signup-password" name="password" placeholder="Enter password" required aria-label="Password">
                                     <span class="icon is-right is-clickable" id="toggle-signup-password">
                                         <i class="fas fa-eye"></i>
                                     </span>
@@ -104,7 +77,7 @@
                             <div class="field">
                                 <label class="label">Confirm Password</label>
                                 <div class="control has-icons-right">
-                                    <input class="input" type="password" id="signup-confirm-password" placeholder="Confirm password" required aria-label="Confirm Password">
+                                    <input class="input" type="password" id="signup-confirm-password" name="confirm_password" placeholder="Confirm password" required aria-label="Confirm Password">
                                     <span class="icon is-right is-clickable" id="toggle-confirm-password">
                                         <i class="fas fa-eye"></i>
                                     </span>

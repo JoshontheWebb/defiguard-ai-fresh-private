@@ -1,19 +1,20 @@
-{
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-}
-
 :root {
     --primary: #1a252f;
-    --accent: #00d1b2;
-    --bg-light: #f0f2f5;
-    --bg-section: #ffffff;
+    --accent-teal: #00d1b2;
+    --accent-pink: #ff4081;
+    --bg-light: #e0e5ea;
+    --bg-section: hsl(210, 20%, 98%);
     --text-dark: #2c3e50;
     --text-light: #ffffff;
     --error: #ef4444;
-    --gradient: linear-gradient(45deg, #1a252f, #3b82f6);
+    --gradient: linear-gradient(45deg, #1a252f, #0d47a1);
     --focus-outline: #3b82f6;
+    --warning: #f59e0b;
+    --glass-bg: rgba(255, 255, 255, 0.1);
+    --glass-border: rgba(255, 255, 255, 0.2);
+    --overlay-dark: rgba(26, 37, 47, 0.7);
+    --glow-teal: rgba(0, 209, 178, 0.7);
+    --glow-pink: rgba(255, 64, 129, 0.7);
 }
 
 body {
@@ -21,26 +22,42 @@ body {
     background-color: var(--bg-light);
     color: var(--text-dark);
     line-height: 1.6;
-    font-size: 16px;
+    font-size: clamp(16px, 4vw, 18px);
+    transition: background-color 0.3s ease;
+    height: 100vh;
+    overflow-x: hidden;
+    animation: fadeIn 0.5s ease-in-out;
 }
 
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
 
 header {
     position: sticky;
     top: 0;
-    background-color: var(--primary);
+    background: var(--gradient);
     color: var(--text-light);
     padding: 1.5rem;
     text-align: center;
     z-index: 100;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
 }
 
 .logo {
-    font-size: 2rem;
+    font-size: clamp(1.5rem, 5vw, 2rem);
     font-weight: 700;
-    color: var(--accent);
+    color: var(--accent-teal);
+    text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5), 0 0 10px var(--glow-teal), 0 0 20px var(--glow-pink);
+    transition: transform 0.3s ease;
+}
+
+.logo:hover {
+    transform: rotateX(15deg) scale(1.05);
+    box-shadow: 0 0 25px var(--glow-teal), 0 0 35px var(--glow-pink);
 }
 
 .container {
@@ -54,14 +71,16 @@ header {
 }
 
 .title {
-    font-size: 2rem;
+    font-size: clamp(1.5rem, 4vw, 2rem);
     font-weight: 700;
-    color: var(--primary);
+    color: var(--text-light);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2), 0 0 10px rgba(0, 209, 178, 0.7);
 }
 
 .subtitle {
-    font-size: 1.2rem;
-    color: var(--text-dark);
+    font-size: clamp(1rem, 2vw, 1.2rem);
+    color: var(--text-light);
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
 }
 
 .tabs {
@@ -69,10 +88,13 @@ header {
 }
 
 .tabs ul {
-    border-bottom: 1px solid #dbdbdb;
+    border-bottom: 1px solid var(--glass-border);
     display: flex;
     justify-content: center;
     list-style: none;
+    background: var(--glass-bg);
+    border-radius: 0.5rem 0.5rem 0 0;
+    padding: 0.25rem;
 }
 
 .tabs li {
@@ -83,33 +105,36 @@ header {
 }
 
 .tabs li.is-active a {
-    border-bottom: 2px solid var(--accent);
-    color: var(--accent);
+    border-bottom: 2px solid var(--accent-teal);
+    color: var(--accent-teal);
 }
 
 .tabs a {
     display: block;
     padding: 0.5rem 0;
-    color: var(--text-dark);
+    color: var(--text-light);
     text-decoration: none;
     transition: color 0.3s, border-bottom-color 0.3s;
-    font-size: 1rem;
+    font-size: clamp(0.9rem, 1.5vw, 1rem);
 }
 
 .tabs a:hover {
-    color: var(--accent);
+    color: var(--accent-pink);
 }
 
 .box {
-    background-color: var(--bg-section);
+    background: linear-gradient(135deg, var(--bg-section), var(--overlay-dark));
     border-radius: 0.5rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
     padding: 1.5rem;
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    border: 1px solid var(--glass-border);
     transition: box-shadow 0.3s ease, transform 0.2s ease;
 }
 
 .box:hover {
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
     transform: translateY(-2px);
 }
 
@@ -119,7 +144,8 @@ header {
 
 .label {
     font-weight: 700;
-    color: var(--text-dark);
+    color: var(--text-light);
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
 }
 
 .control {
@@ -127,63 +153,72 @@ header {
 }
 
 .input {
-    padding: 12px;
-    border: 2px solid #e0e0e0;
+    padding: clamp(10px, 1.5vw, 12px);
+    border: 2px solid hsl(0, 0%, 88%);
     border-radius: 6px;
-    font-size: 1rem;
-    transition: border-color 0.3s, box-shadow 0.3s;
-    width: 100%;
+    font-size: clamp(0.9rem, 1.5vw, 1rem);
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    background: var(--glass-bg);
+    color: var(--text-light);
 }
 
 .input:focus {
-    border-color: var(--accent);
+    border-color: var(--accent-teal);
     outline: none;
-    box-shadow: 0 0 0 2px rgba(0, 209, 178, 0.2);
+    box-shadow: 0 0 10px rgba(0, 209, 178, 0.5);
 }
 
 .button {
-    padding: 12px;
-    background-color: var(--accent);
+    padding: clamp(10px, 1.5vw, 12px);
+    background: linear-gradient(45deg, var(--accent-teal), var(--accent-pink));
     color: var(--text-light);
     border: none;
-    border-radius: 6px;
+    border-radius: 10px;
     cursor: pointer;
-    font-size: 1.1rem;
-    transition: background-color 0.3s, transform 0.2s;
+    font-size: clamp(1rem, 1.5vw, 1.1rem);
+    transition: transform 0.2s ease, box-shadow 0.3s ease;
+    box-shadow: 0 4px 10px rgba(0, 209, 178, 0.3);
 }
 
-.button:hover {
-    background-color: #009688;
+.button:hover,
+.button:focus-visible {
     transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(0, 209, 178, 0.5);
+    outline: 2px solid var(--focus-outline);
+    outline-offset: 2px;
 }
 
 .button.is-primary {
-    background-color: var(--accent);
+    background: linear-gradient(45deg, var(--accent-teal), var(--accent-pink));
 }
 
 .button.is-danger {
-    background-color: #ef4444;
+    background: var(--error);
 }
 
 .button.is-danger:hover {
-    background-color: #dc2626;
+    background: #dc2626;
     transform: translateY(-2px);
 }
 
 .cta-button {
     display: inline-block;
-    padding: 0.75rem 1.5rem;
-    background: var(--accent);
+    padding: clamp(0.5rem, 1.5vw, 0.75rem) clamp(1rem, 2.5vw, 1.5rem);
+    background: linear-gradient(45deg, var(--accent-teal), var(--accent-pink));
     color: var(--text-light);
     text-decoration: none;
-    border-radius: 0.25rem;
+    border-radius: 10px;
     font-weight: 600;
-    transition: background-color 0.3s, transform 0.2s;
+    box-shadow: 0 4px 10px rgba(0, 209, 178, 0.3);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.cta-button:hover {
-    background: #009688;
+.cta-button:hover,
+.cta-button:focus-visible {
     transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(0, 209, 178, 0.5);
+    outline: 2px solid var(--focus-outline);
+    outline-offset: 2px;
 }
 
 .notification {
@@ -213,16 +248,18 @@ header {
     right: 10px;
     transform: translateY(-50%);
     cursor: pointer;
-    color: #a0a0a0;
-    transition: color 0.3s;
+    color: var(--text-light);
+    opacity: 0.7;
+    transition: color 0.3s, opacity 0.3s;
 }
 
 .icon:hover {
-    color: var(--text-dark);
+    color: var(--accent-teal);
+    opacity: 1;
 }
 
 .help {
-    font-size: 0.875rem;
+    font-size: clamp(0.8rem, 1.2vw, 0.9rem);
     margin-top: 0.25rem;
 }
 
@@ -230,30 +267,44 @@ header {
     text-align: center;
 }
 
+#auth-forms {
+    transition: opacity 0.3s ease, visibility 0s linear 0.3s;
+}
+
+#auth-forms[style*="visibility: visible"] {
+    transition: opacity 0.3s ease, visibility 0s;
+}
+
+.tab-content {
+    display: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.tab-content.active {
+    display: block;
+    opacity: 1;
+}
+
 footer {
     text-align: center;
     padding: 1rem;
-    background: var(--primary);
+    background: var(--gradient);
     color: var(--text-light);
     position: fixed;
     bottom: 0;
     width: 100%;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
 }
 
 footer a {
-    color: var(--accent);
+    color: var(--accent-teal);
     text-decoration: none;
     transition: color 0.3s;
 }
 
 footer a:hover {
-    color: #009688;
-}
-
-.tab-content {
-    display: none;
-}
-
-.tab-content.active {
-    display: block;
+    color: var(--accent-pink);
 }

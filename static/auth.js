@@ -89,8 +89,25 @@ document.addEventListener('DOMContentLoaded', () => {
         logoutButton: '#logout-button',
         tabs: '.tabs',
         signinForm: '#signin-form',
-        signupForm: '#signup-form'
-    }, ({ authToggle, authForms, messageDiv, logoutSection, logoutButton, tabs, signinForm, signupForm }) => {
+        signupForm: '#signup-form',
+        csrfToken: '#csrf_token'
+    }, ({ authToggle, authForms, messageDiv, logoutSection, logoutButton, tabs, signinForm, signupForm, csrfToken }) => {
+        // Set CSRF token in form
+        const setCsrfToken = async () => {
+            try {
+                const token = await fetchCsrfToken();
+                csrfToken.value = token;
+            } catch (error) {
+                console.error('[ERROR] Failed to set CSRF token:', error);
+                if (messageDiv) {
+                    messageDiv.classList.remove('is-hidden', 'is-success');
+                    messageDiv.classList.add('is-danger');
+                    messageDiv.textContent = `Error: ${error.message}`;
+                }
+            }
+        };
+        setCsrfToken();
+
         // Toggle auth forms
         authToggle.addEventListener('click', () => {
             const isVisible = authForms.style.visibility === 'visible';
