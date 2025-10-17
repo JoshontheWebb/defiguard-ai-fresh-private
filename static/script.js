@@ -756,10 +756,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 const formData = new FormData(auditForm);
                 formData.append('csrf_token', token);
                 let progress = 0;
-                progressInterval = setInterval(() => { // ID 4: Start progress animation
-                    updateProgress(progress);
-                    progress += 20; // Increment by 20% every second (5s total)
-                }, 1000);
+                // Dynamic progress based on file size and timeout
+                const fileSizeMB = file.size / (1024 * 1024);
+                const baseDuration = Math.min(5000, Math.max(2000, fileSizeMB * 1000)); // 2-5s base, scales with size
+                progressInterval = setInterval(() => {
+                    if (progress < 80) { // Cap at 80% until response
+                        progress += (20 / (baseDuration / 1000)); // Smooth increment
+                    }
+                    updateProgress(Math.min(progress, 80)); // Limit to 80% pre-response
+                }, 100);
+
                 try {
                     console.log(`[DEBUG] Sending /audit request for username=${username}, time=${new Date().toISOString()}`);
                     const response = await fetch(`/audit?username=${encodeURIComponent(username)}`, {
@@ -788,8 +794,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     usageWarning.textContent = `Error initiating audit: ${error.message}`;
                     usageWarning.classList.add('error');
                 } finally {
-                    clearInterval(progressInterval); // Ensure interval clears on error/completion
-                    updateProgress(100); // Force 100% on completion
+                    clearInterval(progressInterval); // Clear interval on completion/error
+                    updateProgress(100); // Snap to 100% on response
                 }
             });
         };
