@@ -755,16 +755,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 const formData = new FormData(auditForm);
                 formData.append('csrf_token', token);
-                let progress = 0;
-                // Dynamic progress based on file size and timeout
-                const fileSizeMB = file.size / (1024 * 1024);
-                const baseDuration = Math.min(5000, Math.max(2000, fileSizeMB * 1000)); // 2-5s base, scales with size
-                progressInterval = setInterval(() => {
-                    if (progress < 80) { // Cap at 80% until response
-                        progress += (20 / (baseDuration / 1000)); // Smooth increment
+                // Update loading text dynamically
+                const loadingText = loading.querySelector('p');
+                let stage = 0;
+                const stages = ['Uploading...', 'Analyzing...', 'Generating Report...'];
+                const interval = setInterval(() => {
+                    if (stage < stages.length) {
+                        loadingText.textContent = stages[stage];
+                        stage++;
+                    } else {
+                        loadingText.textContent = 'Processing...'; // Loop back to a generic state
+                        stage = 0;
                     }
-                    updateProgress(Math.min(progress, 80)); // Limit to 80% pre-response
-                }, 100);
+                }, 2000); // Switch every 2 seconds
 
                 try {
                     console.log(`[DEBUG] Sending /audit request for username=${username}, time=${new Date().toISOString()}`);
@@ -794,8 +797,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     usageWarning.textContent = `Error initiating audit: ${error.message}`;
                     usageWarning.classList.add('error');
                 } finally {
-                    clearInterval(progressInterval); // Clear interval on completion/error
-                    updateProgress(100); // Snap to 100% on response
+                    clearInterval(interval); // Clear interval on completion/error
+                    loadingText.textContent = 'Complete'; // Final state
                 }
             });
         };
