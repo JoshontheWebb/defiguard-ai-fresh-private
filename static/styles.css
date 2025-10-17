@@ -30,6 +30,8 @@ body {
     line-height: 1.6;
     font-size: clamp(16px, 4vw, 18px); /* Fluid typography */
     transition: background-color 0.3s ease;
+    height: 200vh; /* Ensure enough scrollable area for animation */
+    overflow-x: hidden; /* Prevent horizontal scroll issues */
 }
 
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
@@ -46,6 +48,40 @@ header {
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     animation: gradientFlow 10s ease infinite;
+    opacity: 1;
+    transition: opacity 0.3s ease; /* Fallback transition */
+}
+
+/* Enhanced scroll-driven fade animation */
+@scroll-timeline header-fade {
+    time-range: 1s;
+    start: rect(0px, 0px, 100px, 0px);
+    end: rect(100px, 0px, 200px, 0px);
+}
+
+@supports (animation-timeline: works) {
+    header {
+        animation: fadeOut linear both;
+        animation-timeline: header-fade;
+    }
+
+    @keyframes fadeOut {
+        from { opacity: 1; }
+        to { opacity: 0; }
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+}
+
+header.scrolled {
+    opacity: 0; /* Fallback for browsers without scroll-timeline */
+}
+
+header.visible {
+    opacity: 1; /* Fallback for reappearance */
 }
 
 @keyframes gradientFlow {
@@ -66,11 +102,20 @@ header .logo {
     margin: 0 auto;
     transition: transform 0.3s ease, box-shadow 0.3s ease;
     perspective: 1000px;
+    transform-style: preserve-3d; /* Enable 3D space */
+    /* Enhanced 3D text effect */
+    text-shadow: 
+        2px 2px 5px rgba(0, 0, 0, 0.5), /* Base shadow */
+        0 0 10px var(--glow-teal), /* Teal glow */
+        0 0 20px var(--glow-pink), /* Pink glow */
+        4px 4px 10px rgba(0, 0, 0, 0.3), /* Extruded effect */
+        6px 6px 15px rgba(0, 209, 178, 0.4); /* Deeper 3D layer */
+    transform: rotateX(5deg); /* Slight 3D tilt */
 }
 
 header .logo:hover {
-    transform: rotateX(10deg) scale(1.05);
-    box-shadow: 0 0 20px var(--glow-teal), 0 0 30px var(--glow-pink);
+    transform: rotateX(15deg) scale(1.05);
+    box-shadow: 0 0 25px var(--glow-teal), 0 0 35px var(--glow-pink);
 }
 
 .hamburger {
@@ -83,7 +128,7 @@ header .logo:hover {
     width: clamp(30px, 5vw, 35px);
     height: clamp(25px, 4vw, 30px);
     transition: transform 0.3s ease;
-    view-transition-name: hamburger; /* Smooth transition */
+    view-transition-name: hamburger;
 }
 
 .hamburger div {
