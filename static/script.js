@@ -90,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
         recommendationsList: '#recommendations-list',
         fuzzingList: '#fuzzing-list',
         remediationRoadmap: '#remediation-roadmap',
-        usageWarning: '.usage-warning p',
+        usageWarning: '.usage-warning',
         tierInfo: '.tier-info span',
         tierDescription: '#tier-description',
         sizeLimit: '#size-limit',
