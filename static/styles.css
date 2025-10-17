@@ -353,6 +353,41 @@ header .logo:hover {
     box-shadow: 0 0 10px rgba(0, 209, 178, 0.5);
 }
 
+/* Enhanced dropdown styling for tier selector */
+#tier-select {
+    padding: clamp(0.3rem, 0.5vw, 0.5rem);
+    margin: clamp(0.3rem, 0.5vw, 0.5rem) 0;
+    border-radius: 10px;
+    font-size: clamp(0.9rem, 1.5vw, 1rem);
+    border: 2px solid hsl(0, 0%, 88%);
+    background: var(--glass-bg);
+    color: var(--text-light);
+    appearance: none; /* Remove default arrow in some browsers */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2300d1b2' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    cursor: pointer;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+#tier-select:focus {
+    border-color: var(--accent-teal);
+    outline: none;
+    box-shadow: 0 0 10px rgba(0, 209, 178, 0.5);
+}
+
+/* Style the dropdown options (limited by browser support) */
+#tier-select option {
+    background: var(--glass-bg); /* Background for dropdown */
+    color: var(--text-light); /* Maintain colored text */
+    padding: 0.5rem;
+}
+
+/* Fallback for browsers that don't support option styling */
+#tier-select::-ms-expand {
+    display: none; /* Hide default arrow in IE */
+}
+
 .audit-section button {
     padding: clamp(10px, 1.5vw, 12px);
     background: linear-gradient(45deg, var(--accent-teal), var(--accent-pink));
@@ -361,7 +396,7 @@ header .logo:hover {
     border-radius: 10px;
     cursor: pointer;
     font-size: clamp(1rem, 1.5vw, 1.1rem);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    transition: transform 0.2s ease, box-shadow 0.3s ease;
     box-shadow: 0 4px 10px rgba(0, 209, 178, 0.3);
 }
 
