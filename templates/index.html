@@ -46,6 +46,12 @@
             outline: 2px solid var(--focus-outline);
             outline-offset: 2px;
         }
+        .logout-container {
+            display: none; /* Hidden by default */
+        }
+        .logged-in .logout-container {
+            display: block; /* Shown when logged in */
+        }
     </style>
 </head>
 <body>
@@ -69,7 +75,9 @@
             <li><a href="#results">Results Dashboard</a></li>
             <li><a href="#settings">Settings</a></li>
             <li id="auth-status"><a href="/auth">Sign In / Create Account</a></li>
-            <li><a href="#" id="logout-sidebar" class="logout-link">Log Out</a></li>
+            <li class="logout-container">
+                <a href="#" id="logout-sidebar" class="logout-link">Log Out</a>
+            </li>
             <li><a href="https://discord.gg/defiguard" target="_blank">Community Support</a></li>
             <li class="priority-support" style="display: none;"><a href="mailto:support@defiguard.ai">Priority Support (Beginner/Pro)</a></li>
         </ul>

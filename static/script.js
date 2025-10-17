@@ -107,8 +107,9 @@ document.addEventListener('DOMContentLoaded', () => {
         hamburger: '#hamburger',
         sidebar: '#sidebar',
         mainContent: '.main-content',
-        logoutSidebar: '#logout-sidebar' // Added logout button selector
-    }, ({ auditForm, loading, resultsDiv, riskScoreSpan, issuesBody, predictionsList, recommendationsList, fuzzingList, remediationRoadmap, usageWarning, tierInfo, tierDescription, sizeLimit, features, upgradeLink, tierSelect, tierSwitchButton, contractAddressInput, facetWell, downloadReportButton, diamondAuditButton, customReportInput, apiKeySpan, hamburger, sidebar, mainContent, logoutSidebar }) => {
+        logoutSidebar: '#logout-sidebar',
+        authStatus: '#auth-status' // Added to access the auth status element
+    }, ({ auditForm, loading, resultsDiv, riskScoreSpan, issuesBody, predictionsList, recommendationsList, fuzzingList, remediationRoadmap, usageWarning, tierInfo, tierDescription, sizeLimit, features, upgradeLink, tierSelect, tierSwitchButton, contractAddressInput, facetWell, downloadReportButton, diamondAuditButton, customReportInput, apiKeySpan, hamburger, sidebar, mainContent, logoutSidebar, authStatus }) => {
         let maxFileSize = null;
         let auditCount = 0;
         let auditLimit = 3;
@@ -180,15 +181,19 @@ document.addEventListener('DOMContentLoaded', () => {
         // Section6: Authentication
         const updateAuthStatus = () => {
             const username = localStorage.getItem('username');
-            const authStatus = document.querySelector('#auth-status');
+            const sidebar = document.querySelector('#sidebar');
             console.log(`[DEBUG] updateAuthStatus: username=${username}, localStorage=${JSON.stringify(localStorage)}, time=${new Date().toISOString()}`);
             if (!authStatus) {
                 console.error('[ERROR] #auth-status not found in DOM');
                 return;
             }
             authStatus.textContent = username ? `Signed in as ${username}` : 'Sign In / Create Account';
-            if (!username) {
+            if (username) {
+                authStatus.innerHTML = `Signed in as ${username}`;
+                sidebar.classList.add('logged-in'); // Show logout when signed in
+            } else {
                 authStatus.innerHTML = '<a href="/auth">Sign In / Create Account</a>';
+                sidebar.classList.remove('logged-in'); // Hide logout when signed out
             }
         };
 
@@ -223,6 +228,19 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log(`[DEBUG] Persistent auth check, username=${localStorage.getItem('username')}, time=${new Date().toISOString()}`);
             updateAuthStatus();
         }, 10000);
+
+        logoutSidebar.addEventListener('click', (e) => {
+            e.preventDefault();
+            console.log('[DEBUG] Logout initiated from sidebar, time=${new Date().toISOString()}');
+            localStorage.removeItem('username');
+            localStorage.removeItem('tier');
+            localStorage.removeItem('size_limit');
+            localStorage.removeItem('diamond_feature');
+            localStorage.removeItem('csrfToken');
+            console.log('[DEBUG] Local storage cleared');
+            updateAuthStatus(); // Refresh auth status and hide logout
+            window.location.href = '/auth';
+        });
 
         // Section7: Payment Handling
         const handlePostPaymentRedirect = async () => {
@@ -856,19 +874,5 @@ document.addEventListener('DOMContentLoaded', () => {
                 header.classList.remove('scrolled');
             }
         });
-
-        // Section14: Logout Functionality
-        logoutSidebar.addEventListener('click', (e) => {
-            e.preventDefault();
-            console.log('[DEBUG] Logout initiated from sidebar, time=${new Date().toISOString()}');
-            localStorage.removeItem('username');
-            localStorage.removeItem('tier');
-            localStorage.removeItem('size_limit');
-            localStorage.removeItem('diamond_feature');
-            localStorage.removeItem('csrfToken');
-            console.log('[DEBUG] Local storage cleared');
-            updateAuthStatus(); // Refresh auth status in sidebar
-            window.location.href = '/auth';
-        });
     });
-});
+}
