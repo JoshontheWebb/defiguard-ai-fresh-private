@@ -98,10 +98,10 @@ header {
 
 header .logo {
     position: relative;
-    display: inline-block;
-    width: clamp(300px, 30vw, 400px); /* Significantly larger size */
-    height: clamp(90px, 9vw, 120px); /* Proportional to width */
-    margin: 0 auto;
+    display: block; /* Use block to fill container */
+    width: 100%; /* Fill header width */
+    height: clamp(120px, 15vw, 180px); /* Increased height for prominence */
+    margin: 0;
     transition: transform 0.3s ease, box-shadow 0.3s ease;
     perspective: 1000px;
     transform-style: preserve-3d;
@@ -110,7 +110,7 @@ header .logo {
 header .logo::before {
     content: "DeFiGuard"; /* Display text prominently */
     font-family: 'Bebas Neue', sans-serif;
-    font-size: clamp(40px, 5vw, 60px); /* Larger, responsive text */
+    font-size: clamp(50px, 6vw, 80px); /* Larger, responsive text */
     font-weight: 700;
     color: var(--text-light);
     position: absolute;
@@ -119,6 +119,7 @@ header .logo::before {
     transform: translate(-50%, -50%);
     z-index: 1;
     text-shadow: 0 0 10px rgba(0, 0, 0, 0.7); /* Stronger shadow for contrast */
+    width: 100%; /* Ensure text spans full width */
 }
 
 header .logo::after {
@@ -127,8 +128,8 @@ header .logo::after {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 60%; /* Logo nested within text, adjustable size */
-    height: 60%; /* Proportional height */
+    width: 50%; /* Adjusted to fit within text, larger presence */
+    height: 80%; /* Proportional height */
     background: url('/static/images/defiguard-logo.png') no-repeat center;
     background-size: contain;
     z-index: 2; /* Overlay on text */
@@ -142,17 +143,16 @@ header .logo:hover {
 /* Media queries for full responsiveness */
 @media (max-width: 768px) {
     header .logo {
-        width: 40vw; /* Larger mobile width */
-        height: 12vw; /* Proportional height */
+        height: 20vw; /* Increased for mobile */
     }
 
     header .logo::before {
-        font-size: 6vw; /* Adjust text for mobile */
+        font-size: 8vw; /* Larger text for mobile */
     }
 
     header .logo::after {
-        width: 60%; /* Maintain proportion */
-        height: 60%;
+        width: 50%; /* Maintain proportion */
+        height: 80%;
     }
 
     header .logo:hover {
@@ -163,8 +163,22 @@ header .logo:hover {
 
 @media (min-width: 769px) and (max-width: 1200px) {
     header .logo {
-        width: 35vw; /* Adjust for tablets */
-        height: 10.5vw;
+        height: 18vw; /* Adjust for tablets */
+    }
+
+    header .logo::before {
+        font-size: 7vw;
+    }
+
+    header .logo::after {
+        width: 50%;
+        height: 80%;
+    }
+}
+
+@media (min-width: 1201px) {
+    header .logo {
+        height: 12vw; /* Scale for large screens */
     }
 
     header .logo::before {
@@ -172,78 +186,8 @@ header .logo:hover {
     }
 
     header .logo::after {
-        width: 60%;
-        height: 60%;
-    }
-}
-
-@media (min-width: 1201px) {
-    header .logo {
-        width: 25vw; /* Scale for large screens */
-        height: 7.5vw;
-    }
-
-    header .logo::before {
-        font-size: 4vw;
-    }
-
-    header .logo::after {
-        width: 60%;
-        height: 60%;
-    }
-}
-
-/* Media query for full responsiveness */
-@media (max-width: 768px) {
-    header .logo {
-        width: 25vw; /* Fluid width for mobile */
-        height: 7.5vw; /* Proportional height */
-    }
-
-    header .logo::before {
-        font-size: 3vw; /* Adjust text for mobile */
-    }
-
-    header .logo::after {
-        width: 70%; /* Maintain proportion */
-        height: 70%;
-    }
-
-    header .logo:hover {
-        transform: rotateY(15deg) scale(1.03); /* Subtle on mobile */
-        box-shadow: 0 0 15px var(--glow-teal), 0 0 20px var(--glow-pink);
-    }
-}
-
-@media (min-width: 769px) and (max-width: 1200px) {
-    header .logo {
-        width: 20vw; /* Adjust for tablets */
-        height: 6vw;
-    }
-
-    header .logo::before {
-        font-size: 2.5vw;
-    }
-
-    header .logo::after {
-        width: 70%;
-        height: 70%;
-    }
-}
-
-@media (min-width: 1201px) {
-    header .logo {
-        width: 15vw; /* Scale down for large screens */
-        height: 4.5vw;
-    }
-
-    header .logo::before {
-        font-size: 2vw;
-    }
-
-    header .logo::after {
-        width: 70%;
-        height: 70%;
+        width: 50%;
+        height: 80%;
     }
 }
 
@@ -819,7 +763,7 @@ footer a:focus-visible {
 .logout-button:hover,
 .logout-button:focus-visible {
     transform: translateY(-2px);
-    background-color: #c53030;
+    background-color: #c53050;
     box-shadow: 0 6px 15px rgba(239, 68, 68, 0.5);
     outline: 2px solid var(--focus-outline);
     outline-offset: 2px;
