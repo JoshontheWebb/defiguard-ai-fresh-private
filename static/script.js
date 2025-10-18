@@ -101,7 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fuzzingList: '#fuzzing-list',
         remediationRoadmap: '#remediation-roadmap',
         usageWarning: '.usage-warning',
-        tierInfo: '.tier-info',
+        tierInfo: '.tier-info span',
         tierDescription: '#tier-description',
         sizeLimit: '#size-limit',
         features: '#features',
@@ -165,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
             calculateDiamondOverage(file);
         });
 
-        // Section5: Hamburger Menu
+        // Section5: Hamburger Menu (optimized with debounce)
         console.log(`[DEBUG] Initializing hamburger menu: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
         if (hamburger && sidebar && mainContent) {
             const toggleHamburger = debounce((e) => {
@@ -180,7 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     usageWarning.textContent = `Menu error: ${error.message}`;
                     usageWarning.classList.add('error');
                 }
-            }, 200);
+            }, 200); // 200ms debounce to prevent rapid clicks
 
             hamburger.addEventListener('click', toggleHamburger);
             hamburger.setAttribute('tabindex', '0');
@@ -231,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }, 1000);
 
-        // Section7: Tier Data Fetch
+        // Section7: Tier Data Fetch (with polling)
         const fetchTierData = async () => {
             const username = localStorage.getItem('username');
             if (!username) {
@@ -653,7 +653,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         auditForm?.addEventListener('submit', handleSubmit);
 
-        // Section12: Report Download (with loading state, ID 9)
+        // Section12: Report Download
         downloadReportButton?.addEventListener('click', () => {
             const reportData = {
                 risk_score: riskScoreSpan.textContent,
@@ -674,7 +674,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 })),
                 remediation_roadmap: remediationRoadmap?.textContent || null
             };
-            downloadReportButton.classList.add('loading'); // Show loading state
             const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -683,7 +682,6 @@ document.addEventListener('DOMContentLoaded', () => {
             a.click();
             URL.revokeObjectURL(url);
             console.log('[DEBUG] Report downloaded');
-            downloadReportButton.classList.remove('loading'); // Hide loading state
         });
 
         // Section13: Header Scroll Behavior
@@ -695,7 +693,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 header.classList.add('scrolled');
             } else {
                 header.classList.remove('scrolled');
-                if (!header.classList.contains('visible')) header.classList.add('visible'); // Trigger fade-in
             }
         }, { passive: true });
     });
