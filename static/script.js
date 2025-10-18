@@ -375,7 +375,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 console.log(`[DEBUG] Facet preview loaded for address: ${contractAddress}, is_preview=${data.is_preview}, time=${new Date().toISOString()}`);
             } catch (error) {
-                console.error(`Facet preview error (attempt ${attempt}/${maxAttempts}): ${error.message}`);
+                console.error(`Facet preview error (attempt ${attempt}/${maxAttempts): ${error.message}`);
                 if (attempt < maxAttempts && !error.message.includes("Pro or Diamond tier")) {
                     console.log(`Retrying facet fetch in 1s...`);
                     setTimeout(() => fetchFacetPreview(contractAddress, attempt + 1, maxAttempts), 1000);
