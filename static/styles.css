@@ -138,15 +138,13 @@ header .logo::after {
 }
 
 header .logo .logo-image {
-    content: "";
-    position: absolute;
+    position: absolute; /* Removed content: "" since it's an img tag now */
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
     width: 30%; /* Adjusted to fit between text, less crunched */
     height: 70%; /* Proportional height, less crunched */
-    background: url('/static/images/defiguard-logo.png') no-repeat center;
-    background-size: contain;
+    object-fit: contain; /* Ensure image scales without distortion */
     z-index: 2; /* Overlay on text */
 }
 
