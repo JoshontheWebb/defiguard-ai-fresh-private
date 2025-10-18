@@ -105,8 +105,9 @@ document.addEventListener('DOMContentLoaded', () => {
         sidebar: '#sidebar',
         mainContent: '.main-content',
         logoutSidebar: '#logout-sidebar',
-        authStatus: '#auth-status'
-    }, ({ auditForm, loading, resultsDiv, riskScoreSpan, issuesBody, predictionsList, recommendationsList, fuzzingList, remediationRoadmap, usageWarning, tierInfo, tierDescription, sizeLimit, features, upgradeLink, tierSelect, tierSwitchButton, contractAddressInput, facetWell, downloadReportButton, diamondAuditButton, customReportInput, apiKeySpan, hamburger, sidebar, mainContent, logoutSidebar, authStatus }) => {
+        authStatus: '#auth-status',
+        auditLog: '#audit-log'  // Added for real-time log
+    }, ({ auditForm, loading, resultsDiv, riskScoreSpan, issuesBody, predictionsList, recommendationsList, fuzzingList, remediationRoadmap, usageWarning, tierInfo, tierDescription, sizeLimit, features, upgradeLink, tierSelect, tierSwitchButton, contractAddressInput, facetWell, downloadReportButton, diamondAuditButton, customReportInput, apiKeySpan, hamburger, sidebar, mainContent, logoutSidebar, authStatus, auditLog }) => {
         let maxFileSize = null;
         let auditCount = 0;
         let auditLimit = 3;

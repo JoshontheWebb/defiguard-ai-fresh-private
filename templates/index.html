@@ -128,24 +128,25 @@
 
                 <label for="contract_address" class="pro-diamond-only" style="display: none;">Ethereum Contract Address (Optional):</label>
                 <input type="text" id="contract_address" name="contract_address" placeholder="0x..." pattern="^0x[a-fA-F0-9]{40}$" style="display: none;">
-                <small class="pro-diamond-only" style="display: none;">Fetch on-chain bytecode for deeper analysis (Pro/Diamond).</small>
+                <small>Pro/Diamond tiers only</small>
 
-                <label for="custom_report" class="pro-diamond-only" style="display: none;">Custom Compliance Report:</label>
-                <textarea id="custom_report" name="custom_report" placeholder="Specify compliance requirements (Pro/Diamond)" style="display: none;"></textarea>
+                <label for="custom_report" class="diamond-only" style="display: none;">Custom Report Instructions (Optional):</label>
+                <textarea id="custom_report" name="custom_report" placeholder="E.g., Focus on reentrancy risks..." style="display: none;"></textarea>
+                <small>Diamond tier only</small>
 
                 <button type="submit">Audit Contract</button>
+
                 <button type="button" id="diamond-audit" class="diamond-only" style="display: none;">Request Diamond Audit</button>
-                <div class="loading">
-                    <div class="progress-bar"><span class="progress-text">0%</span></div>
-                    <p>Analyzing...</p>
+
+                <div class="loading" aria-live="assertive">
+                    <p>Loading...</p>
                 </div>
-                <p id="diamond-price" class="diamond-only" style="display: none;">Diamond Audit Overage: Loading...</p>
+
+                <p id="diamond-price" class="diamond-only" style="display: none;">Overage: $0.00</p>
             </form>
-            <div class="usage-warning" aria-live="assertive">
-                <!-- ID 1: Removed <p>Free tier: Limited audits.</p> -->
-            </div>
+            <div class="usage-warning is-hidden" aria-live="assertive"></div>
             <div class="upgrade-prompt" aria-live="polite">
-                <h4>Upgrade Your Plan</h4>
+                <h3>Subscription Tiers</h3>
                 <table class="pricing-table">
                     <thead>
                         <tr>
@@ -156,9 +157,14 @@
                     </thead>
                     <tbody>
                         <tr>
+                            <td>Free</td>
+                            <td>$0</td>
+                            <td>3 audits/day, 100KB file limit</td>
+                        </tr>
+                        <tr>
                             <td>Beginner</td>
                             <td>$50/month</td>
-                            <td>10 audits/mo, 1MB file limit, AI predictions, on-chain analysis, reports, priority support</td>
+                            <td>10 audits/day, 500KB file limit, contract address analysis</td>
                         </tr>
                         <tr>
                             <td>Pro</td>
@@ -188,7 +194,6 @@
             </div>
             <div id="facet-preview" class="box pro-diamond-only" style="display: none;" aria-hidden="true"></div>
             <div class="results">
-                <p>Audit Results: (JSON response will appear here)</p>
                 <button id="download-report" class="loading" style="display: none;">Download Report (Beginner/Pro)</button>
             </div>
         </section>
