@@ -44,7 +44,7 @@ header {
     top: 0;
     background: var(--gradient);
     color: var(--text-light);
-    padding: 1.5rem 2rem; /* Adjusted padding for full width */
+    padding: 1.5rem 2rem;
     text-align: center;
     z-index: 100;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
@@ -52,9 +52,9 @@ header {
     -webkit-backdrop-filter: blur(10px);
     animation: gradientFlow 10s ease infinite;
     opacity: 1;
-    transition: opacity 0.3s ease !important;
-    width: 100%; /* Ensure header fills viewport */
-    overflow: hidden; /* Prevent overflow from extra text */
+    transition: opacity 0.3s ease;
+    width: 100%;
+    overflow: hidden;
 }
 
 @scroll-timeline header-fade {
@@ -82,13 +82,13 @@ header {
 
 @supports not (animation-timeline: works) {
     header {
-        transition: opacity 0.3s ease !important;
+        transition: opacity 0.3s ease;
     }
     header.scrolled {
-        opacity: 0 !important;
+        opacity: 0;
     }
     header.visible {
-        opacity: 1 !important;
+        opacity: 1;
     }
 }
 
@@ -98,142 +98,81 @@ header {
     100% { background: linear-gradient(45deg, #1a252f, #0d47a1); }
 }
 
-header .logo {
-    position: relative;
-    display: block; /* Use block to fill container */
-    width: 100%; /* Fill header width */
-    height: clamp(120px, 15vw, 180px); /* Increased height for prominence */
-    margin: 0;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-    perspective: 1000px;
-    transform-style: preserve-3d;
+header .logo-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 0; /* No spacing between logo and text */
 }
 
-header .logo::before {
-    content: "DeFi "; /* First part of text */
+header .logo-container .logo-image {
+    height: 70%;
+    object-fit: contain;
+    margin-right: 0; /* Remove any default margin */
+}
+
+header .logo-container .logo-text {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: clamp(50px, 6vw, 80px); /* Larger, responsive text */
+    font-size: clamp(50px, 6vw, 80px);
     font-weight: 700;
-    color: var(--text-light); /* Match header color scheme */
-    position: absolute;
-    top: 50%;
-    left: 15%; /* Reduced spacing */
-    transform: translateY(-50%);
-    z-index: 1;
-    text-shadow: 0 0 10px rgba(0, 0, 0, 0.7); /* Stronger shadow for contrast */
+    background: linear-gradient(90deg, var(--accent-teal), var(--accent-pink));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-left: 0; /* Remove any default margin */
 }
 
-header .logo::after {
-    content: " Guard"; /* Second part of text after logo */
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: clamp(50px, 6vw, 80px); /* Match text size */
-    font-weight: 700;
-    color: var(--text-light); /* Match header color scheme */
-    position: absolute;
-    top: 50%;
-    left: 65%; /* Reduced spacing */
-    transform: translateY(-50%);
-    z-index: 1;
-    text-shadow: 0 0 10px rgba(0, 0, 0, 0.7); /* Stronger shadow for contrast */
-}
-
-header .logo .logo-image {
-    position: absolute; /* Removed content: "" since it's an img tag */
-    top: 50%;
-    left: 40%; /* Centered between 15% and 65% */
-    transform: translate(-50%, -50%);
-    width: 25%; /* Reduced width to tighten spacing */
-    height: 70%; /* Proportional height */
-    object-fit: contain; /* Ensure image scales without distortion */
-    z-index: 2; /* Overlay on text */
-}
-
-header .logo:hover {
-    transform: rotateY(20deg) scale(1.05); /* Spartan rotation */
+header .logo-container:hover {
+    transform: rotateY(20deg) scale(1.05);
     box-shadow: 0 0 25px var(--glow-teal), 0 0 35px var(--glow-pink);
 }
 
 /* Media queries for full responsiveness */
 @media (max-width: 768px) {
     header {
-        padding: 1rem 1rem; /* Reduced padding for mobile */
+        padding: 1rem 1rem;
     }
 
-    header .logo {
-        height: 20vw; /* Increased for mobile */
+    header .logo-container .logo-text {
+        font-size: 8vw;
     }
 
-    header .logo::before {
-        font-size: 8vw; /* Larger text for mobile */
-        left: 10%; /* Further reduced spacing */
-    }
-
-    header .logo::after {
-        font-size: 8vw; /* Larger text for mobile */
-        left: 70%; /* Further reduced spacing */
-    }
-
-    header .logo .logo-image {
-        width: 25%; /* Maintain proportion */
+    header .logo-container .logo-image {
         height: 70%;
-        left: 40%; /* Adjust centering */
     }
 
-    header .logo:hover {
-        transform: rotateY(15deg) scale(1.03); /* Subtle on mobile */
+    header .logo-container:hover {
+        transform: rotateY(15deg) scale(1.03);
         box-shadow: 0 0 15px var(--glow-teal), 0 0 20px var(--glow-pink);
     }
 }
 
 @media (min-width: 769px) and (max-width: 1200px) {
     header {
-        padding: 1.5rem 2rem; /* Standard padding */
+        padding: 1.5rem 2rem;
     }
 
-    header .logo {
-        height: 18vw; /* Adjust for tablets */
-    }
-
-    header .logo::before {
+    header .logo-container .logo-text {
         font-size: 7vw;
-        left: 15%;
     }
 
-    header .logo::after {
-        font-size: 7vw;
-        left: 65%;
-    }
-
-    header .logo .logo-image {
-        width: 25%;
+    header .logo-container .logo-image {
         height: 70%;
-        left: 40%;
     }
 }
 
 @media (min-width: 1201px) {
     header {
-        padding: 1.5rem 2rem; /* Standard padding */
+        padding: 1.5rem 2rem;
     }
 
-    header .logo {
-        height: 12vw; /* Scale for large screens */
-    }
-
-    header .logo::before {
+    header .logo-container .logo-text {
         font-size: 5vw;
-        left: 15%;
     }
 
-    header .logo::after {
-        font-size: 5vw;
-        left: 65%;
-    }
-
-    header .logo .logo-image {
-        width: 25%;
+    header .logo-container .logo-image {
         height: 70%;
-        left: 40%;
     }
 }
 
