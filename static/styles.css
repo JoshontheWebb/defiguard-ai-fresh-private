@@ -114,10 +114,10 @@ header .logo::before {
     font-family: 'Bebas Neue', sans-serif;
     font-size: clamp(50px, 6vw, 80px); /* Larger, responsive text */
     font-weight: 700;
-    color: var(--text-light);
+    color: var(--text-light); /* Match header color scheme */
     position: absolute;
     top: 50%;
-    left: 20%; /* Position before the logo */
+    left: 15%; /* Reduced spacing */
     transform: translateY(-50%);
     z-index: 1;
     text-shadow: 0 0 10px rgba(0, 0, 0, 0.7); /* Stronger shadow for contrast */
@@ -128,22 +128,22 @@ header .logo::after {
     font-family: 'Bebas Neue', sans-serif;
     font-size: clamp(50px, 6vw, 80px); /* Match text size */
     font-weight: 700;
-    color: var(--text-light);
+    color: var(--text-light); /* Match header color scheme */
     position: absolute;
     top: 50%;
-    left: 60%; /* Position after the logo */
+    left: 65%; /* Reduced spacing */
     transform: translateY(-50%);
     z-index: 1;
     text-shadow: 0 0 10px rgba(0, 0, 0, 0.7); /* Stronger shadow for contrast */
 }
 
 header .logo .logo-image {
-    position: absolute; /* Removed content: "" since it's an img tag now */
+    position: absolute; /* Removed content: "" since it's an img tag */
     top: 50%;
-    left: 50%;
+    left: 40%; /* Centered between 15% and 65% */
     transform: translate(-50%, -50%);
-    width: 30%; /* Adjusted to fit between text, less crunched */
-    height: 70%; /* Proportional height, less crunched */
+    width: 25%; /* Reduced width to tighten spacing */
+    height: 70%; /* Proportional height */
     object-fit: contain; /* Ensure image scales without distortion */
     z-index: 2; /* Overlay on text */
 }
@@ -165,17 +165,18 @@ header .logo:hover {
 
     header .logo::before {
         font-size: 8vw; /* Larger text for mobile */
-        left: 15%; /* Adjust for mobile spacing */
+        left: 10%; /* Further reduced spacing */
     }
 
     header .logo::after {
         font-size: 8vw; /* Larger text for mobile */
-        left: 65%; /* Adjust for mobile spacing */
+        left: 70%; /* Further reduced spacing */
     }
 
     header .logo .logo-image {
-        width: 30%; /* Maintain proportion */
+        width: 25%; /* Maintain proportion */
         height: 70%;
+        left: 40%; /* Adjust centering */
     }
 
     header .logo:hover {
@@ -195,17 +196,18 @@ header .logo:hover {
 
     header .logo::before {
         font-size: 7vw;
-        left: 20%;
+        left: 15%;
     }
 
     header .logo::after {
         font-size: 7vw;
-        left: 60%;
+        left: 65%;
     }
 
     header .logo .logo-image {
-        width: 30%;
+        width: 25%;
         height: 70%;
+        left: 40%;
     }
 }
 
@@ -220,17 +222,18 @@ header .logo:hover {
 
     header .logo::before {
         font-size: 5vw;
-        left: 20%;
+        left: 15%;
     }
 
     header .logo::after {
         font-size: 5vw;
-        left: 60%;
+        left: 65%;
     }
 
     header .logo .logo-image {
-        width: 30%;
+        width: 25%;
         height: 70%;
+        left: 40%;
     }
 }
 
