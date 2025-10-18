@@ -52,6 +52,14 @@
         .logged-in .logout-container {
             display: block; /* Shown when logged in */
         }
+        .tier-info .loading {
+            display: none;
+            color: var(--text-light);
+            font-style: italic;
+        }
+        .tier-info.loading .loading {
+            display: inline;
+        }
     </style>
 </head>
 <body>
@@ -64,7 +72,10 @@
 
     <!-- Header -->
     <header>
-        <div class="logo">DeFiGuard AI</div>
+        <div class="logo-container">
+            <img src="/static/images/defiguard-logo.png" alt="DeFiGuard Logo" class="logo-image">
+            <span class="logo-text">DeFiGuard</span>
+        </div>
     </header>
 
     <!-- Sidebar Navigation -->
@@ -83,6 +94,7 @@
         </ul>
         <div class="tier-info" aria-live="polite">
             <span>Tier: Free (Limited audits)</span>
+            <span class="loading">Loading tier...</span>
         </div>
     </div>
 
@@ -174,10 +186,10 @@
                 <p id="size-limit">Max file size: Loading...</p>
                 <p id="features">Features: Loading...</p>
             </div>
-            <div id="facet-preview" class="box pro-diamond-only" style="display: none;"></div>
+            <div id="facet-preview" class="box pro-diamond-only" style="display: none;" aria-hidden="true"></div>
             <div class="results">
                 <p>Audit Results: (JSON response will appear here)</p>
-                <button id="download-report" style="display: none;">Download Report (Beginner/Pro)</button>
+                <button id="download-report" class="loading" style="display: none;">Download Report (Beginner/Pro)</button>
             </div>
         </section>
 
