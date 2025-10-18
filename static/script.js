@@ -15,7 +15,7 @@ function waitForDOM(selectors, callback, maxAttempts = 20, interval = 200) {
             console.log(`[DEBUG] Waiting for DOM elements, attempt ${attempts}/${maxAttempts}, time=${new Date().toISOString()}`);
             setTimeout(check, interval);
         } else {
-            console.error('[ERROR] DOM elements not found after max attempts:', Object.keys(selectors).filter(k => !elements[k]));
+            console.error(`[ERROR] DOM elements not found after max attempts: ${JSON.stringify(Object.keys(selectors).filter(k => !elements[k]))}`, elements); // Fixed syntax
         }
     };
     check();
