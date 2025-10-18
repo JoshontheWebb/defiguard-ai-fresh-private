@@ -108,15 +108,14 @@ header .logo-container {
 }
 
 header .logo-container .logo-image {
-    height: 40%; /* Reduced to fit header */
+    height: 60%; /* Increased to make logo prominent */
     object-fit: contain;
-    max-width: 20%; /* Limit logo size */
     margin-right: 0; /* Remove any default margin */
 }
 
 header .logo-container .logo-text {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: clamp(30px, 4vw, 50px); /* Reduced to fit header */
+    font-size: clamp(20px, 3vw, 40px); /* Reduced to balance with larger logo */
     font-weight: 700;
     background: linear-gradient(90deg, var(--accent-teal), var(--accent-pink));
     -webkit-background-clip: text;
@@ -141,8 +140,7 @@ header .logo-container:hover {
     }
 
     header .logo-container .logo-image {
-        height: 40%;
-        max-width: 20%;
+        height: 60%;
     }
 
     header .logo-container:hover {
@@ -161,8 +159,7 @@ header .logo-container:hover {
     }
 
     header .logo-container .logo-image {
-        height: 40%;
-        max-width: 20%;
+        height: 60%;
     }
 }
 
@@ -172,12 +169,11 @@ header .logo-container:hover {
     }
 
     header .logo-container .logo-text {
-        font-size: 4vw; /* Adjust for desktop */
+        font-size: 3vw; /* Adjust for desktop */
     }
 
     header .logo-container .logo-image {
-        height: 40%;
-        max-width: 20%;
+        height: 60%;
     }
 }
 
