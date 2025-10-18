@@ -247,7 +247,6 @@ header .logo-container:hover {
     overflow: hidden;
 }
 
-/* Rest of styles.css unchanged to prevent regressions */
 .sidebar ul {
     list-style: none;
 }
@@ -662,8 +661,10 @@ footer a:focus-visible {
 
 #facet-preview .table {
     width: 100%;
+    max-width: 100%; /* Ensure table fits container */
     border-collapse: collapse;
     margin-top: clamp(0.5rem, 1vw, 1rem);
+    overflow-x: auto; /* Allow horizontal scroll on small screens */
 }
 
 #facet-preview th,
@@ -671,6 +672,7 @@ footer a:focus-visible {
     padding: clamp(0.5rem, 1vw, 0.75rem);
     border: 1px solid hsl(210, 10%, 90%);
     text-align: left;
+    font-size: clamp(0.7rem, 1vw, 0.85rem); /* Responsive font size */
     transition: background-color 0.3s ease;
 }
 
@@ -773,6 +775,16 @@ footer a:focus-visible {
 
     .issues-table-placeholder small {
         font-size: clamp(0.6rem, 0.9vw, 0.75rem);
+    }
+
+    #facet-preview .table {
+        font-size: clamp(0.6rem, 0.9vw, 0.8rem); /* Smaller font for mobile */
+        overflow-x: auto; /* Ensure scrollable on mobile */
+    }
+
+    #facet-preview th,
+    #facet-preview td {
+        padding: clamp(0.2rem, 0.5vw, 0.4rem); /* Tighter padding for mobile */
     }
 
     .hero h2 {
