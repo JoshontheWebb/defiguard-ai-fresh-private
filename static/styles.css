@@ -36,6 +36,9 @@ body {
 
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
 
+/* Add font import for Spartan-inspired text */
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+
 header {
     position: sticky;
     top: 0;
@@ -98,8 +101,8 @@ header .logo {
     color: transparent; /* Ensure text is invisible */
     background: url('/static/images/defiguard-logo.svg') no-repeat center;
     background-size: contain;
-    width: clamp(150px, 20vw, 200px);
-    height: clamp(45px, 7vw, 60px);
+    width: clamp(150px, 15vw, 200px); /* Adjusted for Spartan detail */
+    height: clamp(45px, 4.5vw, 60px); /* Proportional to viewBox */
     display: inline-block;
     margin: 0 auto;
     transition: transform 0.3s ease, box-shadow 0.3s ease;
@@ -109,8 +112,21 @@ header .logo {
 }
 
 header .logo:hover {
-    transform: rotateX(15deg) scale(1.05);
+    transform: rotateY(20deg) scale(1.05); /* Enhanced Spartan rotation */
     box-shadow: 0 0 25px var(--glow-teal), 0 0 35px var(--glow-pink);
+}
+
+/* Media query for mobile */
+@media (max-width: 768px) {
+    header .logo {
+        width: clamp(90px, 18vw, 150px); /* Smaller on mobile */
+        height: clamp(27px, 5.5vw, 45px);
+    }
+
+    header .logo:hover {
+        transform: rotateY(15deg) scale(1.03); /* Subtle on mobile */
+        box-shadow: 0 0 15px var(--glow-teal), 0 0 20px var(--glow-pink);
+    }
 }
 
 .hamburger {
