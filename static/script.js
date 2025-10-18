@@ -101,7 +101,7 @@ document.addEventListener('DOMContentLoaded', () => {
         fuzzingList: '#fuzzing-list',
         remediationRoadmap: '#remediation-roadmap',
         usageWarning: '.usage-warning',
-        tierInfo: '.tier-info span',
+        tierInfo: '.tier-info',
         tierDescription: '#tier-description',
         sizeLimit: '#size-limit',
         features: '#features',
@@ -165,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
             calculateDiamondOverage(file);
         });
 
-        // Section5: Hamburger Menu (optimized with debounce)
+        // Section5: Hamburger Menu
         console.log(`[DEBUG] Initializing hamburger menu: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
         if (hamburger && sidebar && mainContent) {
             const toggleHamburger = debounce((e) => {
@@ -231,13 +231,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }, 1000);
 
-        // Section7: Tier Data Fetch
+        // Section7: Tier Data Fetch (with polling)
         const fetchTierData = async () => {
             const username = localStorage.getItem('username');
             if (!username) {
                 console.log('[DEBUG] No username, skipping tier fetch');
                 return;
             }
+            tierInfo.classList.add('loading'); // Show loading state
             try {
                 const response = await fetch(`/tier?username=${encodeURIComponent(username)}`, {
                     headers: { 'Accept': 'application/json' },
@@ -279,10 +280,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error(`[ERROR] Tier fetch error: ${error.message}`);
                 usageWarning.textContent = `Error fetching tier: ${error.message}`;
                 usageWarning.classList.add('error');
+            } finally {
+                tierInfo.classList.remove('loading'); // Hide loading state
             }
         };
 
+        // Start polling tier data every 10 seconds
         fetchTierData();
+        setInterval(fetchTierData, 10000); // 10s polling
 
         // Section8: Facet Preview
         const updateFacetPreview = async () => {
@@ -679,7 +684,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('[DEBUG] Report downloaded');
         });
 
-        // Section13: Header Scroll Behavior (simplified)
+        // Section13: Header Scroll Behavior
         window.addEventListener('scroll', () => {
             const header = document.querySelector('header');
             if (!header) return;

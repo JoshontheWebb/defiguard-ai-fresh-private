@@ -52,6 +52,14 @@
         .logged-in .logout-container {
             display: block; /* Shown when logged in */
         }
+        .tier-info .loading {
+            display: none;
+            color: var(--text-light);
+            font-style: italic;
+        }
+        .tier-info.loading .loading {
+            display: inline;
+        }
     </style>
 </head>
 <body>
@@ -86,6 +94,7 @@
         </ul>
         <div class="tier-info" aria-live="polite">
             <span>Tier: Free (Limited audits)</span>
+            <span class="loading">Loading tier...</span>
         </div>
     </div>
 
