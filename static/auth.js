@@ -90,13 +90,16 @@ document.addEventListener('DOMContentLoaded', () => {
         tabs: '.tabs',
         signinForm: '#signin-form',
         signupForm: '#signup-form',
-        csrfToken: '#csrf_token'
+        csrfToken: 'input[name="csrf_token"]'  // Changed to select all CSRF inputs
     }, ({ authToggle, authForms, messageDiv, logoutSection, logoutButton, tabs, signinForm, signupForm, csrfToken }) => {
-        // Set CSRF token in form
+        // Set CSRF token in forms (handle multiple)
         const setCsrfToken = async () => {
             try {
                 const token = await fetchCsrfToken();
-                csrfToken.value = token;
+                const csrfInputs = document.querySelectorAll('input[name="csrf_token"]');
+                csrfInputs.forEach(input => {
+                    input.value = token;
+                });
             } catch (error) {
                 console.error('[ERROR] Failed to set CSRF token:', error);
                 if (messageDiv) {
@@ -140,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // Password toggle
+        // Password toggle (text-based, no FontAwesome)
         const togglePassword = (inputId, toggleId) => {
             const input = document.getElementById(inputId);
             const toggle = document.getElementById(toggleId);
@@ -151,81 +154,48 @@ document.addEventListener('DOMContentLoaded', () => {
             toggle.addEventListener('click', () => {
                 const type = input.type === 'password' ? 'text' : 'password';
                 input.type = type;
-                toggle.querySelector('i').classList.toggle('fa-eye');
-                toggle.querySelector('i').classList.toggle('fa-eye-slash');
+                toggle.textContent = type === 'password' ? 'Show' : 'Hide';  // Simple text toggle
             });
         };
 
-        togglePassword('signin-password', 'toggle-signin-password');
-        togglePassword('signup-password', 'toggle-signup-password');
-        togglePassword('signup-confirm-password', 'toggle-confirm-password');
-
-        // Sign-in form
+        // Signin form
         signinForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const username = document.getElementById('signin-username')?.value.trim();
             const password = document.getElementById('signin-password')?.value;
-
             if (!username || !password) {
-                console.log('Sign-in attempt: Missing fields', { username, password });
                 messageDiv.classList.remove('is-hidden', 'is-success');
                 messageDiv.classList.add('is-danger');
-                messageDiv.textContent = 'Please fill in all fields.';
+                messageDiv.textContent = 'Please fill all fields.';
                 return;
             }
-
-            console.log('Sign-in attempt:', { username });
-            const result = await withCsrfToken(async (token) => {
-                if (!token) {
-                    messageDiv.classList.remove('is-hidden', 'is-success');
-                    messageDiv.classList.add('is-danger');
-                    messageDiv.textContent = 'Unable to establish secure connection.';
-                    return;
-                }
+            await withCsrfToken(async (token) => {
                 try {
                     const response = await fetch(`/signin/${encodeURIComponent(username)}`, {
                         method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/json',
-                            'X-CSRF-Token': token
-                        },
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
                         body: JSON.stringify({ password, csrf_token: token }),
                         credentials: 'include'
                     });
-                    const data = await response.json();
-
+                    let data;
+                    try {
+                        data = await response.json();
+                    } catch (jsonError) {
+                        const text = await response.text();
+                        console.error('Non-JSON response:', text);
+                        throw new Error(text || 'Sign-in failed');
+                    }
                     if (response.ok) {
-                        console.log('Sign-in success:', { username, message: data.message });
                         localStorage.setItem('username', username);
-                        const tierResponse = await fetch(`/tier?username=${encodeURIComponent(username)}`, {
-                            headers: { 'Accept': 'application/json' },
-                            credentials: 'include'
-                        });
-                        if (!tierResponse.ok) {
-                            console.error('Failed to fetch tier:', tierResponse.status);
-                            throw new Error('Failed to fetch tier information');
-                        }
-                        const tierData = await tierResponse.json();
-                        localStorage.setItem('tier', tierData.tier);
-                        localStorage.setItem('size_limit', tierData.size_limit);
-                        localStorage.setItem('diamond_feature', JSON.stringify(tierData.feature_flags.diamond));
-                        console.log(`[DEBUG] Setting localStorage: username=${username}, tier=${tierData.tier}, time=${new Date().toISOString()}`);
+                        localStorage.setItem('tier', data.tier || 'free');
+                        console.log(`[DEBUG] Sign-in success, setting username=${username}, tier=${data.tier}, time=${new Date().toISOString()}`);
                         window.dispatchEvent(new Event('authUpdate'));
                         messageDiv.classList.remove('is-hidden', 'is-danger');
                         messageDiv.classList.add('is-success');
-                        messageDiv.textContent = data.message;
-                        logoutSection.style.display = 'block';
-                        document.getElementById('signin').style.display = 'none';
-                        document.getElementById('signup').style.display = 'none';
-                        authToggle.style.display = 'none';
+                        messageDiv.textContent = 'Sign-in successful!';
                         setTimeout(() => window.location.href = '/ui', 1000);
                     } else {
-                        console.log('Sign-in failed:', { error: data.detail });
-                        localStorage.removeItem('username');
-                        localStorage.removeItem('tier');
-                        localStorage.removeItem('size_limit');
-                        localStorage.removeItem('diamond_feature');
-                        throw new Error(data.detail || 'Sign in failed');
+                        throw new Error(data.detail || 'Sign-in failed');
                     }
                 } catch (error) {
                     console.error('Sign-in error:', error.message);
@@ -305,7 +275,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         body: JSON.stringify({ email, password, csrf_token: token }),
                         credentials: 'include'
                     });
-                    const data = await response.json();
+
+                    let data;
+                    try {
+                        data = await response.json();
+                    } catch (jsonError) {
+                        const text = await response.text();
+                        console.error('Non-JSON response:', text);
+                        throw new Error(text || 'Account creation failed');
+                    }
 
                     if (response.ok) {
                         console.log('Signup success:', { username, message: data.message });
@@ -370,5 +348,10 @@ document.addEventListener('DOMContentLoaded', () => {
             authToggle.textContent = 'Sign In or Create Account';
             window.location.href = '/ui';
         });
+
+        // Initialize password toggles
+        togglePassword('signin-password', 'toggle-signin-password');
+        togglePassword('signup-password', 'toggle-signup-password');
+        togglePassword('signup-confirm-password', 'toggle-signup-confirm-password');
     });
 });
