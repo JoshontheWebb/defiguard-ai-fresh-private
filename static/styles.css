@@ -97,35 +97,102 @@ header {
 }
 
 header .logo {
-    font-size: 0; /* Hide text by setting font-size to 0 */
-    color: transparent; /* Ensure text is invisible */
-    background: url('/static/images/defiguard-logo.png') no-repeat center; /* Updated to PNG */
-    background-size: contain;
-    width: clamp(150px, 15vw, 200px); /* Adjusted for Spartan detail */
-    height: clamp(45px, 4.5vw, 60px); /* Proportional to viewBox */
+    font-size: 0; /* Hide raw text */
+    color: transparent;
+    position: relative;
     display: inline-block;
+    width: clamp(200px, 25vw, 300px); /* Larger base size */
+    height: clamp(60px, 7.5vw, 90px); /* Proportional to width */
     margin: 0 auto;
     transition: transform 0.3s ease, box-shadow 0.3s ease;
     perspective: 1000px;
     transform-style: preserve-3d;
-    text-indent: -9999px; /* Push text off-screen as a fallback */
+    text-indent: -9999px;
+}
+
+header .logo::before {
+    content: "DeFiGuard"; /* Nest text */
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(24px, 3vw, 36px); /* Responsive text size */
+    font-weight: 700;
+    color: var(--text-light);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1;
+    text-shadow: 0 0 5px rgba(0, 0, 0, 0.5); /* Enhance readability */
+}
+
+header .logo::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 70%; /* Logo fits within text width */
+    height: 70%; /* Proportional height */
+    background: url('/static/images/defiguard-logo.png') no-repeat center;
+    background-size: contain;
+    z-index: 2; /* Overlay on text */
 }
 
 header .logo:hover {
-    transform: rotateY(20deg) scale(1.05); /* Enhanced Spartan rotation */
+    transform: rotateY(20deg) scale(1.05); /* Spartan rotation */
     box-shadow: 0 0 25px var(--glow-teal), 0 0 35px var(--glow-pink);
 }
 
-/* Media query for mobile */
+/* Media query for full responsiveness */
 @media (max-width: 768px) {
     header .logo {
-        width: clamp(90px, 18vw, 150px); /* Smaller on mobile */
-        height: clamp(27px, 5.5vw, 45px);
+        width: 25vw; /* Fluid width for mobile */
+        height: 7.5vw; /* Proportional height */
+    }
+
+    header .logo::before {
+        font-size: 3vw; /* Adjust text for mobile */
+    }
+
+    header .logo::after {
+        width: 70%; /* Maintain proportion */
+        height: 70%;
     }
 
     header .logo:hover {
         transform: rotateY(15deg) scale(1.03); /* Subtle on mobile */
         box-shadow: 0 0 15px var(--glow-teal), 0 0 20px var(--glow-pink);
+    }
+}
+
+@media (min-width: 769px) and (max-width: 1200px) {
+    header .logo {
+        width: 20vw; /* Adjust for tablets */
+        height: 6vw;
+    }
+
+    header .logo::before {
+        font-size: 2.5vw;
+    }
+
+    header .logo::after {
+        width: 70%;
+        height: 70%;
+    }
+}
+
+@media (min-width: 1201px) {
+    header .logo {
+        width: 15vw; /* Scale down for large screens */
+        height: 4.5vw;
+    }
+
+    header .logo::before {
+        font-size: 2vw;
+    }
+
+    header .logo::after {
+        width: 70%;
+        height: 70%;
     }
 }
 
