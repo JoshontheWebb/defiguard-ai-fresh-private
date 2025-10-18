@@ -384,7 +384,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     facetWell.className = 'has-text-danger';
                     facetWell.setAttribute('aria-live', 'assertive');
                     if (error.message.includes('Pro or Diamond tier')) {
-                        facetWell.innerHTML = `<p class="has-text-warning" aria-live="assertive">Diamond Pattern facet preview requires Pro tier or Diamond add-on. <a href="/upgrade">Upgrade now</a>.</p>`;
+                        facetWell.innerHTML = `<p class="has-text-warning" aria-live="assertive">Diamond Pattern facet preview requires Pro tier or Diamond add-on. <a href="/upgrade">Upgrade now</a></p>`;
                     }
                 }
             }
@@ -874,4 +874,5 @@ document.addEventListener('DOMContentLoaded', () => {
                 header.classList.remove('visible');
             }
         }, { passive: true });
-    });
+    }); // Closing brace for document.addEventListener
+}); // Closing brace for the IIFE (implicit due to DOMContentLoaded)
