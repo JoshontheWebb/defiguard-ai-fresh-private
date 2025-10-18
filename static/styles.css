@@ -44,7 +44,7 @@ header {
     top: 0;
     background: var(--gradient);
     color: var(--text-light);
-    padding: 1.5rem;
+    padding: 1.5rem 2rem; /* Adjusted padding for full width */
     text-align: center;
     z-index: 100;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
@@ -53,6 +53,8 @@ header {
     animation: gradientFlow 10s ease infinite;
     opacity: 1;
     transition: opacity 0.3s ease !important;
+    width: 100%; /* Ensure header fills viewport */
+    overflow: hidden; /* Prevent overflow from extra text */
 }
 
 @scroll-timeline header-fade {
@@ -108,28 +110,41 @@ header .logo {
 }
 
 header .logo::before {
-    content: "DeFiGuard"; /* Display text prominently */
+    content: "DeFi "; /* First part of text */
     font-family: 'Bebas Neue', sans-serif;
     font-size: clamp(50px, 6vw, 80px); /* Larger, responsive text */
     font-weight: 700;
     color: var(--text-light);
     position: absolute;
     top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    left: 20%; /* Position before the logo */
+    transform: translateY(-50%);
     z-index: 1;
     text-shadow: 0 0 10px rgba(0, 0, 0, 0.7); /* Stronger shadow for contrast */
-    width: 100%; /* Ensure text spans full width */
 }
 
 header .logo::after {
+    content: " Guard"; /* Second part of text after logo */
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(50px, 6vw, 80px); /* Match text size */
+    font-weight: 700;
+    color: var(--text-light);
+    position: absolute;
+    top: 50%;
+    left: 60%; /* Position after the logo */
+    transform: translateY(-50%);
+    z-index: 1;
+    text-shadow: 0 0 10px rgba(0, 0, 0, 0.7); /* Stronger shadow for contrast */
+}
+
+header .logo .logo-image {
     content: "";
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 50%; /* Adjusted to fit within text, larger presence */
-    height: 80%; /* Proportional height */
+    width: 30%; /* Adjusted to fit between text, less crunched */
+    height: 70%; /* Proportional height, less crunched */
     background: url('/static/images/defiguard-logo.png') no-repeat center;
     background-size: contain;
     z-index: 2; /* Overlay on text */
@@ -142,17 +157,27 @@ header .logo:hover {
 
 /* Media queries for full responsiveness */
 @media (max-width: 768px) {
+    header {
+        padding: 1rem 1rem; /* Reduced padding for mobile */
+    }
+
     header .logo {
         height: 20vw; /* Increased for mobile */
     }
 
     header .logo::before {
         font-size: 8vw; /* Larger text for mobile */
+        left: 15%; /* Adjust for mobile spacing */
     }
 
     header .logo::after {
-        width: 50%; /* Maintain proportion */
-        height: 80%;
+        font-size: 8vw; /* Larger text for mobile */
+        left: 65%; /* Adjust for mobile spacing */
+    }
+
+    header .logo .logo-image {
+        width: 30%; /* Maintain proportion */
+        height: 70%;
     }
 
     header .logo:hover {
@@ -162,32 +187,52 @@ header .logo:hover {
 }
 
 @media (min-width: 769px) and (max-width: 1200px) {
+    header {
+        padding: 1.5rem 2rem; /* Standard padding */
+    }
+
     header .logo {
         height: 18vw; /* Adjust for tablets */
     }
 
     header .logo::before {
         font-size: 7vw;
+        left: 20%;
     }
 
     header .logo::after {
-        width: 50%;
-        height: 80%;
+        font-size: 7vw;
+        left: 60%;
+    }
+
+    header .logo .logo-image {
+        width: 30%;
+        height: 70%;
     }
 }
 
 @media (min-width: 1201px) {
+    header {
+        padding: 1.5rem 2rem; /* Standard padding */
+    }
+
     header .logo {
         height: 12vw; /* Scale for large screens */
     }
 
     header .logo::before {
         font-size: 5vw;
+        left: 20%;
     }
 
     header .logo::after {
-        width: 50%;
-        height: 80%;
+        font-size: 5vw;
+        left: 60%;
+    }
+
+    header .logo .logo-image {
+        width: 30%;
+        height: 70%;
     }
 }
 
