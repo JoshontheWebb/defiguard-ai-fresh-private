@@ -231,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }, 1000);
 
-        // Section7: Tier Data Fetch (with polling)
+        // Section7: Tier Data Fetch
         const fetchTierData = async () => {
             const username = localStorage.getItem('username');
             if (!username) {
@@ -653,7 +653,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         auditForm?.addEventListener('submit', handleSubmit);
 
-        // Section12: Report Download
+        // Section12: Report Download (with loading state, ID 9)
         downloadReportButton?.addEventListener('click', () => {
             const reportData = {
                 risk_score: riskScoreSpan.textContent,
@@ -674,6 +674,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 })),
                 remediation_roadmap: remediationRoadmap?.textContent || null
             };
+            downloadReportButton.classList.add('loading'); // Show loading state
             const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -682,6 +683,7 @@ document.addEventListener('DOMContentLoaded', () => {
             a.click();
             URL.revokeObjectURL(url);
             console.log('[DEBUG] Report downloaded');
+            downloadReportButton.classList.remove('loading'); // Hide loading state
         });
 
         // Section13: Header Scroll Behavior
@@ -693,6 +695,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 header.classList.add('scrolled');
             } else {
                 header.classList.remove('scrolled');
+                if (!header.classList.contains('visible')) header.classList.add('visible'); // Trigger fade-in
             }
         }, { passive: true });
     });

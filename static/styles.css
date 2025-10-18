@@ -89,7 +89,7 @@ header {
         opacity: 0;
     }
     header.visible {
-        opacity: 1;
+        animation: fadeIn 0.5s ease forwards; /* Fade-in on scroll-up */
     }
 }
 
@@ -106,6 +106,7 @@ header .logo-container {
     height: 100%; /* Fit within header height */
     gap: 0; /* No spacing between logo and text */
     flex-shrink: 0; /* Prevent logo distortion */
+    animation: scaleUp 0.5s ease forwards; /* Scale-up on load (ID 8) */
 }
 
 header .logo-container .logo-image {
@@ -128,6 +129,11 @@ header .logo-container .logo-text {
 header .logo-container:hover {
     transform: rotateY(20deg) scale(1.05);
     box-shadow: 0 0 25px var(--glow-teal), 0 0 35px var(--glow-pink);
+}
+
+@keyframes scaleUp {
+    from { transform: scale(0.9); }
+    to { transform: scale(1); }
 }
 
 /* Media queries for full responsiveness */
@@ -461,6 +467,12 @@ header .logo-container:hover {
     outline-offset: 2px;
 }
 
+.results button.loading::after {
+    content: " (Downloading...)";
+    color: var(--text-light);
+    font-style: italic;
+}
+
 .results-dashboard {
     padding: clamp(1rem, 2vw, 1.5rem);
     background: var(--bg-section);
@@ -485,8 +497,10 @@ header .logo-container:hover {
 
 .results-dashboard table {
     width: 100%;
+    max-width: 100%; /* Ensure table fits container */
     border-collapse: collapse;
     margin-top: clamp(0.5rem, 1vw, 0.75rem);
+    overflow-x: auto; /* Allow horizontal scroll on small screens */
 }
 
 .results-dashboard th,
@@ -494,7 +508,8 @@ header .logo-container:hover {
     padding: clamp(0.5rem, 1vw, 0.75rem);
     border: 1px solid hsl(210, 10%, 90%);
     text-align: left;
-    font-size: clamp(0.8rem, 1.2vw, 0.9rem);
+    font-size: clamp(0.8rem, 1.2vw, 0.9rem); /* Responsive font size */
+    transition: background-color 0.3s ease;
 }
 
 .results-dashboard th {
