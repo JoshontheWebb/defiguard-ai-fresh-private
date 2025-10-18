@@ -182,63 +182,63 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Section6: Authentication
-const updateAuthStatus = () => {
-    const username = localStorage.getItem('username');
-    console.log(`[DEBUG] updateAuthStatus: username=${username}, localStorage=${JSON.stringify(localStorage)}, time=${new Date().toISOString()}`);
-    if (!authStatus) {
-        console.error('[ERROR] #auth-status not found in DOM');
-        return;
-    }
-    authStatus.textContent = username ? `Signed in as ${username}` : 'Sign In / Create Account';
-    if (username) {
-        authStatus.innerHTML = `Signed in as ${username}`;
-        sidebar.classList.add('logged-in');
-    } else {
-        authStatus.innerHTML = '<a href="/auth">Sign In / Create Account</a>';
-        sidebar.classList.remove('logged-in');
-    }
-};
+        const updateAuthStatus = () => {
+            const username = localStorage.getItem('username');
+            console.log(`[DEBUG] updateAuthStatus: username=${username}, localStorage=${JSON.stringify(localStorage)}, time=${new Date().toISOString()}`);
+            if (!authStatus) {
+                console.error('[ERROR] #auth-status not found in DOM');
+                return;
+            }
+            authStatus.textContent = username ? `Signed in as ${username}` : 'Sign In / Create Account';
+            if (username) {
+                authStatus.innerHTML = `Signed in as ${username}`;
+                sidebar.classList.add('logged-in');
+            } else {
+                authStatus.innerHTML = '<a href="/auth">Sign In / Create Account</a>';
+                sidebar.classList.remove('logged-in');
+            }
+        };
 
-window.addEventListener('storage', () => {
-    console.log('[DEBUG] Storage event detected, re-running updateAuthStatus');
-    updateAuthStatus();
-});
+        window.addEventListener('storage', () => {
+            console.log('[DEBUG] Storage event detected, re-running updateAuthStatus');
+            updateAuthStatus();
+        });
 
-let authCheckAttempts = 0;
-const maxAuthCheckAttempts = 60;
-const authCheckInterval = setInterval(() => {
-    console.log(`[DEBUG] Periodic auth check attempt ${authCheckAttempts + 1}/${maxAuthCheckAttempts}, username=${localStorage.getItem('username')}`);
-    updateAuthStatus();
-    authCheckAttempts++;
-    if (authCheckAttempts >= maxAuthCheckAttempts) {
-        clearInterval(authCheckInterval);
-        console.log('[DEBUG] Stopped periodic auth check');
-    }
-}, 500);
+        let authCheckAttempts = 0;
+        const maxAuthCheckAttempts = 60;
+        const authCheckInterval = setInterval(() => {
+            console.log(`[DEBUG] Periodic auth check attempt ${authCheckAttempts + 1}/${maxAuthCheckAttempts}, username=${localStorage.getItem('username')}`);
+            updateAuthStatus();
+            authCheckAttempts++;
+            if (authCheckAttempts >= maxAuthCheckAttempts) {
+                clearInterval(authCheckInterval);
+                console.log('[DEBUG] Stopped periodic auth check');
+            }
+        }, 500);
 
-window.addEventListener('authUpdate', () => {
-    console.log('[DEBUG] Custom authUpdate event detected, re-running updateAuthStatus');
-    updateAuthStatus();
-});
+        window.addEventListener('authUpdate', () => {
+            console.log('[DEBUG] Custom authUpdate event detected, re-running updateAuthStatus');
+            updateAuthStatus();
+        });
 
-setTimeout(() => {
-    console.log(`[DEBUG] Extended auth check after load, username=${localStorage.getItem('username')}, time=${new Date().toISOString()}`);
-    updateAuthStatus();
-}, 5000);
+        setTimeout(() => {
+            console.log(`[DEBUG] Extended auth check after load, username=${localStorage.getItem('username')}, time=${new Date().toISOString()}`);
+            updateAuthStatus();
+        }, 5000);
 
-setTimeout(() => {
-    console.log(`[DEBUG] Persistent auth check, username=${localStorage.getItem('username')}, time=${new Date().toISOString()}`);
-    updateAuthStatus();
-}, 10000);
+        setTimeout(() => {
+            console.log(`[DEBUG] Persistent auth check, username=${localStorage.getItem('username')}, time=${new Date().toISOString()}`);
+            updateAuthStatus();
+        }, 10000);
 
-logoutSidebar.addEventListener('click', (e) => {
-    e.preventDefault();
-    console.log('[DEBUG] Logout initiated from sidebar, time=${new Date().toISOString()}');
-    localStorage.removeItem('username'); // Revert to minimal clear
-    console.log('[DEBUG] Local storage cleared (username only)');
-    updateAuthStatus();
-    window.location.href = '/auth';
-});
+        logoutSidebar.addEventListener('click', (e) => {
+            e.preventDefault();
+            console.log('[DEBUG] Logout initiated from sidebar, time=${new Date().toISOString()}');
+            localStorage.removeItem('username'); // Revert to minimal clear
+            console.log('[DEBUG] Local storage cleared (username only)');
+            updateAuthStatus();
+            window.location.href = '/auth';
+        });
 
         // Section7: Payment Handling
         const handlePostPaymentRedirect = async () => {
