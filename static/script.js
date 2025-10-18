@@ -375,15 +375,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 console.log(`[DEBUG] Facet preview loaded for address: ${contractAddress}, is_preview=${data.is_preview}, time=${new Date().toISOString()}`);
             } catch (error) {
-                console.error(`Facet preview error (attempt ${attempt}/${maxAttempts): ${error.message}`);
-                if (attempt < maxAttempts && !error.message.includes("Pro or Diamond tier")) {
+                console.error(`Facet preview error (attempt ${attempt}/${maxAttempts}): ${error.message}`);
+                if (attempt < maxAttempts && !error.message.includes('Pro or Diamond tier')) {
                     console.log(`Retrying facet fetch in 1s...`);
                     setTimeout(() => fetchFacetPreview(contractAddress, attempt + 1, maxAttempts), 1000);
                 } else {
                     facetWell.textContent = `Error loading facet preview: ${error.message}`;
                     facetWell.className = 'has-text-danger';
                     facetWell.setAttribute('aria-live', 'assertive');
-                    if (error.message.includes("Pro or Diamond tier")) {
+                    if (error.message.includes('Pro or Diamond tier')) {
                         facetWell.innerHTML = `<p class="has-text-warning" aria-live="assertive">Diamond Pattern facet preview requires Pro tier or Diamond add-on. <a href="/upgrade">Upgrade now</a>.</p>`;
                     }
                 }
