@@ -99,7 +99,7 @@ header {
 header .logo {
     font-size: 0; /* Hide text by setting font-size to 0 */
     color: transparent; /* Ensure text is invisible */
-    background: url('/static/images/defiguard-logo.svg') no-repeat center;
+    background: url('/static/images/defiguard-logo.png') no-repeat center; /* Updated to PNG */
     background-size: contain;
     width: clamp(150px, 15vw, 200px); /* Adjusted for Spartan detail */
     height: clamp(45px, 4.5vw, 60px); /* Proportional to viewBox */
