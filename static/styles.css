@@ -43,7 +43,7 @@ header {
     color: var(--text-light);
     padding: 1.5rem;
     text-align: center;
-    z-index: 100; /* Adjusted to ensure hamburger (101) is clickable */
+    z-index: 100;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
@@ -94,9 +94,8 @@ header {
 }
 
 header .logo {
-    font-size: clamp(1.5rem, 5vw, 2rem);
-    font-weight: 700;
-    color: var(--accent-teal);
+    font-size: 0; /* Hide text by setting font-size to 0 */
+    color: transparent; /* Ensure text is invisible */
     background: url('/static/images/defiguard-logo.svg') no-repeat center;
     background-size: contain;
     width: clamp(150px, 20vw, 200px);
@@ -106,8 +105,7 @@ header .logo {
     transition: transform 0.3s ease, box-shadow 0.3s ease;
     perspective: 1000px;
     transform-style: preserve-3d;
-    text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.5), 0 0 10px var(--glow-teal), 0 0 20px var(--glow-pink), 4px 4px 10px rgba(0, 0, 0, 0.3), 6px 6px 15px rgba(0, 209, 178, 0.4);
-    transform: rotateX(5deg);
+    text-indent: -9999px; /* Push text off-screen as a fallback */
 }
 
 header .logo:hover {
@@ -121,12 +119,12 @@ header .logo:hover {
     position: fixed;
     top: 1rem;
     left: 1rem;
-    z-index: 101; /* Above header */
+    z-index: 101;
     width: clamp(30px, 5vw, 35px);
     height: clamp(25px, 4vw, 30px);
     transition: transform 0.3s ease;
     view-transition-name: hamburger;
-    pointer-events: auto; /* Ensure clicks are registered */
+    pointer-events: auto;
 }
 
 .hamburger div {
@@ -398,7 +396,7 @@ header .logo:hover {
     font-size: clamp(1rem, 1.5vw, 1.1rem);
     transition: transform 0.2s ease, box-shadow 0.3s ease;
     box-shadow: 0 4px 10px rgba(0, 209, 178, 0.3);
-    pointer-events: auto; /* Ensure buttons are clickable */
+    pointer-events: auto;
 }
 
 .audit-section button:hover,
