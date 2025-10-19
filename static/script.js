@@ -948,4 +948,4 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }, { passive: true });
     }); // Closing brace for document.addEventListener
-} // Closing brace for the IIFE (implicit due to DOMContentLoaded)
+} // Closing brace for the IIFE (implicit due to DOMContentLoaded
