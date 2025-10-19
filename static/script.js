@@ -491,6 +491,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 auditLimit = audit_limit;
                 tierInfo.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} (${size_limit === 'Unlimited' ? 'Unlimited audits' : `${auditCount}/${auditLimit} audits`})`;
                 tierDescription.textContent = `${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} Tier: ${has_diamond ? 'Unlimited file size, full Diamond audits, fuzzing, priority support, NFT rewards' : tier === 'pro' ? 'Unlimited audits, Diamond add-on access ($50/mo), fuzzing, priority support' : tier === 'beginner' ? `Up to 10 audits, 1MB file size (${auditCount}/${auditLimit} remaining), priority support` : `Up to 3 audits, 1MB file size (${auditCount}/${auditLimit} remaining)`}`;
+                sizeLimit.textContent = `Max file size: ${size_limit}`;
                 features.textContent = `Features: ${has_diamond ? 'Diamond audits, Diamond Pattern previews, priority support, NFT rewards' : tier === 'pro' ? 'Diamond add-on access, standard audits, Diamond Pattern previews, fuzzing, priority support' : 'Standard audit features'}${feature_flags.predictions ? ', AI predictions' : ''}${feature_flags.onchain ? ', on-chain analysis' : ''}${feature_flags.reports ? ', exportable reports' : ''}${feature_flags.fuzzing ? ', fuzzing analysis' : ''}${feature_flags.priority_support ? ', priority support' : ''}${feature_flags.nft_rewards ? ', NFT rewards' : ''}`;
                 usageWarning.textContent = tier === 'free' || tier === 'beginner' ? `${tier.charAt(0).toUpperCase() + tier.slice(1)} tier: ${auditCount}/${auditLimit} audits remaining` : '';
                 usageWarning.classList.remove('error');
@@ -946,5 +947,5 @@ document.addEventListener('DOMContentLoaded', () => {
                 header.classList.remove('visible');
             }
         }, { passive: true });
-    }); // Closing brace for document.addEventListener
+    }); // Closing brace for document.addEventListener with waitForDOM callback restored
 } // Closing brace for the IIFE (implicit due to DOMContentLoaded)
