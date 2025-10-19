@@ -30,6 +30,7 @@ import uvicorn
 from eth_account import Account
 from eth_account.messages import encode_defunct
 from pydantic import BaseModel
+from dotenv import load_dotenv
 
 # Ensure logging directory exists
 LOG_DIR = "/opt/render/project/data"
@@ -50,6 +51,26 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="DeFiGuard AI", description="Predictive DeFi Compliance Auditor")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/templates", StaticFiles(directory="templates"), name="templates")
+
+# Load environment variables at startup
+@app.on_event("startup")
+async def startup_event():
+    load_dotenv('C:\\Users\\client\\DeFiGuard\\.env')
+    required_env_vars = [
+        "GROK_API_KEY", "INFURA_PROJECT_ID", "STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET",
+        "STRIPE_PRICE_PRO", "STRIPE_PRICE_BEGINNER", "STRIPE_PRICE_DIAMOND"
+    ]
+    missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+    if missing_vars:
+        logger.error(f"Missing critical environment variables: {', '.join(missing_vars)}")
+        raise RuntimeError(f"Missing critical environment variables: {', '.join(missing_vars)}")
+    # Log specific Stripe price IDs
+    stripe_vars = ["STRIPE_PRICE_PRO", "STRIPE_PRICE_BEGINNER", "STRIPE_PRICE_DIAMOND", "STRIPE_METERED_PRICE_DIAMOND"]
+    for var in stripe_vars:
+        value = os.getenv(var)
+        logger.info(f"Environment variable {var}: {'set' if value else 'NOT set'}")
+    if not os.getenv("STRIPE_METERED_PRICE_DIAMOND"):
+        logger.warning("STRIPE_METERED_PRICE_DIAMOND not set; Diamond audit overage billing will be disabled")
 
 # Root endpoint to redirect to /ui
 @app.get("/", response_class=RedirectResponse)
@@ -143,25 +164,6 @@ def get_db():
     finally:
         db.close()
 
-# Validate environment variables
-required_env_vars = [
-    "GROK_API_KEY", "INFURA_PROJECT_ID", "STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET",
-    "STRIPE_PRICE_PRO", "STRIPE_PRICE_BEGINNER", "STRIPE_PRICE_DIAMOND"
-]
-missing_vars = [var for var in required_env_vars if not os.getenv(var)]
-if missing_vars:
-    logger.error(f"Missing critical environment variables: {', '.join(missing_vars)}")
-    raise RuntimeError(f"Missing critical environment variables: {', '.join(missing_vars)}")
-
-# Log specific Stripe price IDs
-stripe_vars = ["STRIPE_PRICE_PRO", "STRIPE_PRICE_BEGINNER", "STRIPE_PRICE_DIAMOND", "STRIPE_METERED_PRICE_DIAMOND"]
-for var in stripe_vars:
-    value = os.getenv(var)
-    logger.info(f"Environment variable {var}: {'set' if value else 'NOT set'}")
-
-if not os.getenv("STRIPE_METERED_PRICE_DIAMOND"):
-    logger.warning("STRIPE_METERED_PRICE_DIAMOND not set; Diamond audit overage billing will be disabled")
-
 # Initialize clients
 client = OpenAI(api_key=os.getenv("GROK_API_KEY"))
 INFURA_PROJECT_ID = os.getenv("INFURA_PROJECT_ID")
@@ -252,356 +254,6 @@ Protocol Details: {details}.
 Tier: {tier}.
 Return the analysis in the exact JSON schema provided. For Beginner/Pro, include detailed predictions and recommendations. For Pro, add advanced regulatory insights and fuzzing results. For Diamond add-on, include formal verification, exploit simulation, threat modeling, fuzzing results, and a remediation roadmap.
 """
-## Section 4.6: Main Audit Endpoint ##
-@app.post("/audit", response_model=AuditResponse)
-async def audit_contract(file: UploadFile = File(...), contract_address: str = None, username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
-    await verify_csrf_token(request)
-    session_username = request.session.get("username")
-    logger.debug(f"Audit request: Query username={username}, Session username={session_username}, session: {request.session}")
-    effective_username = username or session_username
-    if not effective_username:
-        logger.error("No username provided for /audit; redirecting to login")
-        raise HTTPException(status_code=401, detail="Please login to continue")
-    user = db.query(User).filter(User.username == effective_username).first()
-    if not user:
-        logger.error(f"Audit failed: User {effective_username} not found")
-        raise HTTPException(status_code=401, detail="Please login to continue")
-
-    raw_response = None
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    code_bytes = None
-    file_size = 0
-    temp_path = None
-    context = ""
-    fuzzing_results = []
-
-    # File reading block
-    try:
-        code_bytes = await file.read()
-        file_size = len(code_bytes)
-        logger.debug(f"File read: {file_size} bytes for user {effective_username}")
-    except Exception as e:
-        logger.error(f"File read failed for {effective_username}: {str(e)}")
-        logger.debug("Flushing log file after file read error")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        raise HTTPException(status_code=400, detail=f"File read failed: {str(e)}")
-
-    # Validate file size and tier
-    try:
-        current_tier = user.tier
-        overage_cost = None
-        if file_size > 1024 * 1024 and not user.has_diamond:
-            overage_cost = usage_tracker.calculate_diamond_overage(file_size) / 100
-            raise HTTPException(
-                status_code=400,
-                detail=f"Access to Diamond audits is only available on Pro tier with Diamond add-on. Upgrade to Pro + Diamond ($200/mo + $50/mo + ${overage_cost:.2f} overage for this file)."
-            )
-        limits = {"free": FREE_LIMIT, "beginner": BEGINNER_LIMIT, "pro": PRO_LIMIT, "diamond": PRO_LIMIT}
-        try:
-            current_count = usage_tracker.increment(file_size, effective_username, db)
-            logger.info(f"Audit request {current_count} processed for contract {contract_address} with tier {current_tier} for user {effective_username}")
-            logger.debug("Flushing log file after audit request")
-            for handler in logging.getLogger().handlers:
-                handler.flush()
-        except HTTPException as e:
-            if e.status_code == 400 and "exceeds" in e.detail:
-                logger.info(f"File size exceeds limit for {effective_username}; redirecting to upgrade")
-                temp_id = str(uuid.uuid4())
-                temp_dir = os.path.join(DATA_DIR, "temp_files")
-                os.makedirs(temp_dir, exist_ok=True)
-                temp_path = os.path.join(temp_dir, f"{temp_id}.sol")
-                try:
-                    with open(temp_path, "wb") as f:
-                        f.write(code_bytes)
-                except PermissionError as e:
-                    logger.error(f"Failed to write temp file: {str(e)}")
-                    raise HTTPException(status_code=500, detail="Failed to save temporary file due to permissions")
-                if not STRIPE_API_KEY:
-                    logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: STRIPE_API_KEY not set")
-                    raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
-                if not all([STRIPE_PRICE_PRO, STRIPE_PRICE_DIAMOND]):
-                    missing_prices = [var for var in ["STRIPE_PRICE_PRO", "STRIPE_PRICE_DIAMOND"] if not globals()[var]]
-                    logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: Missing Stripe price IDs: {', '.join(missing_prices)}")
-                    raise HTTPException(status_code=503, detail=f"Payment processing unavailable: Missing Stripe price IDs: {', '.join(missing_prices)}")
-                try:
-                    session = stripe.checkout.Session.create(
-                        payment_method_types=['card'],
-                        line_items=[{
-                            'price': STRIPE_PRICE_PRO,
-                            'quantity': 1,
-                        }, {
-                            'price': STRIPE_PRICE_DIAMOND,
-                            'quantity': 1,
-                        }],
-                        mode='subscription',
-                        success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=pro&has_diamond=true',
-                        cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
-                        metadata={'username': effective_username, 'tier': 'pro', 'has_diamond': 'true'}
-                    )
-                    logger.info(f"Redirecting {effective_username} to Stripe checkout for Pro tier with Diamond add-on due to file size")
-                    logger.debug("Flushing log file after upgrade redirect")
-                    for handler in logging.getLogger().handlers:
-                        handler.flush()
-                    return {"session_url": session.url}
-                except Exception as e:
-                    logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: {str(e)}")
-                    raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
-            elif e.status_code == 403 and "Usage limit exceeded" in e.detail:
-                logger.info(f"Usage limit exceeded for {effective_username}; redirecting to upgrade")
-                if not STRIPE_API_KEY:
-                    logger.error(f"Stripe checkout creation failed for {effective_username} Beginner upgrade: STRIPE_API_KEY not set")
-                    raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
-                if not STRIPE_PRICE_BEGINNER:
-                    logger.error(f"Stripe checkout creation failed for {effective_username} Beginner upgrade: STRIPE_PRICE_BEGINNER not set")
-                    raise HTTPException(status_code=503, detail="Payment processing unavailable: Missing STRIPE_PRICE_BEGINNER in environment variables.")
-                try:
-                    session = stripe.checkout.Session.create(
-                        payment_method_types=['card'],
-                        line_items=[{
-                            'price': STRIPE_PRICE_BEGINNER,
-                            'quantity': 1,
-                        }],
-                        mode='subscription',
-                        success_url=f'https://defiguard-ai-fresh-private-test.onrender.com/ui?session_id={{CHECKOUT_SESSION_ID}}&tier=beginner',
-                        cancel_url='https://defiguard-ai-fresh-private-test.onrender.com/ui',
-                        metadata={'username': effective_username, 'tier': 'beginner'}
-                    )
-                    logger.info(f"Redirecting {effective_username} to Stripe checkout for Beginner tier due to usage limit")
-                    logger.debug("Flushing log file after upgrade redirect")
-                    for handler in logging.getLogger().handlers:
-                        handler.flush()
-                    return {"session_url": session.url}
-                except Exception as e:
-                    logger.error(f"Stripe checkout creation failed for {effective_username} Beginner upgrade: {str(e)}")
-                    raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
-            else:
-                logger.error(f"Unexpected usage tracker error for {effective_username}: {str(e)}")
-                raise e
-    except Exception as e:
-        logger.error(f"Tier or usage check error for {effective_username}: {str(e)}")
-        logger.debug("Flushing log file after tier/usage error")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        raise HTTPException(status_code=500, detail=f"Tier or usage check failed: {str(e)}")
-
-    # Audit processing block
-    try:
-        logger.info("Starting audit process...")
-        try:
-            code_str = code_bytes.decode('utf-8')
-        except UnicodeDecodeError as decode_err:
-            logger.error(f"File decoding failed: {str(decode_err)}")
-            logger.debug("Flushing log file after decode error")
-            for handler in logging.getLogger().handlers:
-                handler.flush()
-            raise HTTPException(status_code=400, detail=f"File decoding failed: {str(decode_err)}")
-        if not code_str.strip():
-            logger.error("Empty file uploaded")
-            logger.debug("Flushing log file after empty file error")
-            for handler in logging.getLogger().handlers:
-                handler.flush()
-            raise HTTPException(status_code=400, detail="Empty file uploaded.")
-
-        try:
-            temp_dir = os.path.join(DATA_DIR, "temp_files")
-            os.makedirs(temp_dir, exist_ok=True)
-            with NamedTemporaryFile(delete=False, suffix=".sol", dir=temp_dir) as temp_file:
-                temp_file.write(code_bytes)
-                temp_path = temp_file.name
-                if platform.system() == "Windows":
-                    temp_path = temp_path.replace("/", "\\")
-        except Exception as e:
-            logger.error(f"Failed to create temp file: {str(e)}")
-            logger.debug("Flushing log file after temp file error")
-            for handler in logging.getLogger().handlers:
-                handler.flush()
-            raise HTTPException(status_code=500, detail=f"Failed to create temporary file: {str(e)}")
-
-        try:
-            logger.info("Starting Slither analysis...")
-            @retry(stop_after_attempt(3), wait_fixed(2))
-            def analyze_slither(temp_path, attempt_number=1):
-                logger.info(f"Slither retry attempt {attempt_number}")
-                return Slither(temp_path)
-            slither = analyze_slither(temp_path, attempt_number=1)
-            logger.info("Slither analysis completed.")
-            findings = []
-            for contract in slither.contracts:
-                logger.debug(f"Processing contract: {contract.name}")
-                for detector in slither.detectors:
-                    findings.extend(detector.detect())
-            context = json.dumps([finding.to_json() for finding in findings]).replace('"', '\\"') if findings else "No static issues found"
-        except SlitherError as e:
-            logger.error(f"Slither analysis failed: {str(e)}")
-            logger.debug("Flushing log file after Slither error")
-            for handler in logging.getLogger().handlers:
-                handler.flush()
-            context = f"Slither analysis failed: {str(e)}; proceeding with raw code"
-
-        if usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["fuzzing"]:
-            logger.info("Starting Echidna fuzzing...")
-            echidna_output = run_echidna(temp_path)
-            fuzzing_results = [
-                {"vulnerability": "Potential issue", "description": echidna_output["fuzzing_results"]}
-            ] if isinstance(echidna_output["fuzzing_results"], str) else echidna_output["fuzzing_results"]
-            context += f"\nEchidna fuzzing results: {json.dumps(fuzzing_results)}"
-        else:
-            logger.info(f"Fuzzing skipped for {current_tier} tier")
-
-        if contract_address and not usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["onchain"]:
-            logger.warning(f"On-chain analysis denied for {effective_username} (tier: {current_tier}, has_diamond: {user.has_diamond})")
-            logger.debug("Flushing log file after onchain tier check")
-            for handler in logging.getLogger().handlers:
-                handler.flush()
-            raise HTTPException(status_code=403, detail="On-chain analysis requires Beginner tier or higher.")
-
-        details = "Uploaded Solidity code for analysis."
-        if contract_address:
-            if not INFURA_PROJECT_ID:
-                logger.error(f"On-chain analysis failed for {effective_username}: INFURA_PROJECT_ID not set")
-                raise HTTPException(status_code=503, detail="On-chain analysis unavailable: Please set INFURA_PROJECT_ID in environment variables.")
-            if not w3.is_address(contract_address):
-                logger.error(f"Invalid Ethereum address: {contract_address}")
-                logger.debug("Flushing log file after invalid address")
-                for handler in logging.getLogger().handlers:
-                    handler.flush()
-                raise HTTPException(status_code=400, detail="Invalid Ethereum address.")
-            try:
-                onchain_code = w3.eth.get_code(contract_address)
-                if onchain_code:
-                    details += f" On-chain code fetched for {contract_address} (bytecode length: {len(onchain_code)})."
-                else:
-                    details += f" No deployed code found at {contract_address}."
-            except Exception as e:
-                logger.error(f"On-chain code fetch failed for {contract_address}: {str(e)}")
-                details += f" Failed to fetch on-chain code for {contract_address}: {str(e)}."
-
-        if user.has_diamond and file_size > 1024 * 1024:
-            chunks = [code_str[i:i+500000] for i in range(0, len(code_str), 500000)]
-            results = []
-            if not os.getenv("GROK_API_KEY"):
-                logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
-                raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
-            for i, chunk in enumerate(chunks):
-                logger.info(f"Processing chunk {i+1}/{len(chunks)}...")
-                try:
-                    prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=chunk, details=details, tier="diamond")
-                    response = client.chat.completions.create(
-                        model="grok-4",
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=0.0,
-                        response_format={
-                            "type": "json_schema",
-                            "json_schema": {"schema": AUDIT_SCHEMA},
-                            "strict": True
-                        }
-                    )
-                    if response.choices and response.choices[0].message.content:
-                        results.append(json.loads(response.choices[0].message.content))
-                    else:
-                        logger.error(f"No response from Grok API for chunk {i+1}")
-                        raise HTTPException(status_code=500, detail=f"No response from Grok API for chunk {i+1}")
-                except Exception as e:
-                    logger.error(f"Grok API call failed for chunk {i+1}: {str(e)}")
-                    raise HTTPException(status_code=500, detail=f"Grok API call failed for chunk {i+1}: {str(e)}")
-            aggregated = {
-                "risk_score": max(r["risk_score"] for r in results) if results else 0,
-                "issues": sum([r["issues"] for r in results], []),
-                "predictions": sum([r["predictions"] for r in results], []),
-                "recommendations": sum([r["recommendations"] for r in results], []),
-                "remediation_roadmap": "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review.",
-                "fuzzing_results": fuzzing_results
-            }
-            user = db.query(User).filter(User.username == effective_username).first()
-            if user:
-                history = json.loads(user.audit_history)
-                history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": aggregated["risk_score"]})
-                user.audit_history = json.dumps(history)
-                overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
-                if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
-                    try:
-                        stripe.SubscriptionItem.create_usage_record(
-                            user.stripe_subscription_item_id,
-                            quantity=int(overage_mb),
-                            timestamp=int(time.time()),
-                            action='increment'
-                        )
-                        logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
-                    except Exception as e:
-                        logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
-                    db.commit()
-            if temp_path and os.path.exists(temp_path):
-                os.unlink(temp_path)
-            return {"report": aggregated, "risk_score": str(aggregated["risk_score"]), "overage_cost": overage_cost}
-        else:
-            logger.info("Calling Grok API...")
-            if not os.getenv("GROK_API_KEY"):
-                logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
-                raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
-            try:
-                prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=code_str, details=details, tier="diamond" if user.has_diamond else current_tier)
-                response = client.chat.completions.create(
-                    model="grok-4",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.0,
-                    response_format={
-                        "type": "json_schema",
-                        "json_schema": {"schema": AUDIT_SCHEMA},
-                        "strict": True
-                    }
-                )
-                logger.info("API response received.")
-                if response.choices and response.choices[0].message.content:
-                    raw_response = response.choices[0].message.content
-                    logger.info(f"Raw Grok Response: {raw_response[:200]}")
-                    with open(os.path.join(DATA_DIR, 'debug.log'), 'a') as f:
-                        f.write(f"[{timestamp}] DEBUG: Raw Grok Response: {raw_response}\n")
-                        f.flush()
-                    audit_json = json.loads(raw_response)
-                    if user.has_diamond:
-                        audit_json["remediation_roadmap"] = "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review."
-                    audit_json["fuzzing_results"] = fuzzing_results
-                    user = db.query(User).filter(User.username == effective_username).first()
-                    if user:
-                        history = json.loads(user.audit_history)
-                        history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": audit_json["risk_score"]})
-                        user.audit_history = json.dumps(history)
-                        overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
-                        if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
-                            try:
-                                stripe.SubscriptionItem.create_usage_record(
-                                    user.stripe_subscription_item_id,
-                                    quantity=int(overage_mb),
-                                    timestamp=int(time.time()),
-                                    action='increment'
-                                )
-                                logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
-                            except Exception as e:
-                                logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
-                            db.commit()
-                    if temp_path and os.path.exists(temp_path):
-                        os.unlink(temp_path)
-                    return {"report": audit_json, "risk_score": str(audit_json.get("risk_score", "N/A")), "overage_cost": overage_cost}
-                else:
-                    logger.error("No response from Grok API")
-                    logger.debug("Flushing log file after no API response")
-                    for handler in logging.getLogger().handlers:
-                        handler.flush()
-                    raise HTTPException(status_code=500, detail="No response from Grok API")
-            except Exception as e:
-                logger.error(f"Grok API call failed for {effective_username}: {str(e)}")
-                raise HTTPException(status_code=500, detail=f"Grok API call failed: {str(e)}")
-    except Exception as e:
-        logger.error(f"Audit processing error for {effective_username}: {str(e)}")
-        logger.debug("Flushing log file after audit error")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        raise HTTPException(status_code=500, detail=f"Audit processing failed: {str(e)}")
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            os.unlink(temp_path)
-
  ## Section 2 ##
 import os.path
 DATA_DIR = "/opt/render/project/data"  # Render persistent disk
