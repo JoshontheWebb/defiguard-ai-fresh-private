@@ -227,10 +227,11 @@ header .logo-container:hover {
     padding: clamp(15px, 2vw, 20px);
     transition: transform 0.3s ease, width 0.3s ease;
     z-index: 102;
-    visibility: hidden;
+    visibility: visible; /* Changed from hidden to visible by default */
     border-right: 1px solid var(--glass-border);
     backdrop-filter: blur(5px);
     -webkit-backdrop-filter: blur(5px);
+    transform: translateX(-100%); /* Hide with transform instead */
 }
 
 .sidebar.open {
@@ -830,7 +831,7 @@ footer a:focus-visible {
         transform: translateX(-100%);
         transition: transform 0.3s ease, width 0.3s ease;
         overflow: hidden;
-        visibility: hidden;
+        visibility: visible; /* Ensure visibility for initial interaction */
     }
 
     .sidebar.open {
