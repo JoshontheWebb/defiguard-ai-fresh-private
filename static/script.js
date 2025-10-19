@@ -1,5 +1,5 @@
-// Section1: DOM Handling (replace existing Section1)
-function waitForDOM(selectors, callback, maxAttempts = 20, interval = 300) { // Reverted to original
+// Section1: DOM Handling
+function waitForDOM(selectors, callback, maxAttempts = 20, interval = 300) {
     let attempts = 0;
     const elements = {};
     const check = () => {
@@ -22,50 +22,56 @@ function waitForDOM(selectors, callback, maxAttempts = 20, interval = 300) { // 
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Early initialization for hamburger to ensure fast response
-    const hamburger = document.querySelector('#hamburger');
-    const sidebar = document.querySelector('#sidebar');
-    const mainContent = document.querySelector('.main-content');
-    console.log(`[DEBUG] Initializing hamburger menu: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
-    if (hamburger && sidebar && mainContent) {
-        hamburger.addEventListener('click', (e) => { // Direct binding for reliability
-            e.preventDefault();
-            try {
-                sidebar.classList.toggle('open');
-                hamburger.classList.toggle('open');
-                mainContent.style.marginLeft = sidebar.classList.contains('open') ? '270px' : '0';
-                console.log(`[DEBUG] Hamburger menu toggled: open=${sidebar.classList.contains('open')}, margin=${mainContent.style.marginLeft}, time=${new Date().toISOString()}`);
-            } catch (error) {
-                console.error(`[ERROR] Hamburger toggle failed: ${error.message}, time=${new Date().toISOString()}`);
-                document.querySelector('.usage-warning').textContent = `Menu error: ${error.message}`;
-                document.querySelector('.usage-warning').classList.add('error');
-            }
-        });
-        hamburger.setAttribute('tabindex', '0');
-        hamburger.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
+    // Early initialization for hamburger with retry
+    const initHamburger = (attempt = 1, maxAttempts = 5, interval = 500) => {
+        const hamburger = document.querySelector('#hamburger');
+        const sidebar = document.querySelector('#sidebar');
+        const mainContent = document.querySelector('.main-content');
+        console.log(`[DEBUG] Initializing hamburger menu: attempt=${attempt}, hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
+        if (hamburger && sidebar && mainContent) {
+            hamburger.addEventListener('click', (e) => {
                 e.preventDefault();
-                hamburger.click();
-            }
-        });
-        hamburger.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            try {
-                sidebar.classList.toggle('open');
-                hamburger.classList.toggle('open');
-                mainContent.style.marginLeft = sidebar.classList.contains('open') ? '270px' : '0';
-                console.log(`[DEBUG] Hamburger menu toggled via touch: open=${sidebar.classList.contains('open')}, margin=${mainContent.style.marginLeft}, time=${new Date().toISOString()}`);
-            } catch (error) {
-                console.error(`[ERROR] Hamburger touch toggle failed: ${error.message}, time=${new Date().toISOString()}`);
-                document.querySelector('.usage-warning').textContent = `Menu error: ${error.message}`;
-                document.querySelector('.usage-warning').classList.add('error');
-            }
-        }, { passive: true });
-    } else {
-        console.error(`[ERROR] Hamburger menu initialization failed: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
-        document.querySelector('.usage-warning').textContent = 'Error: Menu components not found';
-        document.querySelector('.usage-warning').classList.add('error');
-    }
+                try {
+                    sidebar.classList.toggle('open');
+                    hamburger.classList.toggle('open');
+                    mainContent.style.marginLeft = sidebar.classList.contains('open') ? '270px' : '0';
+                    console.log(`[DEBUG] Hamburger menu toggled: open=${sidebar.classList.contains('open')}, margin=${mainContent.style.marginLeft}, time=${new Date().toISOString()}`);
+                } catch (error) {
+                    console.error(`[ERROR] Hamburger toggle failed: ${error.message}, time=${new Date().toISOString()}`);
+                    document.querySelector('.usage-warning').textContent = `Menu error: ${error.message}`;
+                    document.querySelector('.usage-warning').classList.add('error');
+                }
+            });
+            hamburger.setAttribute('tabindex', '0');
+            hamburger.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    hamburger.click();
+                }
+            });
+            hamburger.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                try {
+                    sidebar.classList.toggle('open');
+                    hamburger.classList.toggle('open');
+                    mainContent.style.marginLeft = sidebar.classList.contains('open') ? '270px' : '0';
+                    console.log(`[DEBUG] Hamburger menu toggled via touch: open=${sidebar.classList.contains('open')}, margin=${mainContent.style.marginLeft}, time=${new Date().toISOString()}`);
+                } catch (error) {
+                    console.error(`[ERROR] Hamburger touch toggle failed: ${error.message}, time=${new Date().toISOString()}`);
+                    document.querySelector('.usage-warning').textContent = `Menu error: ${error.message}`;
+                    document.querySelector('.usage-warning').classList.add('error');
+                }
+            }, { passive: true });
+        } else if (attempt < maxAttempts) {
+            console.log(`[DEBUG] Hamburger elements missing, retrying in ${interval}ms, attempt ${attempt}/${maxAttempts}, time=${new Date().toISOString()}`);
+            setTimeout(() => initHamburger(attempt + 1, maxAttempts, interval), interval);
+        } else {
+            console.error(`[ERROR] Hamburger menu initialization failed after ${maxAttempts} attempts: hamburger=${!!hamburger}, sidebar=${!!sidebar}, mainContent=${!!mainContent}, time=${new Date().toISOString()}`);
+            document.querySelector('.usage-warning').textContent = 'Error: Menu components not found';
+            document.querySelector('.usage-warning').classList.add('error');
+        }
+    };
+    initHamburger();
 
     // Section2: CSRF Token Management
     const fetchCsrfToken = async (attempt = 1, maxAttempts = 3) => {
@@ -95,19 +101,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 return fetchCsrfToken(attempt + 1, maxAttempts);
             }
             console.error('Max CSRF fetch attempts reached, proceeding with null token.');
-            return null; // Fallback to allow non-critical actions
+            return null;
         }
     };
 
     const withCsrfToken = async (fetchFn) => {
-        await new Promise(resolve => setTimeout(resolve, 100)); // Ensure token storage
+        await new Promise(resolve => setTimeout(resolve, 100));
         let token;
         try {
             token = await fetchCsrfToken();
             console.log(`[DEBUG] Using CSRF token for POST: ${token}, type=${typeof token}, time=${new Date().toISOString()}`);
         } catch (error) {
             console.error(`[ERROR] Failed to fetch CSRF token for POST: ${error.message}, proceeding with null`);
-            return fetchFn(null); // Allow fallback for UI actions
+            return fetchFn(null);
         }
         return fetchFn(token);
     };
@@ -172,7 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         overageCost += remainingMb * 1.00;
                     } else {
                         overageCost += 40 * 1.00;
-                        const remainingAfter50 = remainingMb - 40;
+                        const remainingAfter50 = overageMb - 50;
                         if (remainingAfter50 <= 2) {
                             overageCost += remainingAfter50 * 2.00;
                         } else {
@@ -307,7 +313,7 @@ document.addEventListener('DOMContentLoaded', () => {
         logoutSidebar.addEventListener('click', (e) => {
             e.preventDefault();
             console.log('[DEBUG] Logout initiated from sidebar, time=${new Date().toISOString()}');
-            localStorage.removeItem('username'); // Revert to minimal clear
+            localStorage.removeItem('username');
             console.log('[DEBUG] Local storage cleared (username only)');
             updateAuthStatus();
             window.location.href = '/auth';
@@ -712,7 +718,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.error(`[ERROR] No CSRF token for audit, time=${new Date().toISOString()}`);
                     return;
                 }
-                // Ensure spinner is present with error handling
                 let spinner = loading.querySelector('.spinner');
                 if (!spinner) {
                     try {
@@ -866,7 +871,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 const formData = new FormData(auditForm);
                 formData.append('csrf_token', token);
-                loading.classList.add('show'); // Simple spinner
+                loading.classList.add('show');
                 try {
                     console.log(`[DEBUG] Sending /audit request for username=${username}, time=${new Date().toISOString()}`);
                     const response = await fetch(`/audit?username=${encodeURIComponent(username)}`, {
@@ -895,7 +900,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (usageWarning) usageWarning.textContent = `Error initiating audit: ${error.message}`;
                     if (usageWarning) usageWarning.classList.add('error');
                 } finally {
-                    if (loading) loading.classList.remove('show'); // Hide spinner on complete/error
+                    if (loading) loading.classList.remove('show');
                 }
             });
         };
@@ -932,7 +937,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('[DEBUG] Report downloaded');
         });
 
-        // Section13: Header Scroll Behavior (replace existing Section13)
+        // Section13: Header Scroll Behavior
         window.addEventListener('scroll', () => {
             const header = document.querySelector('header');
             if (!header) return;
@@ -947,5 +952,5 @@ document.addEventListener('DOMContentLoaded', () => {
                 header.classList.remove('visible');
             }
         }, { passive: true });
-    }); // Closing brace for document.addEventListener with waitForDOM callback restored
-} // Closing brace for the IIFE (implicit due to DOMContentLoaded)
+    });
+});
