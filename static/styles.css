@@ -1,3 +1,7 @@
+/* Move @import rules to the top */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+
 * {
     box-sizing: border-box;
     margin: 0;
@@ -33,11 +37,6 @@ body {
     height: 200vh;
     overflow-x: hidden;
 }
-
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
-
-/* Add font import for Spartan-inspired text */
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
 
 header {
     position: sticky;

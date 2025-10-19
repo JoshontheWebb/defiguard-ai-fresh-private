@@ -1,5 +1,5 @@
 // Section1: DOM Handling (replace existing Section1)
-function waitForDOM(selectors, callback, maxAttempts = 20, interval = 200) {
+function waitForDOM(selectors, callback, maxAttempts = 20, interval = 300) { // Increased interval to 300ms
     let attempts = 0;
     const elements = {};
     const check = () => {
@@ -15,7 +15,12 @@ function waitForDOM(selectors, callback, maxAttempts = 20, interval = 200) {
             console.log(`[DEBUG] Waiting for DOM elements, attempt ${attempts}/${maxAttempts}, time=${new Date().toISOString()}`);
             setTimeout(check, interval);
         } else {
-            console.error(`[ERROR] DOM elements not found after max attempts: ${JSON.stringify(Object.keys(selectors).filter(k => !elements[k]))}`, elements); // Fixed syntax
+            console.error('[ERROR] DOM elements not found after max attempts:', Object.keys(selectors).filter(k => !elements[k]));
+            // Fallback: Proceed with available elements if #auditLog is the only missing one
+            if (Object.keys(selectors).filter(k => !elements[k]).length === 1 && !elements['auditLog']) {
+                console.warn('[WARN] #auditLog not found, proceeding with partial DOM initialization');
+                callback(elements);
+            }
         }
     };
     check();
@@ -142,8 +147,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             const priceElement = document.getElementById('diamond-price');
-            priceElement.textContent = `Diamond Audit Overage: $${overageCost.toFixed(2)} for ${(size / 1024 / 1024).toFixed(2)}MB`;
-            priceElement.style.display = overageCost > 0 ? 'block' : 'none';
+            if (priceElement) {
+                priceElement.textContent = `Diamond Audit Overage: $${overageCost.toFixed(2)} for ${(size / 1024 / 1024).toFixed(2)}MB`;
+                priceElement.style.display = overageCost > 0 ? 'block' : 'none';
+            }
             console.log(`[DEBUG] Diamond overage calculated: $${overageCost.toFixed(2)} for ${size} bytes, time=${new Date().toISOString()}`);
             return overageCost;
         };
@@ -775,10 +782,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 let stage = 0;
                 const stages = ['Uploading...', 'Analyzing...', 'Generating Report...'];
                 const interval = setInterval(() => {
-                    if (stage < stages.length) {
+                    if (stage < stages.length && loadingText) {
                         loadingText.textContent = stages[stage];
                         stage++;
-                    } else {
+                    } else if (loadingText) {
                         loadingText.textContent = 'Processing...';
                         stage = 0;
                     }
@@ -786,7 +793,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Add spinner and remove progress bar
                 let spinner = loading.querySelector('.spinner');
-                if (!spinner) {
+                if (!spinner && loading) {
                     spinner = document.createElement('div');
                     spinner.className = 'spinner';
                     loading.insertBefore(spinner, loadingText);
@@ -818,12 +825,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     await fetchTierData();
                 } catch (error) {
                     console.error(`[ERROR] Audit error: ${error.message}, time=${new Date().toISOString()}`);
-                    loading.classList.remove('show');
-                    usageWarning.textContent = `Error initiating audit: ${error.message}`;
-                    usageWarning.classList.add('error');
+                    if (loading) loading.classList.remove('show');
+                    if (usageWarning) usageWarning.textContent = `Error initiating audit: ${error.message}`;
+                    if (usageWarning) usageWarning.classList.add('error');
                 } finally {
                     clearInterval(interval);
-                    loadingText.textContent = 'Complete';
+                    if (loadingText) loadingText.textContent = 'Complete';
                 }
             });
         };
