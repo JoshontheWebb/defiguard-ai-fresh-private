@@ -31,11 +31,9 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 from pydantic import BaseModel
 from dotenv import load_dotenv
-
 # Ensure logging directory exists
 LOG_DIR = "/opt/render/project/data"
 os.makedirs(LOG_DIR, exist_ok=True)
-
 # Initialize logging
 logging.basicConfig(
     level=logging.DEBUG,
@@ -46,12 +44,10 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
-
 # Initialize FastAPI app
 app = FastAPI(title="DeFiGuard AI", description="Predictive DeFi Compliance Auditor")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/templates", StaticFiles(directory="templates"), name="templates")
-
 # HTTP middleware for global request logging
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -61,7 +57,6 @@ async def log_requests(request: Request, call_next):
     for handler in logging.getLogger().handlers:
         handler.flush()
     return response
-
 # Load environment variables at startup
 @app.on_event("startup")
 async def startup_event():
@@ -81,7 +76,6 @@ async def startup_event():
         logger.info(f"Environment variable {var}: {'set' if value else 'NOT set'}")
     if not os.getenv("STRIPE_METERED_PRICE_DIAMOND"):
         logger.warning("STRIPE_METERED_PRICE_DIAMOND not set; Diamond audit overage billing will be disabled")
-
 # Root endpoint to redirect to /ui
 @app.get("/", response_class=RedirectResponse)
 async def root():
@@ -90,7 +84,6 @@ async def root():
     for handler in logging.getLogger().handlers:
         handler.flush()
     return RedirectResponse(url="/ui")
-
 # Debug route registration at startup
 @app.on_event("startup")
 async def log_routes():
@@ -102,7 +95,6 @@ async def log_routes():
         logger.error("Error: /create-tier-checkout is NOT registered")
     for handler in logging.getLogger().handlers:
         handler.flush()
-
 # Manual CSRF Protection
 async def get_csrf_token(request: Request) -> str:
     token = request.session.get('csrf_token')
@@ -113,7 +105,6 @@ async def get_csrf_token(request: Request) -> str:
     else:
         logger.debug(f"Reusing existing CSRF token: {token}, session: {request.session}")
     return token
-
 async def verify_csrf_token(request: Request):
     provided_token = request.headers.get('X-CSRF-Token')
     expected_token = request.session.get('csrf_token')
@@ -124,7 +115,6 @@ async def verify_csrf_token(request: Request):
     logger.debug("CSRF token verified successfully")
     for handler in logging.getLogger().handlers:
         handler.flush()
-
 @app.get("/csrf-token")
 async def get_csrf(request: Request):
     try:
@@ -144,13 +134,11 @@ async def get_csrf(request: Request):
         for handler in logging.getLogger().handlers:
             handler.flush()
         raise HTTPException(status_code=500, detail=f"Failed to generate CSRF token: {str(e)}")
-
 # Database setup
 DATABASE_URL = "sqlite:////opt/render/project/data/users.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
-
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
@@ -164,16 +152,13 @@ class User(Base):
     audit_history = Column(String, default="[]")
     stripe_subscription_id = Column(String, nullable=True)
     stripe_subscription_item_id = Column(String, nullable=True)
-
 Base.metadata.create_all(bind=engine)
-
 def get_db():
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
-
 # Initialize clients
 client = OpenAI(api_key=os.getenv("GROK_API_KEY"))
 INFURA_PROJECT_ID = os.getenv("INFURA_PROJECT_ID")
@@ -183,7 +168,6 @@ logger.info("Starting client initialization...")
 logger.info("OpenAI client created successfully.")
 logger.info("Web3 provider initialized.")
 logger.info("Clients initialized successfully.")
-
 # Stripe setup
 STRIPE_API_KEY = os.getenv("STRIPE_API_KEY")
 stripe.api_key = STRIPE_API_KEY
@@ -202,12 +186,10 @@ level_map = {
     "pro": 2,
     "diamond": 3
 }
-
 class AuditResponse(BaseModel):
     report: dict
     risk_score: str
     overage_cost: Optional[float] = None
-
 AUDIT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -269,7 +251,6 @@ import os.path
 DATA_DIR = "/opt/render/project/data" # Render persistent disk
 USAGE_STATE_FILE = os.path.join(DATA_DIR, "usage_state.json")
 USAGE_COUNT_FILE = os.path.join(DATA_DIR, "usage_count.txt")
-
 class UsageTracker:
     def __init__(self):
         self.count = 0
@@ -464,7 +445,7 @@ class UsageTracker:
 usage_tracker = UsageTracker()
 usage_tracker.set_tier("free")
 
-@retry(stop_after_attempt(3), wait_fixed(2))
+@retry(stop_after_attempt=3, wait_fixed=2)
 def initialize_client():
     logger.info("Starting client initialization...")
     try:
@@ -496,7 +477,7 @@ def run_echidna(temp_path):
         import subprocess
         subprocess.run(["docker", "--version"], check=True, capture_output=True, text=True)
         logger.info("Docker is available, attempting to pull Echidna image")
-        @retry(stop_after_attempt(3), wait_fixed(2))
+        @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
         def pull_echidna():
             subprocess.run(["docker", "pull", "trailofbits/echidna"], check=True, capture_output=True, text=True)
             logger.info("Echidna image pulled successfully")
@@ -658,12 +639,10 @@ async def read_auth(request: Request):
 from fastapi import Body
 from pydantic import BaseModel
 import urllib.parse
-
 class TierUpgradeRequest(BaseModel):
     username: Optional[str] = None
     tier: str
     has_diamond: bool = False
-
 @app.post("/signup/{username}")
 async def signup(username: str, request: Request, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
@@ -691,7 +670,6 @@ async def signup(username: str, request: Request, db: Session = Depends(get_db))
     for handler in logging.getLogger().handlers:
         handler.flush()
     return {"message": f"User {username} signed up with free tier"}
-
 @app.post("/signin/{username}")
 async def signin(username: str, request: Request, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
@@ -717,7 +695,6 @@ async def signin(username: str, request: Request, db: Session = Depends(get_db))
     for handler in logging.getLogger().handlers:
         handler.flush()
     return {"message": f"Signed in as {username}"}
-
 @app.get("/tier")
 async def get_tier(request: Request, username: str = Query(None), db: Session = Depends(get_db)):
     session_username = request.session.get("username")
@@ -758,7 +735,6 @@ async def get_tier(request: Request, username: str = Query(None), db: Session = 
         "audit_limit": audit_limit,
         "has_diamond": has_diamond
     }
-
 @app.post("/set-tier/{username}/{tier}")
 async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), request: Request = None, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
@@ -844,7 +820,8 @@ async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), req
     if tier not in level_map:
         raise HTTPException(status_code=400, detail=f"Invalid tier: {tier}. Use 'free', 'beginner', 'pro', or 'diamond'")
     if tier == "diamond" and user.tier != "pro":
-        raise HTTPException(status_code=400, detail="Diamond add-on requires Pro tier")
+        has_diamond = True
+        tier = "pro"  # Diamond is add-on to Pro
     if not STRIPE_API_KEY:
         logger.error(f"Stripe checkout creation failed for {effective_username} to {tier}: STRIPE_API_KEY not set")
         raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
@@ -861,15 +838,23 @@ async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), req
             missing_prices = [var for var in ["STRIPE_PRICE_BEGINNER", "STRIPE_PRICE_PRO", "STRIPE_PRICE_DIAMOND"] if not globals()[var]]
             logger.error(f"Stripe checkout creation failed for {effective_username} to {tier}: Missing Stripe price IDs: {', '.join(missing_prices)}")
             raise HTTPException(status_code=503, detail=f"Payment processing unavailable: Missing Stripe price IDs: {', '.join(missing_prices)}")
-        line_items = [{
-            'price': price_id,
-            'quantity': 1,
-        }]
-        if tier == "pro" and has_diamond:
+        line_items = []
+        if tier == "diamond" and user.tier == "pro":
+            # Add only Diamond if already on Pro
             line_items.append({
                 'price': STRIPE_PRICE_DIAMOND,
                 'quantity': 1,
             })
+        else:
+            line_items.append({
+                'price': price_id,
+                'quantity': 1,
+            })
+            if has_diamond:
+                line_items.append({
+                    'price': STRIPE_PRICE_DIAMOND,
+                    'quantity': 1,
+                })
         logger.debug(f"Creating Stripe checkout session for {effective_username} to {tier}, line_items={line_items}")
         try:
             session = stripe.checkout.Session.create(
@@ -1176,10 +1161,18 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(None
             for handler in logging.getLogger().handlers:
                 handler.flush()
             return {"session_url": session.url}
-        except Exception as e:
-            logger.error(f"Stripe checkout creation failed for {effective_username} Diamond audit: {str(e)}")
+        except stripe.error.InvalidRequestError as e:
+            logger.error(f"Stripe InvalidRequestError for {effective_username} Diamond audit: {str(e)}, error_code={e.code}, param={e.param}")
             os.unlink(temp_path)
-            raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
+            raise HTTPException(status_code=400, detail=f"Invalid Stripe request: {e.user_message or str(e)}")
+        except stripe.error.StripeError as e:
+            logger.error(f"Stripe error for {effective_username} Diamond audit: {str(e)}, error_code={e.code}, param={e.param}")
+            os.unlink(temp_path)
+            raise HTTPException(status_code=503, detail=f"Failed to create checkout session: {e.user_message or 'Payment processing error. Please try again or contact support.'}")
+        except Exception as e:
+            logger.error(f"Unexpected error in Stripe checkout for {effective_username} Diamond audit: {str(e)}")
+            os.unlink(temp_path)
+            raise HTTPException(status_code=503, detail=f"Failed to create checkout session: {str(e)}")
     except Exception as e:
         logger.error(f"Diamond audit error for {effective_username}: {str(e)}")
         logger.debug("Flushing log file after diamond audit error")
@@ -1298,7 +1291,7 @@ async def get_facets(contract_address: str, request: Request, username: str = Qu
         for handler in logging.getLogger().handlers:
             handler.flush()
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-        
+            
 ## Section 4.6: Main Audit Endpoint ##
 @app.post("/audit", response_model=AuditResponse)
 async def audit_contract(file: UploadFile = File(...), contract_address: str = None, username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
@@ -1482,7 +1475,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             raise HTTPException(status_code=500, detail=f"Failed to create temporary file: {str(e)}")
         try:
             logger.info(f"Starting Slither analysis for {effective_username}")
-            @retry(stop_after_attempt=3, wait_fixed=2)
+            @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
             def analyze_slither(temp_path, attempt_number=1):
                 logger.debug(f"Slither retry attempt {attempt_number} for {effective_username}")
                 return Slither(temp_path)
@@ -1657,7 +1650,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         for handler in logging.getLogger().handlers:
             handler.flush()
 
-## Section 4.6: Main Entry Point ##
+## Section 4.7: Main Entry Point ##
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
