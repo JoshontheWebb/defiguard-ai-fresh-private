@@ -164,8 +164,6 @@ header {
     transition: border-color 0.3s ease, box-shadow 0.3s ease;
     background: var(--glass-bg);
     color: var(--text-light);
-    width: 100%;
-    max-width: none;
 }
 
 .input:focus {
