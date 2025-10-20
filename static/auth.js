@@ -21,6 +21,21 @@ function waitForDOM(selectors, callback, maxAttempts = 10, interval = 100) {
     check();
 }
 
+function togglePassword(inputId, toggleId) {
+    const input = document.getElementById(inputId);
+    const toggle = document.getElementById(toggleId);
+    if (!input || !toggle) {
+        console.error(`[ERROR] Password toggle elements not found: input=${!!input}, toggle=${!!toggle}, time=${new Date().toISOString()}`);
+        return;
+    }
+    toggle.addEventListener('click', () => {
+        const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
+        input.setAttribute('type', type);
+        toggle.textContent = type === 'password' ? '👁️' : '🙈';
+        console.log(`[DEBUG] Toggled password visibility for ${inputId}, type=${type}, time=${new Date().toISOString()}`);
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Fetch CSRF token with retry
     const fetchCsrfToken = async (attempt = 1, maxAttempts = 3) => {
@@ -53,7 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return fetchCsrfToken(attempt + 1, maxAttempts);
             }
             console.error('Max CSRF fetch attempts reached.');
-            throw error;
+            return null;
         }
     };
 
@@ -89,17 +104,17 @@ document.addEventListener('DOMContentLoaded', () => {
         logoutButton: '#logout-button',
         tabs: '.tabs',
         signinForm: '#signin-form',
-        signupForm: '#signup-form',
-        csrfToken: 'input[name="csrf_token"]'  // Changed to select all CSRF inputs
-    }, ({ authToggle, authForms, messageDiv, logoutSection, logoutButton, tabs, signinForm, signupForm, csrfToken }) => {
-        // Set CSRF token in forms (handle multiple)
+        signupForm: '#signup-form'
+    }, ({ authToggle, authForms, messageDiv, logoutSection, logoutButton, tabs, signinForm, signupForm }) => {
+        // Set CSRF token in forms
         const setCsrfToken = async () => {
             try {
                 const token = await fetchCsrfToken();
-                const csrfInputs = document.querySelectorAll('input[name="csrf_token"]');
-                csrfInputs.forEach(input => {
-                    input.value = token;
-                });
+                const signinCsrf = document.getElementById('signin-csrf-token');
+                const signupCsrf = document.getElementById('signup-csrf-token');
+                if (signinCsrf) signinCsrf.value = token;
+                if (signupCsrf) signupCsrf.value = token;
+                console.log(`[DEBUG] CSRF token set for forms: ${token}, time=${new Date().toISOString()}`);
             } catch (error) {
                 console.error('[ERROR] Failed to set CSRF token:', error);
                 if (messageDiv) {
@@ -115,7 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
         authToggle.addEventListener('click', () => {
             const isVisible = authForms.style.visibility === 'visible';
             authForms.style.visibility = isVisible ? 'hidden' : 'visible';
-            authForms.style.opacity = isVisible ? 0 : 1;
+            authForms.style.opacity = isVisible ? '0' : '1';
             authToggle.textContent = isVisible ? 'Sign In or Create Account' : 'Hide Forms';
             console.log(`[DEBUG] Toggled auth forms: visibility=${authForms.style.visibility}, time=${new Date().toISOString()}`);
         });
@@ -129,8 +144,8 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('.tab-content').forEach(content => {
                 if (content.id === tab.dataset.tab) {
                     content.classList.add('active');
-                    content.style.opacity = 0;
-                    setTimeout(() => { content.style.opacity = 1; }, 50);
+                    content.style.opacity = '0';
+                    setTimeout(() => { content.style.opacity = '1'; }, 50);
                 } else {
                     content.classList.remove('active');
                 }
@@ -142,21 +157,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 debugDiv.textContent = `Current tab: ${tab.dataset.tab}`;
             }
         });
-
-        // Password toggle (text-based, no FontAwesome)
-        const togglePassword = (inputId, toggleId) => {
-            const input = document.getElementById(inputId);
-            const toggle = document.getElementById(toggleId);
-            if (!input || !toggle) {
-                console.error('[ERROR] Password toggle elements not found:', { inputId, toggleId });
-                return;
-            }
-            toggle.addEventListener('click', () => {
-                const type = input.type === 'password' ? 'text' : 'password';
-                input.type = type;
-                toggle.textContent = type === 'password' ? 'Show' : 'Hide';  // Simple text toggle
-            });
-        };
 
         // Signin form
         signinForm.addEventListener('submit', async (e) => {
@@ -258,7 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             console.log('Signup attempt:', { email, username });
-            const result = await withCsrfToken(async (token) => {
+            await withCsrfToken(async (token) => {
                 if (!token) {
                     messageDiv.classList.remove('is-hidden', 'is-success');
                     messageDiv.classList.add('is-danger');
@@ -290,7 +290,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         localStorage.setItem('username', username);
                         localStorage.setItem('tier', 'free');
                         localStorage.setItem('size_limit', '1MB');
-                        localStorage.setItem('diamond_feature', JSON.stringify(false));
+                        localStorage.setItem('diamond_feature', 'false');
                         console.log(`[DEBUG] Setting localStorage: username=${username}, tier=free, time=${new Date().toISOString()}`);
                         window.dispatchEvent(new Event('authUpdate'));
                         messageDiv.classList.remove('is-hidden', 'is-danger');
@@ -332,13 +332,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         logoutButton.addEventListener('click', () => {
-            console.log('Logout attempt:', { username: localStorage.getItem('username') });
+            console.log('[DEBUG] Logout attempt: username=' + localStorage.getItem('username') + ', time=' + new Date().toISOString());
             localStorage.removeItem('username');
             localStorage.removeItem('tier');
             localStorage.removeItem('size_limit');
             localStorage.removeItem('diamond_feature');
             localStorage.removeItem('csrfToken');
-            console.log('Logout success');
+            console.log('[DEBUG] Logout success');
             logoutSection.style.display = 'none';
             document.getElementById('signin').classList.add('active');
             document.getElementById('signup').classList.remove('active');
