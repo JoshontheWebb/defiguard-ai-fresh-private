@@ -22,7 +22,7 @@
                     </div>
                     <div id="signin" class="tab-content active">
                         <form id="signin-form">
-                            <input type="hidden" name="csrf_token" id="csrf_token">
+                            <input type="hidden" name="csrf_token" id="signin-csrf-token">
                             <div class="field">
                                 <label class="label">Username</label>
                                 <div class="control">
@@ -33,9 +33,7 @@
                                 <label class="label">Password</label>
                                 <div class="control has-icons-right">
                                     <input class="input" type="password" id="signin-password" name="password" placeholder="Enter password" required aria-label="Password">
-                                    <span class="icon is-right is-clickable" id="toggle-signin-password">
-                                        <i class="fas fa-eye"></i>
-                                    </span>
+                                    <span class="icon is-right is-clickable" id="toggle-signin-password">👁️</span>
                                 </div>
                             </div>
                             <div class="field">
@@ -47,7 +45,7 @@
                     </div>
                     <div id="signup" class="tab-content">
                         <form id="signup-form">
-                            <input type="hidden" name="csrf_token" id="csrf_token">
+                            <input type="hidden" name="csrf_token" id="signup-csrf-token">
                             <div class="field">
                                 <label class="label">Email</label>
                                 <div class="control">
@@ -65,9 +63,7 @@
                                 <label class="label">Password</label>
                                 <div class="control has-icons-right">
                                     <input class="input" type="password" id="signup-password" name="password" placeholder="Enter password" required aria-label="Password">
-                                    <span class="icon is-right is-clickable" id="toggle-signup-password">
-                                        <i class="fas fa-eye"></i>
-                                    </span>
+                                    <span class="icon is-right is-clickable" id="toggle-signup-password">👁️</span>
                                 </div>
                                 <p class="help is-danger" id="password-error" style="display: none;"></p>
                             </div>
@@ -75,9 +71,7 @@
                                 <label class="label">Confirm Password</label>
                                 <div class="control has-icons-right">
                                     <input class="input" type="password" id="signup-confirm-password" name="confirm_password" placeholder="Confirm password" required aria-label="Confirm Password">
-                                    <span class="icon is-right is-clickable" id="toggle-confirm-password">
-                                        <i class="fas fa-eye"></i>
-                                    </span>
+                                    <span class="icon is-right is-clickable" id="toggle-signup-confirm-password">👁️</span>
                                 </div>
                                 <p class="help is-danger" id="confirm-error" style="display: none;"></p>
                             </div>
@@ -103,7 +97,6 @@
             </div>
         </section>
     </div>
-    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
     <script src="/static/auth.js?_=${Date.now()}"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
