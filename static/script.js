@@ -337,6 +337,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const { tier, size_limit, feature_flags, api_key, audit_count, audit_limit, has_diamond } = data;
                 auditCount = audit_count;
                 auditLimit = audit_limit;
+                localStorage.setItem('tier', tier);
+                localStorage.setItem('diamond_feature', has_diamond.toString());
+                localStorage.setItem('size_limit', size_limit);
                 tierInfo.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} (${size_limit === 'Unlimited' ? 'Unlimited audits' : `${auditCount}/${auditLimit} audits`})`;
                 tierDescription.textContent = `${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} Tier: ${has_diamond ? 'Unlimited file size, full Diamond audits, fuzzing, priority support, NFT rewards' : tier === 'pro' ? 'Unlimited audits, Diamond add-on access ($50/mo), fuzzing, priority support' : tier === 'beginner' ? `Up to 10 audits, 1MB file size (${auditCount}/${auditLimit} remaining), priority support` : `Up to 3 audits, 1MB file size (${auditCount}/${auditLimit} remaining)`}`;
                 sizeLimit.textContent = `Max file size: ${size_limit}`;
@@ -883,13 +886,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                     console.log(`[DEBUG] /audit response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
                     if (!response.ok) {
-                        let errorData;
-                        try {
-                            errorData = await response.json();
-                        } catch (jsonError) {
-                            errorData = { detail: await response.text() || 'Unknown error' };
-                            console.error(`[ERROR] /audit failed to parse JSON: ${jsonError.message}, response_body=${errorData.detail}, time=${new Date().toISOString()}`);
-                        }
+                        const errorData = await response.json().catch(async () => ({
+                            detail: await response.text() || 'Unknown server error'
+                        }));
                         console.error(`[ERROR] /audit failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, headers=${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
                         if (errorData.session_url) {
                             console.log(`[DEBUG] Redirecting to Stripe for audit limit/file size upgrade, session_url=${errorData.session_url}, time=${new Date().toISOString()}`);
