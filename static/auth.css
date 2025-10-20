@@ -150,11 +150,11 @@ header {
 
 .control {
     position: relative;
+    width: 100%;
 }
 
 .control.has-icons-right {
-    display: inline-block;
-    width: fit-content;
+    position: relative;
 }
 
 .input {
