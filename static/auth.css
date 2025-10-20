@@ -153,8 +153,7 @@ header {
 }
 
 .control.has-icons-right {
-    display: flex;
-    align-items: center;
+    position: relative;
 }
 
 .input {
@@ -165,7 +164,8 @@ header {
     transition: border-color 0.3s ease, box-shadow 0.3s ease;
     background: var(--glass-bg);
     color: var(--text-light);
-    flex: 1;
+    width: 100%;
+    max-width: none;
 }
 
 .input:focus {
@@ -249,7 +249,10 @@ header {
 }
 
 .icon.is-right {
-    margin-left: 8px;
+    position: absolute;
+    right: -30px;
+    top: 50%;
+    transform: translateY(-50%);
     cursor: pointer;
     color: var(--text-light);
     opacity: 0.7;
