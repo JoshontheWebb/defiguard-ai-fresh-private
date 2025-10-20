@@ -153,7 +153,8 @@ header {
 }
 
 .control.has-icons-right {
-    position: relative;
+    display: inline-block;
+    width: fit-content;
 }
 
 .input {
