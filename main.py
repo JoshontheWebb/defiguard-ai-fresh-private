@@ -52,6 +52,16 @@ app = FastAPI(title="DeFiGuard AI", description="Predictive DeFi Compliance Audi
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/templates", StaticFiles(directory="templates"), name="templates")
 
+# HTTP middleware for global request logging
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.debug(f"Incoming request: {request.method} {request.url}, headers={request.headers}, client={request.client.host}")
+    response = await call_next(request)
+    logger.debug(f"Response: status={response.status_code}, headers={response.headers}")
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+    return response
+
 # Load environment variables at startup
 @app.on_event("startup")
 async def startup_event():
@@ -178,15 +188,14 @@ logger.info("Clients initialized successfully.")
 STRIPE_API_KEY = os.getenv("STRIPE_API_KEY")
 stripe.api_key = STRIPE_API_KEY
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-STRIPE_PRICE_PRO = os.getenv("STRIPE_PRICE_PRO")
-STRIPE_PRICE_BEGINNER = os.getenv("STRIPE_PRICE_BEGINNER")
-STRIPE_PRICE_DIAMOND = os.getenv("STRIPE_PRICE_DIAMOND")
-STRIPE_METERED_PRICE_DIAMOND = os.getenv("STRIPE_METERED_PRICE_DIAMOND")
+STRIPE_PRICE_PRO = "price_1SFoLlEqXlKjClpjoNrA0XCO"
+STRIPE_PRICE_BEGINNER = "price_1SFoJGEqXlKjClpjj2RZ10bf"
+STRIPE_PRICE_DIAMOND = "price_1SFoVMEqXlKjClpjTyRtHJcD"
+STRIPE_METERED_PRICE_DIAMOND = "price_1SFpPTEqXlKjClpjeGFNYSgF"
 
 FREE_LIMIT = 3
 BEGINNER_LIMIT = 10
 PRO_LIMIT = float("inf")
-
 level_map = {
     "free": 0,
     "beginner": 1,
@@ -254,9 +263,10 @@ Protocol Details: {details}.
 Tier: {tier}.
 Return the analysis in the exact JSON schema provided. For Beginner/Pro, include detailed predictions and recommendations. For Pro, add advanced regulatory insights and fuzzing results. For Diamond add-on, include formal verification, exploit simulation, threat modeling, fuzzing results, and a remediation roadmap.
 """
- ## Section 2 ##
+
+## Section 2 ##
 import os.path
-DATA_DIR = "/opt/render/project/data"  # Render persistent disk
+DATA_DIR = "/opt/render/project/data" # Render persistent disk
 USAGE_STATE_FILE = os.path.join(DATA_DIR, "usage_state.json")
 USAGE_COUNT_FILE = os.path.join(DATA_DIR, "usage_count.txt")
 
@@ -264,7 +274,7 @@ class UsageTracker:
     def __init__(self):
         self.count = 0
         self.last_reset = datetime.now()
-        os.makedirs(DATA_DIR, exist_ok=True)  # Ensure persistent directory exists
+        os.makedirs(DATA_DIR, exist_ok=True) # Ensure persistent directory exists
         if os.path.exists(USAGE_STATE_FILE):
             try:
                 with open(USAGE_STATE_FILE, 'r') as f:
@@ -476,6 +486,7 @@ def initialize_client():
         raise
 
 client, w3 = initialize_client()
+
 ## Section 3 ##
 def run_echidna(temp_path):
     """Run Echidna fuzzing on the Solidity file and return results."""
@@ -547,6 +558,7 @@ app.add_middleware(
     session_cookie="session",
     max_age=3600
 )
+
 ## Section 4.1: Prompt and Debug Endpoints ##
 PROMPT_TEMPLATE = """
 Analyze this Solidity code for vulnerabilities and 2025 regulations (MiCA, SEC FIT21).
@@ -641,7 +653,7 @@ async def read_auth(request: Request):
         for handler in logging.getLogger().handlers:
             handler.flush()
         return HTMLResponse(content="<h1>Auth file not found. Check templates folder.</h1>")
-    
+
 ## Section 4.3: User and Tier Management Endpoints ##
 from fastapi import Body
 from pydantic import BaseModel
@@ -784,29 +796,36 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
                 'quantity': 1,
             })
         logger.debug(f"Creating Stripe checkout session for {username} to {tier}, line_items={line_items}")
-        session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
-            line_items=line_items,
-            mode='subscription',
-            success_url=f'https://defiguard-ai-fresh-private.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(username)}',
-            cancel_url='https://defiguard-ai-fresh-private.onrender.com/ui',
-            metadata={'username': username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
-        )
-        logger.info(f"Redirecting {username} to Stripe checkout for {tier} tier, has_diamond: {has_diamond}, session: {request.session}")
-        logger.debug(f"Success URL: {session.url}, params: tier={tier}, has_diamond={has_diamond}, username={username}")
-        logger.debug("Flushing log file after tier checkout redirect")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        if session.subscription:
-            user.stripe_subscription_id = session.subscription
-            for item in stripe.Subscription.retrieve(session.subscription).get('items', {}).get('data', []):
-                if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
-                    user.stripe_subscription_item_id = item.id
-            db.commit()
-        return {"session_url": session.url}
+        try:
+            session = stripe.checkout.Session.create(
+                payment_method_types=['card'],
+                line_items=line_items,
+                mode='subscription',
+                success_url=f'https://defiguard-ai-fresh-private.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(username)}',
+                cancel_url='https://defiguard-ai-fresh-private.onrender.com/ui',
+                metadata={'username': username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
+            )
+            logger.info(f"Redirecting {username} to Stripe checkout for {tier} tier, has_diamond: {has_diamond}, session: {request.session}")
+            logger.debug(f"Success URL: {session.url}, params: tier={tier}, has_diamond={has_diamond}, username={username}")
+            logger.debug("Flushing log file after tier checkout redirect")
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+            if session.subscription:
+                user.stripe_subscription_id = session.subscription
+                for item in stripe.Subscription.retrieve(session.subscription).get('items', {}).get('data', []):
+                    if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
+                        user.stripe_subscription_item_id = item.id
+                db.commit()
+            return {"session_url": session.url}
+        except stripe.error.InvalidRequestError as e:
+            logger.error(f"Stripe InvalidRequestError for {username} to {tier}: {str(e)}, error_code={e.code}, param={e.param}")
+            raise HTTPException(status_code=400, detail=f"Invalid Stripe request: {e.user_message or str(e)}")
+        except stripe.error.StripeError as e:
+            logger.error(f"Stripe error for {username} to {tier}: {str(e)}, error_code={e.code}, param={e.param}")
+            raise HTTPException(status_code=503, detail=f"Failed to create checkout session: {e.user_message or 'Payment processing error. Please try again or contact support.'}")
     except Exception as e:
-        logger.error(f"Stripe checkout creation failed for {username} to {tier}: {str(e)}")
-        raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
+        logger.error(f"Unexpected error in Stripe checkout for {username} to {tier}: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Failed to create checkout session: {str(e)}")
 
 @app.post("/create-tier-checkout")
 async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), request: Request = None, db: Session = Depends(get_db)):
@@ -852,29 +871,36 @@ async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), req
                 'quantity': 1,
             })
         logger.debug(f"Creating Stripe checkout session for {effective_username} to {tier}, line_items={line_items}")
-        session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
-            line_items=line_items,
-            mode='subscription',
-            success_url=f'https://defiguard-ai-fresh-private.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(effective_username)}',
-            cancel_url='https://defiguard-ai-fresh-private.onrender.com/ui',
-            metadata={'username': effective_username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
-        )
-        logger.info(f"Created Stripe checkout session for {effective_username} to {tier}, has_diamond: {has_diamond}, session: {request.session}")
-        logger.debug(f"Success URL: {session.url}, params: tier={tier}, has_diamond={has_diamond}, username={effective_username}")
-        logger.debug("Flushing log file after tier checkout creation")
-        for handler in logging.getLogger().handlers:
-            handler.flush()
-        if session.subscription:
-            user.stripe_subscription_id = session.subscription
-            for item in stripe.Subscription.retrieve(session.subscription).get('items', {}).get('data', []):
-                if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
-                    user.stripe_subscription_item_id = item.id
-            db.commit()
-        return {"session_url": session.url}
+        try:
+            session = stripe.checkout.Session.create(
+                payment_method_types=['card'],
+                line_items=line_items,
+                mode='subscription',
+                success_url=f'https://defiguard-ai-fresh-private.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(effective_username)}',
+                cancel_url='https://defiguard-ai-fresh-private.onrender.com/ui',
+                metadata={'username': effective_username, 'tier': tier, 'has_diamond': str(has_diamond).lower()}
+            )
+            logger.info(f"Created Stripe checkout session for {effective_username} to {tier}, has_diamond: {has_diamond}, session: {request.session}")
+            logger.debug(f"Success URL: {session.url}, params: tier={tier}, has_diamond={has_diamond}, username={effective_username}")
+            logger.debug("Flushing log file after tier checkout creation")
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+            if session.subscription:
+                user.stripe_subscription_id = session.subscription
+                for item in stripe.Subscription.retrieve(session.subscription).get('items', {}).get('data', []):
+                    if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
+                        user.stripe_subscription_item_id = item.id
+                db.commit()
+            return {"session_url": session.url}
+        except stripe.error.InvalidRequestError as e:
+            logger.error(f"Stripe InvalidRequestError for {effective_username} to {tier}: {str(e)}, error_code={e.code}, param={e.param}")
+            raise HTTPException(status_code=400, detail=f"Invalid Stripe request: {e.user_message or str(e)}")
+        except stripe.error.StripeError as e:
+            logger.error(f"Stripe error for {effective_username} to {tier}: {str(e)}, error_code={e.code}, param={e.param}")
+            raise HTTPException(status_code=503, detail=f"Failed to create checkout session: {e.user_message or 'Payment processing error. Please try again or contact support.'}")
     except Exception as e:
-        logger.error(f"Stripe checkout creation failed for {effective_username} to {tier}: {str(e)}")
-        raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
+        logger.error(f"Unexpected error in Stripe checkout for {effective_username} to {tier}: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Failed to create checkout session: {str(e)}")
 
 @app.post("/create-checkout-session")
 async def create_checkout_session(username: str = Query(None), temp_id: str = Query(...), price: int = Query(...), request: Request = None, db: Session = Depends(get_db)):
@@ -956,7 +982,7 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
         for handler in logging.getLogger().handlers:
             handler.flush()
         return RedirectResponse(url=f"/ui?upgrade=error&message={urllib.parse.quote(str(e))}")
-                        
+
 ## Section 4.4: Webhook Endpoint ##
 @app.post("/webhook")
 async def webhook(request: Request, db: Session = Depends(get_db)):
@@ -995,12 +1021,12 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
                         user.stripe_subscription_item_id = item.id
                 usage_tracker.set_tier(tier, has_diamond, username, db)
                 usage_tracker.reset_usage(username, db)
-                request.session["username"] = username  # Ensure session persists
+                request.session["username"] = username # Ensure session persists
                 logger.info(f"Tier upgrade completed for {username} to {tier}, has_diamond: {has_diamond}, session: {request.session}")
                 db.commit()
             elif temp_id:
                 logger.info(f"Payment completed for {username}, starting audit for temp_id {temp_id}, session: {request.session}")
-                request.session["username"] = username  # Ensure session persists
+                request.session["username"] = username # Ensure session persists
             else:
                 logger.warning(f"Webhook event ignored: missing username or tier/temp_id, event_id={event['id']}")
         else:
@@ -1272,7 +1298,7 @@ async def get_facets(contract_address: str, request: Request, username: str = Qu
         for handler in logging.getLogger().handlers:
             handler.flush()
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-    
+        
 ## Section 4.6: Main Audit Endpoint ##
 @app.post("/audit", response_model=AuditResponse)
 async def audit_contract(file: UploadFile = File(...), contract_address: str = None, username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
@@ -1296,9 +1322,10 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
     fuzzing_results = []
     # File reading block
     try:
+        logger.debug(f"Reading file for {effective_username}")
         code_bytes = await file.read()
         file_size = len(code_bytes)
-        logger.debug(f"File read: {file_size} bytes for user {effective_username}")
+        logger.info(f"File read successfully: {file_size} bytes for user {effective_username}")
     except Exception as e:
         logger.error(f"File read failed for {effective_username}: {str(e)}")
         logger.debug("Flushing log file after file read error")
@@ -1311,6 +1338,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         overage_cost = None
         if file_size > 1024 * 1024 and not user.has_diamond:
             overage_cost = usage_tracker.calculate_diamond_overage(file_size) / 100
+            logger.warning(f"File size {file_size / 1024 / 1024:.2f}MB exceeds limit for {effective_username} (tier: {current_tier})")
             raise HTTPException(
                 status_code=400,
                 detail=f"Access to Diamond audits is only available on Pro tier with Diamond add-on. Upgrade to Pro + Diamond ($200/mo + $50/mo + ${overage_cost:.2f} overage for this file)."
@@ -1318,7 +1346,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         limits = {"free": FREE_LIMIT, "beginner": BEGINNER_LIMIT, "pro": PRO_LIMIT, "diamond": PRO_LIMIT}
         try:
             current_count = usage_tracker.increment(file_size, effective_username, db)
-            logger.info(f"Audit request {current_count} processed for contract {contract_address} with tier {current_tier} for user {effective_username}")
+            logger.info(f"Audit request {current_count} processed for contract {contract_address or 'uploaded'} with tier {current_tier} for user {effective_username}")
             logger.debug("Flushing log file after audit request")
             for handler in logging.getLogger().handlers:
                 handler.flush()
@@ -1332,6 +1360,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 try:
                     with open(temp_path, "wb") as f:
                         f.write(code_bytes)
+                    logger.debug(f"Temporary file saved: {temp_path} for {effective_username}")
                 except PermissionError as e:
                     logger.error(f"Failed to write temp file: {str(e)}")
                     raise HTTPException(status_code=500, detail="Failed to save temporary file due to permissions")
@@ -1364,10 +1393,18 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     for handler in logging.getLogger().handlers:
                         handler.flush()
                     return {"session_url": session.url}
-                except Exception as e:
-                    logger.error(f"Stripe checkout creation failed for {effective_username} Pro upgrade: {str(e)}")
+                except stripe.error.InvalidRequestError as e:
+                    logger.error(f"Stripe InvalidRequestError for {effective_username} Pro upgrade: {str(e)}, error_code={e.code}, param={e.param}")
                     os.unlink(temp_path)
-                    raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
+                    raise HTTPException(status_code=400, detail=f"Invalid Stripe request: {e.user_message or str(e)}")
+                except stripe.error.StripeError as e:
+                    logger.error(f"Stripe error for {effective_username} Pro upgrade: {str(e)}, error_code={e.code}, param={e.param}")
+                    os.unlink(temp_path)
+                    raise HTTPException(status_code=503, detail=f"Failed to create checkout session: {e.user_message or 'Payment processing error. Please try again or contact support.'}")
+                except Exception as e:
+                    logger.error(f"Unexpected error in Stripe checkout for {effective_username} Pro upgrade: {str(e)}")
+                    os.unlink(temp_path)
+                    raise HTTPException(status_code=503, detail=f"Failed to create checkout session: {str(e)}")
             elif e.status_code == 403 and "Usage limit exceeded" in e.detail:
                 logger.info(f"Usage limit exceeded for {effective_username}; redirecting to upgrade")
                 if not STRIPE_API_KEY:
@@ -1393,9 +1430,15 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     for handler in logging.getLogger().handlers:
                         handler.flush()
                     return {"session_url": session.url}
+                except stripe.error.InvalidRequestError as e:
+                    logger.error(f"Stripe InvalidRequestError for {effective_username} Beginner upgrade: {str(e)}, error_code={e.code}, param={e.param}")
+                    raise HTTPException(status_code=400, detail=f"Invalid Stripe request: {e.user_message or str(e)}")
+                except stripe.error.StripeError as e:
+                    logger.error(f"Stripe error for {effective_username} Beginner upgrade: {str(e)}, error_code={e.code}, param={e.param}")
+                    raise HTTPException(status_code=503, detail=f"Failed to create checkout session: {e.user_message or 'Payment processing error. Please try again or contact support.'}")
                 except Exception as e:
-                    logger.error(f"Stripe checkout creation failed for {effective_username} Beginner upgrade: {str(e)}")
-                    raise HTTPException(status_code=503, detail=f"Failed to create checkout session: Payment processing error. Please try again or contact support.")
+                    logger.error(f"Unexpected error in Stripe checkout for {effective_username} Beginner upgrade: {str(e)}")
+                    raise HTTPException(status_code=503, detail=f"Failed to create checkout session: {str(e)}")
             else:
                 raise e
     except Exception as e:
@@ -1406,17 +1449,18 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         raise e
     # Audit processing block
     try:
-        logger.info("Starting audit process...")
+        logger.info(f"Starting audit process for {effective_username}")
         try:
             code_str = code_bytes.decode('utf-8')
+            logger.debug(f"File decoded successfully for {effective_username}")
         except UnicodeDecodeError as decode_err:
-            logger.error(f"File decoding failed: {str(decode_err)}")
+            logger.error(f"File decoding failed for {effective_username}: {str(decode_err)}")
             logger.debug("Flushing log file after decode error")
             for handler in logging.getLogger().handlers:
                 handler.flush()
             raise HTTPException(status_code=400, detail=f"File decoding failed: {str(decode_err)}")
         if not code_str.strip():
-            logger.error("Empty file uploaded")
+            logger.error(f"Empty file uploaded for {effective_username}")
             logger.debug("Flushing log file after empty file error")
             for handler in logging.getLogger().handlers:
                 handler.flush()
@@ -1429,41 +1473,44 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 temp_path = temp_file.name
                 if platform.system() == "Windows":
                     temp_path = temp_path.replace("/", "\\")
+            logger.debug(f"Temporary file created for {effective_username}: {temp_path}")
         except Exception as e:
-            logger.error(f"Failed to create temp file: {str(e)}")
+            logger.error(f"Failed to create temp file for {effective_username}: {str(e)}")
             logger.debug("Flushing log file after temp file error")
             for handler in logging.getLogger().handlers:
                 handler.flush()
             raise HTTPException(status_code=500, detail=f"Failed to create temporary file: {str(e)}")
         try:
-            logger.info("Starting Slither analysis...")
+            logger.info(f"Starting Slither analysis for {effective_username}")
             @retry(stop_after_attempt=3, wait_fixed=2)
             def analyze_slither(temp_path, attempt_number=1):
-                logger.info(f"Slither retry attempt {attempt_number}")
+                logger.debug(f"Slither retry attempt {attempt_number} for {effective_username}")
                 return Slither(temp_path)
             slither = analyze_slither(temp_path, attempt_number=1)
-            logger.info("Slither analysis completed.")
+            logger.info(f"Slither analysis completed for {effective_username}")
             findings = []
             for contract in slither.contracts:
-                logger.debug(f"Processing contract: {contract.name}")
+                logger.debug(f"Processing contract: {contract.name} for {effective_username}")
                 for detector in slither.detectors:
                     findings.extend(detector.detect())
             context = json.dumps([finding.to_json() for finding in findings]).replace('"', '\\"') if findings else "No static issues found"
+            logger.debug(f"Slither findings for {effective_username}: {context[:200]}")
         except SlitherError as e:
-            logger.error(f"Slither analysis failed: {str(e)}")
+            logger.error(f"Slither analysis failed for {effective_username}: {str(e)}")
             logger.debug("Flushing log file after Slither error")
             for handler in logging.getLogger().handlers:
                 handler.flush()
-            context = "Slither analysis failed; proceeding with raw code"
+            context = f"Slither analysis failed: {str(e)}; proceeding with raw code"
         if usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["fuzzing"]:
-            logger.info("Starting Echidna fuzzing...")
+            logger.info(f"Starting Echidna fuzzing for {effective_username}")
             echidna_output = run_echidna(temp_path)
             fuzzing_results = [
                 {"vulnerability": "Potential issue", "description": echidna_output["fuzzing_results"]}
             ] if isinstance(echidna_output["fuzzing_results"], str) else echidna_output["fuzzing_results"]
             context += f"\nEchidna fuzzing results: {json.dumps(fuzzing_results)}"
+            logger.debug(f"Echidna fuzzing results for {effective_username}: {json.dumps(fuzzing_results)[:200]}")
         else:
-            logger.info(f"Fuzzing skipped for {current_tier} tier")
+            logger.info(f"Fuzzing skipped for {current_tier} tier for {effective_username}")
         if contract_address and not usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["onchain"]:
             logger.warning(f"On-chain analysis denied for {effective_username} (tier: {current_tier}, has_diamond: {user.has_diamond})")
             logger.debug("Flushing log file after onchain tier check")
@@ -1476,15 +1523,17 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 logger.error(f"On-chain analysis failed for {effective_username}: INFURA_PROJECT_ID not set")
                 raise HTTPException(status_code=503, detail="On-chain analysis unavailable: Please set INFURA_PROJECT_ID in environment variables.")
             if not w3.is_address(contract_address):
-                logger.error(f"Invalid Ethereum address: {contract_address}")
+                logger.error(f"Invalid Ethereum address for {effective_username}: {contract_address}")
                 logger.debug("Flushing log file after invalid address")
                 for handler in logging.getLogger().handlers:
                     handler.flush()
                 raise HTTPException(status_code=400, detail="Invalid Ethereum address.")
-            onchain_code = w3.eth.get_code(contract_address)
-            if onchain_code:
+            try:
+                onchain_code = w3.eth.get_code(contract_address)
                 details += f" On-chain code fetched for {contract_address} (bytecode length: {len(onchain_code)})."
-            else:
+                logger.debug(f"On-chain code fetched for {effective_username}: {contract_address}, length: {len(onchain_code)}")
+            except Exception as e:
+                logger.error(f"On-chain code fetch failed for {effective_username}: {str(e)}")
                 details += f" No deployed code found at {contract_address}."
         if user.has_diamond and file_size > 1024 * 1024:
             chunks = [code_str[i:i+500000] for i in range(0, len(code_str), 500000)]
@@ -1493,20 +1542,28 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
                 raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
             for i, chunk in enumerate(chunks):
-                logger.info(f"Processing chunk {i+1}/{len(chunks)}...")
+                logger.info(f"Processing chunk {i+1}/{len(chunks)} for {effective_username}")
                 prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=chunk, details=details, tier="diamond")
-                response = client.chat.completions.create(
-                    model="grok-4",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.0,
-                    response_format={
-                        "type": "json_schema",
-                        "json_schema": {"schema": AUDIT_SCHEMA},
-                        "strict": True
-                    }
-                )
-                if response.choices and response.choices[0].message.content:
-                    results.append(json.loads(response.choices[0].message.content))
+                try:
+                    response = client.chat.completions.create(
+                        model="grok-4",
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=0.0,
+                        response_format={
+                            "type": "json_schema",
+                            "json_schema": {"schema": AUDIT_SCHEMA},
+                            "strict": True
+                        }
+                    )
+                    if response.choices and response.choices[0].message.content:
+                        results.append(json.loads(response.choices[0].message.content))
+                        logger.debug(f"Grok API response for chunk {i+1} for {effective_username}: {response.choices[0].message.content[:200]}")
+                    else:
+                        logger.error(f"No Grok API response for chunk {i+1} for {effective_username}")
+                        raise HTTPException(status_code=500, detail=f"No response from Grok API for chunk {i+1}")
+                except Exception as e:
+                    logger.error(f"Grok API call failed for {effective_username}, chunk {i+1}: {str(e)}")
+                    raise HTTPException(status_code=500, detail=f"Grok API call failed for chunk {i+1}: {str(e)}")
             aggregated = {
                 "risk_score": max(r["risk_score"] for r in results),
                 "issues": sum([r["issues"] for r in results], []),
@@ -1533,66 +1590,73 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     except Exception as e:
                         logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
                     db.commit()
+            logger.debug(f"Audit completed for {effective_username} with Diamond tier, aggregated results: risk_score={aggregated['risk_score']}")
             return {"report": aggregated, "risk_score": str(aggregated["risk_score"]), "overage_cost": overage_cost}
         else:
-            logger.info("Calling Grok API...")
+            logger.info(f"Calling Grok API for {effective_username} with tier {current_tier}")
             if not os.getenv("GROK_API_KEY"):
                 logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
                 raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
             prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=code_str, details=details, tier="diamond" if user.has_diamond else current_tier)
-            response = client.chat.completions.create(
-                model="grok-4",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {"schema": AUDIT_SCHEMA},
-                    "strict": True
-                }
-            )
-            logger.info("API response received.")
-            if response.choices and response.choices[0].message.content:
-                raw_response = response.choices[0].message.content
-                logger.info(f"Raw Grok Response: {raw_response[:200]}")
-                with open(os.path.join(DATA_DIR, 'debug.log'), 'a') as f:
-                    f.write(f"[{timestamp}] DEBUG: Raw Grok Response: {raw_response}\n")
-                    f.flush()
-                audit_json = json.loads(raw_response)
-                if user.has_diamond:
-                    audit_json["remediation_roadmap"] = "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review."
-                audit_json["fuzzing_results"] = fuzzing_results
-                user = db.query(User).filter(User.username == effective_username).first()
-                if user:
-                    history = json.loads(user.audit_history)
-                    history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": audit_json["risk_score"]})
-                    user.audit_history = json.dumps(history)
-                    overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
-                    if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
-                        try:
-                            stripe.SubscriptionItem.create_usage_record(
-                                user.stripe_subscription_item_id,
-                                quantity=int(overage_mb),
-                                timestamp=int(time.time()),
-                                action='increment'
-                            )
-                            logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
-                        except Exception as e:
-                            logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
-                        db.commit()
-                logger.debug("Flushing log file after successful audit")
-                for handler in logging.getLogger().handlers:
-                    handler.flush()
-                return {"report": audit_json, "risk_score": str(audit_json.get("risk_score", "N/A")), "overage_cost": overage_cost}
-            else:
-                logger.error("No response from Grok API")
-                logger.debug("Flushing log file after no API response")
-                for handler in logging.getLogger().handlers:
-                    handler.flush()
-                raise HTTPException(status_code=500, detail="No response from Grok API")
+            try:
+                response = client.chat.completions.create(
+                    model="grok-4",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {"schema": AUDIT_SCHEMA},
+                        "strict": True
+                    }
+                )
+                logger.info(f"Grok API response received for {effective_username}")
+                if response.choices and response.choices[0].message.content:
+                    raw_response = response.choices[0].message.content
+                    logger.debug(f"Raw Grok Response for {effective_username}: {raw_response[:200]}")
+                    with open(os.path.join(DATA_DIR, 'debug.log'), 'a') as f:
+                        f.write(f"[{timestamp}] DEBUG: Raw Grok Response: {raw_response}\n")
+                        f.flush()
+                    audit_json = json.loads(raw_response)
+                    if user.has_diamond:
+                        audit_json["remediation_roadmap"] = "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review."
+                    audit_json["fuzzing_results"] = fuzzing_results
+                    user = db.query(User).filter(User.username == effective_username).first()
+                    if user:
+                        history = json.loads(user.audit_history)
+                        history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": audit_json["risk_score"]})
+                        user.audit_history = json.dumps(history)
+                        overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
+                        if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
+                            try:
+                                stripe.SubscriptionItem.create_usage_record(
+                                    user.stripe_subscription_item_id,
+                                    quantity=int(overage_mb),
+                                    timestamp=int(time.time()),
+                                    action='increment'
+                                )
+                                logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
+                            except Exception as e:
+                                logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
+                            db.commit()
+                    logger.debug(f"Audit completed for {effective_username}, results: risk_score={audit_json.get('risk_score', 'N/A')}")
+                    return {"report": audit_json, "risk_score": str(audit_json.get("risk_score", "N/A")), "overage_cost": overage_cost}
+                else:
+                    logger.error(f"No Grok API response for {effective_username}")
+                    raise HTTPException(status_code=500, detail="No response from Grok API")
+            except Exception as e:
+                logger.error(f"Grok API call failed for {effective_username}: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Grok API call failed: {str(e)}")
+    except Exception as e:
+        logger.error(f"Audit processing error for {effective_username}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Audit processing failed: {str(e)}")
     finally:
         if temp_path and os.path.exists(temp_path):
             os.unlink(temp_path)
-                       
+            logger.debug(f"Temporary file deleted: {temp_path} for {effective_username}")
+        logger.debug("Flushing log file after audit processing")
+        for handler in logging.getLogger().handlers:
+            handler.flush()
+
 ## Section 4.6: Main Entry Point ##
 if __name__ == "__main__":
     import uvicorn
