@@ -152,6 +152,11 @@ header {
     position: relative;
 }
 
+.control.has-icons-right {
+    display: flex;
+    align-items: center;
+}
+
 .input {
     padding: clamp(10px, 1.5vw, 12px);
     border: 2px solid hsl(0, 0%, 88%);
@@ -160,6 +165,7 @@ header {
     transition: border-color 0.3s ease, box-shadow 0.3s ease;
     background: var(--glass-bg);
     color: var(--text-light);
+    flex: 1;
 }
 
 .input:focus {
@@ -242,18 +248,15 @@ header {
     display: none;
 }
 
-.icon {
-    position: absolute;
-    top: 50%;
-    right: 10px;
-    transform: translateY(-50%);
+.icon.is-right {
+    margin-left: 8px;
     cursor: pointer;
     color: var(--text-light);
     opacity: 0.7;
     transition: color 0.3s, opacity 0.3s;
 }
 
-.icon:hover {
+.icon.is-right:hover {
     color: var(--accent-teal);
     opacity: 1;
 }
