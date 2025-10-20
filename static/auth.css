@@ -153,7 +153,7 @@ header {
 }
 
 .control.has-icons-right {
-    display: inline-block;
+    position: relative;
 }
 
 .input {
@@ -248,7 +248,7 @@ header {
 
 .icon.is-right {
     position: absolute;
-    right: -10px;
+    right: -8px;
     top: 50%;
     transform: translateY(-50%);
     cursor: pointer;
