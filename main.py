@@ -10,27 +10,27 @@ import secrets
 from tempfile import NamedTemporaryFile
 from typing import Optional
 from fastapi import FastAPI, File, UploadFile, Request, Query, HTTPException, Depends, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.sessions import SessionMiddleware
-from web3 import Web3
+from fastapi.responses = HTMLResponse, RedirectResponse
+from fastapi.staticfiles = StaticFiles
+from fastapi.middleware.cors = CORSMiddleware
+from starlette.middleware.sessions = SessionMiddleware
+from web3 = Web3
 import stripe
 import bcrypt
 import sqlite3
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
-from slither import Slither
-from slither.exceptions import SlitherError
-from openai import OpenAI
+from sqlalchemy = create_engine, Column, Integer, String, Boolean, DateTime
+from sqlalchemy.ext.declarative = declarative_base
+from sqlalchemy.orm = sessionmaker, Session
+from slither = Slither
+from slither.exceptions = SlitherError
+from openai = OpenAI
 import re
-from tenacity import retry, stop_after_attempt, wait_fixed
+from tenacity = retry, stop_after_attempt, wait_fixed
 import uvicorn
-from eth_account import Account
-from eth_account.messages import encode_defunct
-from pydantic import BaseModel
-from dotenv import load_dotenv
+from eth_account = Account
+from eth_account.messages = encode_defunct
+from pydantic = BaseModel
+from dotenv = load_dotenv
 # Ensure logging directory exists
 LOG_DIR = "/opt/render/project/data"
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -60,7 +60,7 @@ async def log_requests(request: Request, call_next):
 # Load environment variables at startup
 @app.on_event("startup")
 async def startup_event():
-    load_dotenv('C:\\Users\\client\\DeFiGuard\\.env')
+    load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
     required_env_vars = [
         "GROK_API_KEY", "INFURA_PROJECT_ID", "STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET",
         "STRIPE_PRICE_PRO", "STRIPE_PRICE_BEGINNER", "STRIPE_PRICE_DIAMOND"
@@ -456,100 +456,73 @@ def initialize_client():
         raise
 client, w3 = initialize_client()
 ## Section 3 ##
-     def run_echidna(temp_path):
-         """Run Echidna fuzzing on the Solidity file and return results."""
-         config_path = None
-         output_path = None
-         try:
-             import subprocess
-             subprocess.run(["docker", "--version"], check=True, capture_output=True, text=True)
-             logger.info("Docker is available, attempting to pull Echidna image")
-             @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
-             def pull_echidna():
-                 subprocess.run(["docker", "pull", "trailofbits/echidna"], check=True, capture_output=True, text=True)
-                 logger.info("Echidna image pulled successfully")
-             pull_echidna()
-             config_path = os.path.join(DATA_DIR, "echidna_config.yaml")
-             output_path = os.path.join(DATA_DIR, "echidna_output")
-             with open(config_path, "w") as f:
-                 f.write("""
+def run_echidna(temp_path):
+    """Run Echidna fuzzing on the Solidity file and return results."""
+    config_path = None
+    output_path = None
+    try:
+        import subprocess
+        subprocess.run(["docker", "--version"], check=True, capture_output=True, text=True)
+        logger.info("Docker is available, attempting to pull Echidna image")
+        @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
+        def pull_echidna():
+            subprocess.run(["docker", "pull", "trailofbits/echidna"], check=True, capture_output=True, text=True)
+            logger.info("Echidna image pulled successfully")
+        pull_echidna()
+        config_path = os.path.join(DATA_DIR, "echidna_config.yaml")
+        output_path = os.path.join(DATA_DIR, "echidna_output")
+        with open(config_path, "w") as f:
+            f.write("""
 format: text
 testLimit: 10000
 seqLen: 100
 coverage: true
-                 """)
-             cmd = [
-                 "docker", "run", "--rm",
-                 "-v", f"{DATA_DIR}:/app",
-                 "trailofbits/echidna",
-                 f"/app/{os.path.basename(temp_path)}",
-                 "--config", "/app/echidna_config.yaml",
-                 "--output", "/app/echidna_output"
-             ]
-             result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-             if os.path.exists(output_path):
-                 with open(output_path, "r") as f:
-                     echidna_results = f.read()
-             else:
-                 echidna_results = result.stdout
-             logger.info("Echidna fuzzing completed successfully")
-             logger.debug(f"Echidna results: {echidna_results}")
-             return {"fuzzing_results": echidna_results or "No vulnerabilities found by Echidna"}
-         except subprocess.SubprocessError as e:
-             logger.error(f"Echidna fuzzing failed: {str(e)}")
-             return {"fuzzing_results": "Fuzzing skipped: Docker not available on this environment"}
-         except Exception as e:
-             logger.error(f"Echidna fuzzing unexpected error: {str(e)}")
-             return {"fuzzing_results": f"Fuzzing failed: {str(e)}"}
-         finally:
-             if config_path and os.path.exists(config_path):
-                 os.unlink(config_path)
-             if output_path and os.path.exists(output_path):
-                 os.unlink(output_path)
-     def handle_tool_call(tool_call):
-         if tool_call.function.name == "fetch_reg":
-             return {"result": "Sample reg data: SEC FIT21 requires custody audits."}
-         return {"error": "Unknown tool"}
-     app.add_middleware(
-         CORSMiddleware,
-         allow_origins=["http://127.0.0.1:8000", "https://defiguard-ai-fresh-private-test.onrender.com"],
-         allow_credentials=True,
-         allow_methods=["*"],
-         allow_headers=["*"],
-     )
-     app.add_middleware(
-         SessionMiddleware,
-         secret_key=secrets.token_urlsafe(32),
-         session_cookie="session",
-         max_age=3600
-     )
-     @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
-     def initialize_client():
-         logger.info("Starting client initialization...")
-         try:
-             infura_project_id = os.getenv("INFURA_PROJECT_ID")
-             if not os.getenv("GROK_API_KEY") or not infura_project_id:
-                 logger.error("Missing API keys in .env file")
-                 raise ValueError("Missing API keys in .env file. Please set GROK_API_KEY and INFURA_PROJECT_ID.")
-             client = OpenAI(api_key=os.getenv("GROK_API_KEY"), base_url="https://api.x.ai/v1")
-             logger.info("OpenAI client created successfully.")
-             infura_url = f"https://mainnet.infura.io/v3/{infura_project_id}"
-             logger.debug(f"Attempting Web3 connection to {infura_url}")
-             w3 = Web3(Web3.HTTPProvider(infura_url))
-             logger.info("Web3 provider initialized.")
-             test_payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
-             test_response = w3.provider.make_request(test_payload['method'], test_payload['params'])
-             logger.debug(f"Test payload: {test_payload}, Response: {test_response}")
-             if not w3.is_connected():
-                 logger.error(f"Infura connection failed for URL: {infura_url}. Test response: {test_response}")
-                 raise ConnectionError("Failed to connect to Ethereum via Infura. Check INFURA_PROJECT_ID.")
-             logger.info("Clients initialized successfully.")
-             return client, w3
-         except Exception as e:
-             logger.error(f"Client initialization failed: {str(e)}. Retrying...")
-             raise
-     client, w3 = initialize_client()
-
+            """)
+        cmd = [
+            "docker", "run", "--rm",
+            "-v", f"{DATA_DIR}:/app",
+            "trailofbits/echidna",
+            f"/app/{os.path.basename(temp_path)}",
+            "--config", "/app/echidna_config.yaml",
+            "--output", "/app/echidna_output"
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if os.path.exists(output_path):
+            with open(output_path, "r") as f:
+                echidna_results = f.read()
+        else:
+            echidna_results = result.stdout
+        logger.info("Echidna fuzzing completed successfully")
+        logger.debug(f"Echidna results: {echidna_results}")
+        return {"fuzzing_results": echidna_results or "No vulnerabilities found by Echidna"}
+    except subprocess.SubprocessError as e:
+        logger.error(f"Echidna fuzzing failed: {str(e)}")
+        return {"fuzzing_results": "Fuzzing skipped: Docker not available on this environment"}
+    except Exception as e:
+        logger.error(f"Echidna fuzzing unexpected error: {str(e)}")
+        return {"fuzzing_results": f"Fuzzing failed: {str(e)}"}
+    finally:
+        if config_path and os.path.exists(config_path):
+            os.unlink(config_path)
+        if output_path and os.path.exists(output_path):
+            os.unlink(output_path)
+def handle_tool_call(tool_call):
+    if tool_call.function.name == "fetch_reg":
+        return {"result": "Sample reg data: SEC FIT21 requires custody audits."}
+    return {"error": "Unknown tool"}
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:8000", "https://defiguard-ai-fresh-private-test.onrender.com"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=secrets.token_urlsafe(32),
+    session_cookie="session",
+    max_age=3600
+)
 ## Section 4.1: Prompt and Debug Endpoints ##
 PROMPT_TEMPLATE = """
 Analyze this Solidity code for vulnerabilities and 2025 regulations (MiCA, SEC FIT21).
@@ -716,7 +689,7 @@ async def get_tier(request: Request, username: str = Query(None), db: Session = 
             "has_diamond": False
         }
     effective_username = username or session_username
-    user = db.query(User).filter(User.username == effective_username).first()
+    user = db.query(User).filter(User.username = effective_username).first()
     if not user:
         logger.error(f"Tier fetch failed: User {effective_username} not found")
         raise HTTPException(status_code=404, detail="User not found")
@@ -824,8 +797,7 @@ async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), req
     if tier not in level_map:
         raise HTTPException(status_code=400, detail=f"Invalid tier: {tier}. Use 'free', 'beginner', 'pro', or 'diamond'")
     if tier == "diamond" and user.tier != "pro":
-        has_diamond = True
-        tier = "pro"
+        raise HTTPException(status_code=400, detail="Diamond add-on requires Pro tier")
     if not STRIPE_API_KEY:
         logger.error(f"Stripe checkout creation failed for {effective_username} to {tier}: STRIPE_API_KEY not set")
         raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
@@ -842,22 +814,15 @@ async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), req
             missing_prices = [var for var in ["STRIPE_PRICE_BEGINNER", "STRIPE_PRICE_PRO", "STRIPE_PRICE_DIAMOND"] if not globals()[var]]
             logger.error(f"Stripe checkout creation failed for {effective_username} to {tier}: Missing Stripe price IDs: {', '.join(missing_prices)}")
             raise HTTPException(status_code=503, detail=f"Payment processing unavailable: Missing Stripe price IDs: {', '.join(missing_prices)}")
-        line_items = []
-        if tier == "diamond" and user.tier == "pro":
+        line_items = [{
+            'price': price_id,
+            'quantity': 1,
+        }]
+        if tier == "pro" and has_diamond:
             line_items.append({
                 'price': STRIPE_PRICE_DIAMOND,
                 'quantity': 1,
             })
-        else:
-            line_items.append({
-                'price': price_id,
-                'quantity': 1,
-            })
-            if has_diamond:
-                line_items.append({
-                    'price': STRIPE_PRICE_DIAMOND,
-                    'quantity': 1,
-                })
         logger.debug(f"Creating Stripe checkout session for {effective_username} to {tier}, line_items={line_items}")
         try:
             session = stripe.checkout.Session.create(
@@ -1026,7 +991,6 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
         for handler in logging.getLogger().handlers:
             handler.flush()
         return Response(status_code=500, content=f"Webhook processing failed: {str(e)}")
-        
 ## Section 4.5: Audit Endpoints ##
 @app.post("/upload-temp")
 async def upload_temp(file: UploadFile = File(...), username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
@@ -1330,7 +1294,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             for handler in logging.getLogger().handlers:
                 handler.flush()
         except HTTPException as e:
-            if e.status_code == 400 and "exceeds" in e.detail:
+            if e.status_code = 400 and "exceeds" in e.detail:
                 logger.info(f"File size exceeds limit for {effective_username}; redirecting to upgrade")
                 temp_id = str(uuid.uuid4())
                 temp_dir = os.path.join(DATA_DIR, "temp_files")
@@ -1464,9 +1428,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
             def analyze_slither(temp_path, attempt_number=1):
                 logger.debug(f"Slither retry attempt {attempt_number} for {effective_username}")
-                slither = Slither(temp_path)
-                logger.debug(f"Slither findings for {effective_username}: {slither.contracts}")
-                return slither
+                return Slither(temp_path)
             slither = analyze_slither(temp_path, attempt_number=1)
             logger.info(f"Slither analysis completed for {effective_username}")
             findings = []
