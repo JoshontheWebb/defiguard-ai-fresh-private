@@ -10,27 +10,27 @@ import secrets
 from tempfile import NamedTemporaryFile
 from typing import Optional
 from fastapi import FastAPI, File, UploadFile, Request, Query, HTTPException, Depends, Response
-from fastapi.responses = HTMLResponse, RedirectResponse
-from fastapi.staticfiles = StaticFiles
-from fastapi.middleware.cors = CORSMiddleware
-from starlette.middleware.sessions = SessionMiddleware
-from web3 = Web3
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
+from web3 import Web3
 import stripe
 import bcrypt
 import sqlite3
-from sqlalchemy = create_engine, Column, Integer, String, Boolean, DateTime
-from sqlalchemy.ext.declarative = declarative_base
-from sqlalchemy.orm = sessionmaker, Session
-from slither = Slither
-from slither.exceptions = SlitherError
-from openai = OpenAI
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from slither import Slither
+from slither.exceptions import SlitherError
+from openai import OpenAI
 import re
-from tenacity = retry, stop_after_attempt, wait_fixed
+from tenacity import retry, stop_after_attempt, wait_fixed
 import uvicorn
-from eth_account = Account
-from eth_account.messages = encode_defunct
-from pydantic = BaseModel
-from dotenv = load_dotenv
+from eth_account import Account
+from eth_account.messages import encode_defunct
+from pydantic import BaseModel
+from dotenv import load_dotenv
 # Ensure logging directory exists
 LOG_DIR = "/opt/render/project/data"
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -1242,6 +1242,7 @@ async def get_facets(contract_address: str, request: Request, username: str = Qu
         for handler in logging.getLogger().handlers:
             handler.flush()
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+    
 ## Section 4.6: Main Audit Endpoint ##
 @app.post("/audit", response_model=AuditResponse)
 async def audit_contract(file: UploadFile = File(...), contract_address: str = None, username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
