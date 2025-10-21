@@ -456,73 +456,100 @@ def initialize_client():
         raise
 client, w3 = initialize_client()
 ## Section 3 ##
-def run_echidna(temp_path):
-    """Run Echidna fuzzing on the Solidity file and return results."""
-    config_path = None
-    output_path = None
-    try:
-        import subprocess
-        subprocess.run(["docker", "--version"], check=True, capture_output=True, text=True)
-        logger.info("Docker is available, attempting to pull Echidna image")
-        @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
-        def pull_echidna():
-            subprocess.run(["docker", "pull", "trailofbits/echidna"], check=True, capture_output=True, text=True)
-            logger.info("Echidna image pulled successfully")
-        pull_echidna()
-        config_path = os.path.join(DATA_DIR, "echidna_config.yaml")
-        output_path = os.path.join(DATA_DIR, "echidna_output")
-        with open(config_path, "w") as f:
-            f.write("""
+     def run_echidna(temp_path):
+         """Run Echidna fuzzing on the Solidity file and return results."""
+         config_path = None
+         output_path = None
+         try:
+             import subprocess
+             subprocess.run(["docker", "--version"], check=True, capture_output=True, text=True)
+             logger.info("Docker is available, attempting to pull Echidna image")
+             @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
+             def pull_echidna():
+                 subprocess.run(["docker", "pull", "trailofbits/echidna"], check=True, capture_output=True, text=True)
+                 logger.info("Echidna image pulled successfully")
+             pull_echidna()
+             config_path = os.path.join(DATA_DIR, "echidna_config.yaml")
+             output_path = os.path.join(DATA_DIR, "echidna_output")
+             with open(config_path, "w") as f:
+                 f.write("""
 format: text
 testLimit: 10000
 seqLen: 100
 coverage: true
-            """)
-        cmd = [
-            "docker", "run", "--rm",
-            "-v", f"{DATA_DIR}:/app",
-            "trailofbits/echidna",
-            f"/app/{os.path.basename(temp_path)}",
-            "--config", "/app/echidna_config.yaml",
-            "--output", "/app/echidna_output"
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        if os.path.exists(output_path):
-            with open(output_path, "r") as f:
-                echidna_results = f.read()
-        else:
-            echidna_results = result.stdout
-        logger.info("Echidna fuzzing completed successfully")
-        logger.debug(f"Echidna results: {echidna_results}")
-        return {"fuzzing_results": echidna_results or "No vulnerabilities found by Echidna"}
-    except subprocess.SubprocessError as e:
-        logger.error(f"Echidna fuzzing failed: {str(e)}")
-        return {"fuzzing_results": "Fuzzing skipped: Docker not available on this environment"}
-    except Exception as e:
-        logger.error(f"Echidna fuzzing unexpected error: {str(e)}")
-        return {"fuzzing_results": f"Fuzzing failed: {str(e)}"}
-    finally:
-        if config_path and os.path.exists(config_path):
-            os.unlink(config_path)
-        if output_path and os.path.exists(output_path):
-            os.unlink(output_path)
-def handle_tool_call(tool_call):
-    if tool_call.function.name == "fetch_reg":
-        return {"result": "Sample reg data: SEC FIT21 requires custody audits."}
-    return {"error": "Unknown tool"}
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://127.0.0.1:8000", "https://defiguard-ai-fresh-private-test.onrender.com"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=secrets.token_urlsafe(32),
-    session_cookie="session",
-    max_age=3600
-)
+                 """)
+             cmd = [
+                 "docker", "run", "--rm",
+                 "-v", f"{DATA_DIR}:/app",
+                 "trailofbits/echidna",
+                 f"/app/{os.path.basename(temp_path)}",
+                 "--config", "/app/echidna_config.yaml",
+                 "--output", "/app/echidna_output"
+             ]
+             result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+             if os.path.exists(output_path):
+                 with open(output_path, "r") as f:
+                     echidna_results = f.read()
+             else:
+                 echidna_results = result.stdout
+             logger.info("Echidna fuzzing completed successfully")
+             logger.debug(f"Echidna results: {echidna_results}")
+             return {"fuzzing_results": echidna_results or "No vulnerabilities found by Echidna"}
+         except subprocess.SubprocessError as e:
+             logger.error(f"Echidna fuzzing failed: {str(e)}")
+             return {"fuzzing_results": "Fuzzing skipped: Docker not available on this environment"}
+         except Exception as e:
+             logger.error(f"Echidna fuzzing unexpected error: {str(e)}")
+             return {"fuzzing_results": f"Fuzzing failed: {str(e)}"}
+         finally:
+             if config_path and os.path.exists(config_path):
+                 os.unlink(config_path)
+             if output_path and os.path.exists(output_path):
+                 os.unlink(output_path)
+     def handle_tool_call(tool_call):
+         if tool_call.function.name == "fetch_reg":
+             return {"result": "Sample reg data: SEC FIT21 requires custody audits."}
+         return {"error": "Unknown tool"}
+     app.add_middleware(
+         CORSMiddleware,
+         allow_origins=["http://127.0.0.1:8000", "https://defiguard-ai-fresh-private-test.onrender.com"],
+         allow_credentials=True,
+         allow_methods=["*"],
+         allow_headers=["*"],
+     )
+     app.add_middleware(
+         SessionMiddleware,
+         secret_key=secrets.token_urlsafe(32),
+         session_cookie="session",
+         max_age=3600
+     )
+     @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
+     def initialize_client():
+         logger.info("Starting client initialization...")
+         try:
+             infura_project_id = os.getenv("INFURA_PROJECT_ID")
+             if not os.getenv("GROK_API_KEY") or not infura_project_id:
+                 logger.error("Missing API keys in .env file")
+                 raise ValueError("Missing API keys in .env file. Please set GROK_API_KEY and INFURA_PROJECT_ID.")
+             client = OpenAI(api_key=os.getenv("GROK_API_KEY"), base_url="https://api.x.ai/v1")
+             logger.info("OpenAI client created successfully.")
+             infura_url = f"https://mainnet.infura.io/v3/{infura_project_id}"
+             logger.debug(f"Attempting Web3 connection to {infura_url}")
+             w3 = Web3(Web3.HTTPProvider(infura_url))
+             logger.info("Web3 provider initialized.")
+             test_payload = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
+             test_response = w3.provider.make_request(test_payload['method'], test_payload['params'])
+             logger.debug(f"Test payload: {test_payload}, Response: {test_response}")
+             if not w3.is_connected():
+                 logger.error(f"Infura connection failed for URL: {infura_url}. Test response: {test_response}")
+                 raise ConnectionError("Failed to connect to Ethereum via Infura. Check INFURA_PROJECT_ID.")
+             logger.info("Clients initialized successfully.")
+             return client, w3
+         except Exception as e:
+             logger.error(f"Client initialization failed: {str(e)}. Retrying...")
+             raise
+     client, w3 = initialize_client()
+
 ## Section 4.1: Prompt and Debug Endpoints ##
 PROMPT_TEMPLATE = """
 Analyze this Solidity code for vulnerabilities and 2025 regulations (MiCA, SEC FIT21).
