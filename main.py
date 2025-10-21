@@ -1294,7 +1294,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             for handler in logging.getLogger().handlers:
                 handler.flush()
         except HTTPException as e:
-            if e.status_code = 400 and "exceeds" in e.detail:
+            if e.status_code == 400 and "exceeds" in e.detail:  # Corrected from = to ==
                 logger.info(f"File size exceeds limit for {effective_username}; redirecting to upgrade")
                 temp_id = str(uuid.uuid4())
                 temp_dir = os.path.join(DATA_DIR, "temp_files")
