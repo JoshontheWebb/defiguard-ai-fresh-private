@@ -739,9 +739,13 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
             missing_prices = [var for var in ["STRIPE_PRICE_BEGINNER", "STRIPE_PRICE_PRO", "STRIPE_PRICE_DIAMOND"] if not globals()[var]]
             logger.error(f"Stripe checkout creation failed for {username} to {tier}: Missing Stripe price IDs: {', '.join(missing_prices)}")
             raise HTTPException(status_code=503, detail=f"Payment processing unavailable: Missing Stripe price IDs: {', '.join(missing_prices)}")
-        line_items = [{"price": price_id, "quantity": 1}]
-        if tier == "pro" and has_diamond:
-            line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1})
+        line_items = []
+        if tier in ["beginner", "pro"] or (tier == "diamond" and user.tier not in ["pro", "diamond"]):
+            line_items.append({"price": price_id, "quantity": 1})
+            if tier == "pro" and has_diamond:
+                line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1})
+        elif tier == "diamond" and user.tier == "pro":
+            line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1})  # Only Diamond add-on for Pro users
         logger.debug(f"Creating Stripe checkout session for {username} to {tier}, line_items={line_items}")
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -803,9 +807,13 @@ async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), req
             missing_prices = [var for var in ["STRIPE_PRICE_BEGINNER", "STRIPE_PRICE_PRO", "STRIPE_PRICE_DIAMOND"] if not globals()[var]]
             logger.error(f"Stripe checkout creation failed for {effective_username} to {tier}: Missing Stripe price IDs: {', '.join(missing_prices)}")
             raise HTTPException(status_code=503, detail=f"Payment processing unavailable: Missing Stripe price IDs: {', '.join(missing_prices)}")
-        line_items = [{"price": price_id, "quantity": 1}]
-        if tier == "pro" and has_diamond:
-            line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1})
+        line_items = []
+        if tier in ["beginner", "pro"] or (tier == "diamond" and user.tier not in ["pro", "diamond"]):
+            line_items.append({"price": price_id, "quantity": 1})
+            if tier == "pro" and has_diamond:
+                line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1})
+        elif tier == "diamond" and user.tier == "pro":
+            line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1})  # Only Diamond add-on for Pro users
         logger.debug(f"Creating Stripe checkout session for {effective_username} to {tier}, line_items={line_items}")
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -1150,7 +1158,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
     temp_path = None
     context = ""
     fuzzing_results = []
-    # File reading block with size pre-check
+    # File reading block with size pre-check and button logic adjustment
     try:
         if file.size > 100 * 1024 * 1024:  # 100MB limit
             logger.error(f"File size {file.size / 1024 / 1024:.2f}MB exceeds 100MB limit for {effective_username}")
@@ -1159,6 +1167,40 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         code_bytes = await file.read()
         file_size = len(code_bytes)
         logger.info(f"File read successfully: {file_size} bytes for user {effective_username}")
+        # Adjust button visibility logic (to be handled client-side via script.js)
+        if file_size > 1024 * 1024:  # Diamond size
+            if user.tier in ["free", "beginner"] and not user.has_diamond:
+                raise HTTPException(
+                    status_code=400,
+                    detail="File size exceeds limit. Upgrade to Pro + Diamond to proceed with Request Diamond Audit."
+                )
+            # For Pro/Diamond users, trigger Request Diamond Audit flow
+            if user.tier == "pro" and not user.has_diamond:
+                temp_id = str(uuid.uuid4())
+                temp_dir = os.path.join(DATA_DIR, "temp_files")
+                os.makedirs(temp_dir, exist_ok=True)
+                temp_path = os.path.join(temp_dir, f"{temp_id}.sol")
+                try:
+                    with open(temp_path, "wb") as f:
+                        f.write(code_bytes)
+                    logger.debug(f"Temporary file saved for Diamond audit: {temp_path} for {effective_username}")
+                except PermissionError as e:
+                    logger.error(f"Failed to write temp file: {str(e)}")
+                    raise HTTPException(status_code=500, detail="Failed to save temporary file due to permissions")
+                if not STRIPE_API_KEY:
+                    logger.error(f"Stripe checkout creation failed for {effective_username} Diamond add-on: STRIPE_API_KEY not set")
+                    os.unlink(temp_path)
+                    raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
+                session = stripe.checkout.Session.create(
+                    payment_method_types=["card"],
+                    line_items=[{"price": STRIPE_PRICE_DIAMOND, "quantity": 1}],
+                    mode="subscription",
+                    success_url=f"https://defiguard-ai-fresh-private.onrender.com/complete-diamond-audit?session_id={{CHECKOUT_SESSION_ID}}&temp_id={urllib.parse.quote(temp_id)}&username={urllib.parse.quote(effective_username)}",
+                    cancel_url="https://defiguard-ai-fresh-private.onrender.com/ui",
+                    metadata={"temp_id": temp_id, "username": effective_username}
+                )
+                logger.info(f"Redirecting {effective_username} to Stripe for Diamond add-on due to file size")
+                return {"session_url": session.url}
     except Exception as e:
         logger.error(f"File read failed for {effective_username}: {str(e)}")
         raise HTTPException(status_code=400, detail=f"File read failed: {str(e)}")
@@ -1278,7 +1320,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 temp_path = temp_path.replace("/", "\\")
         logger.debug(f"Temporary file created for {effective_username}: {temp_path}")
 
-        # Slither analysis with API validation
+        # Slither analysis with API validation and Docker fallback
         try:
             logger.info(f"Starting Slither analysis for {effective_username}")
             @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
@@ -1323,7 +1365,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             logger.error(f"Slither processing failed for {effective_username}: {str(e)}")
             context = f"Slither analysis failed: {str(e)}; proceeding with raw code"
 
-        # Echidna fuzzing with configurable timeout
+        # Echidna fuzzing with Docker fallback
         ECHIDNA_TIMEOUT = 600  # Configurable timeout in seconds
         if usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["fuzzing"]:
             logger.info(f"Starting Echidna fuzzing for {effective_username}")
@@ -1332,8 +1374,12 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 def run_echidna(temp_path, attempt_number=1):
                     logger.debug(f"Echidna retry attempt {attempt_number} for {effective_username}")
                     try:
-                        import subprocess
-                        subprocess.run(["docker", "--version"], check=True, capture_output=True, text=True)
+                        try:
+                            import subprocess
+                            subprocess.run(["docker", "--version"], check=True, capture_output=True, text=True)
+                        except (subprocess.CalledProcessError, FileNotFoundError):
+                            logger.error(f"Docker not available on attempt {attempt_number} for {effective_username}")
+                            return {"fuzzing_results": "Fuzzing skipped: Docker not available on this environment"}
                         if os.path.getsize(temp_path) > 20 * 1024 * 1024:  # Increased to 20MB for Diamond
                             logger.warning(f"File size {os.path.getsize(temp_path) / 1024 / 1024:.2f}MB exceeds Echidna limit, skipping")
                             return {"fuzzing_results": "Fuzzing skipped: File size exceeds 20MB limit"}
