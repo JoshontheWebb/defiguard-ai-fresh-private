@@ -312,7 +312,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         logoutSidebar.addEventListener('click', (e) => {
             e.preventDefault();
-            console.log('[DEBUG] Logout initiated from sidebar, time=${new Date().toISOString()}');
+            console.log(`[DEBUG] Logout initiated from sidebar, time=${new Date().toISOString()}`);
             localStorage.removeItem('username');
             console.log('[DEBUG] Local storage cleared (username only)');
             updateAuthStatus();
@@ -358,6 +358,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.querySelector('.priority-support').style.display = feature_flags.priority_support ? 'block' : 'none';
                 apiKeySpan.textContent = api_key || 'N/A';
                 document.getElementById('api-key').style.display = api_key ? 'block' : 'none';
+                // Update sidebar tier display
+                const sidebarTierDisplay = document.querySelector('.sidebar .tier-display');
+                if (sidebarTierDisplay) {
+                    sidebarTierDisplay.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''}`;
+                    console.log(`[DEBUG] Sidebar tier updated: ${sidebarTierDisplay.textContent}, time=${new Date().toISOString()}`);
+                } else {
+                    console.warn('[DEBUG] .sidebar .tier-display not found, scheduling recheck');
+                    setTimeout(() => {
+                        const retryDisplay = document.querySelector('.sidebar .tier-display');
+                        if (retryDisplay) {
+                            retryDisplay.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''}`;
+                            console.log(`[DEBUG] Sidebar tier updated after recheck: ${retryDisplay.textContent}, time=${new Date().toISOString()}`);
+                        }
+                    }, 500);
+                }
                 console.log(`[DEBUG] Tier data fetched: tier=${tier}, has_diamond=${has_diamond}, auditCount=${auditCount}, auditLimit=${auditLimit}, time=${new Date().toISOString()}`);
             } catch (error) {
                 console.error(`[ERROR] Tier fetch error: ${error.message}, time=${new Date().toISOString()}`);
