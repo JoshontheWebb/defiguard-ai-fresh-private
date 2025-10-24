@@ -159,6 +159,27 @@ document.addEventListener('DOMContentLoaded', () => {
         let auditCount = 0;
         let auditLimit = 3;
 
+        // Ensure .audit-section is position: relative for .loading overlay
+        const auditSection = document.querySelector('.audit-section');
+        if (auditSection && getComputedStyle(auditSection).position !== 'relative') {
+            auditSection.style.position = 'relative';
+            auditSection.style.overflow = 'hidden';
+            console.log('[DEBUG] Applied position: relative to .audit-section for spinner overlay');
+        }
+
+        // Create spinner once after DOM is ready
+        if (loading && !loading.querySelector('.spinner')) {
+            const spinner = document.createElement('div');
+            spinner.className = 'spinner';
+            const loadingText = document.createElement('p');
+            loadingText.textContent = 'Analyzing contract...';
+            loading.appendChild(spinner);
+            loading.appendChild(loadingText);
+            console.log('[DEBUG] Audit spinner created once in DOM, time=' + new Date().toISOString());
+        }
+
+        // ... [rest of Section3 unchanged] ...
+
         // Section4: File and Pricing Logic
         const calculateDiamondOverage = (file) => {
             if (!file) {
