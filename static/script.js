@@ -656,7 +656,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        // Section11: Audit Handling
+         // Section11: Audit Handling
         // Create spinner once after DOM is ready
         if (loading && !loading.querySelector('.spinner')) {
             const spinner = document.createElement('div');
@@ -745,7 +745,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     loading.classList.remove('show');
                     usageWarning.textContent = 'Unable to establish secure connection.';
                     usageWarning.classList.add('error');
-                    console.error(`[ERROR] No CSRF token for audit, time=${new Date().toISOString()}`);
+                    console.console.error(`[ERROR] No CSRF token for audit, time=${new Date().toISOString()}`);
                     return;
                 }
 

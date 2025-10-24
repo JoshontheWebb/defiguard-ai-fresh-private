@@ -139,12 +139,12 @@
 
                 <button type="button" id="diamond-audit" class="diamond-only" style="display: none;">Request Diamond Audit</button>
 
-                <div class="loading" aria-live="assertive">
-                    <p>Loading...</p>
-                </div>
-
                 <p id="diamond-price" class="diamond-only" style="display: none;">Overage: $0.00</p>
             </form>
+
+            <!-- MOVED .loading INSIDE .audit-section, AFTER form -->
+            <div class="loading" aria-live="assertive"></div>
+
             <div class="usage-warning is-hidden" aria-live="assertive"></div>
             <div class="upgrade-prompt" aria-live="polite">
                 <h3>Subscription Tiers</h3>
@@ -227,7 +227,7 @@
             <div class="predictions-placeholder">
                 <h4>Risk Predictions</h4>
                 <ul id="predictions-list">
-                    <li>No predictions yet.</li>
+                   ://<li>No predictions yet.</li>
                 </ul>
             </div>
 
