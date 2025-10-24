@@ -677,7 +677,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-         // Section11: Audit Handling
+        // Section11: Audit Handling
         // Create spinner once after DOM is ready
         if (loading && !loading.querySelector('.spinner')) {
             const spinner = document.createElement('div');
@@ -766,14 +766,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     loading.classList.remove('show');
                     usageWarning.textContent = 'Unable to establish secure connection.';
                     usageWarning.classList.add('error');
-                    console.console.error(`[ERROR] No CSRF token for audit, time=${new Date().toISOString()}`);
+                    console.error(`[ERROR] No CSRF token for audit, time=${new Date().toISOString()}`);
                     return;
                 }
 
-                // SHOW SPINNER
+                // SHOW SPINNER WITH FORCE REPAINT
                 loading.classList.add('show');
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        console.log('[DEBUG] Spinner forced repaint via requestAnimationFrame');
+                    });
+                });
                 resultsDiv.classList.remove('show');
-                usageWarning.textContent = '';
+                usagesWarning.textContent = '';
                 usageWarning.classList.remove('error', 'success');
                 loading.setAttribute('aria-hidden', 'false');
                 resultsDiv.setAttribute('aria-hidden', 'true');
