@@ -1161,9 +1161,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
     # File reading block with size pre-check and button logic adjustment
     try:
         if file.size > 100 * 1024 * 1024: # 100MB limit
-            logger.error(f"File size {file.size / 1024 / 1024:.2
-
-MB exceeds 100MB limit for {effective_username}")
+            logger.error(f"File size {file.size / 1024 / 1024:.2f}MB exceeds 100MB limit for {effective_username}")
             raise HTTPException(status_code=400, detail="File exceeds 100MB limit")
         logger.debug(f"Reading file for {effective_username}")
         code_bytes = await file.read()
@@ -1336,7 +1334,7 @@ MB exceeds 100MB limit for {effective_username}")
                             findings = []
                             for i, chunk in enumerate(chunks):
                                 if len(chunk.strip()) == 0:
-                                    continue  # Skip empty chunks to prevent syntax errors
+                                    continue # Skip empty chunks to prevent syntax errors
                                 chunk_file_path = os.path.join(temp_dir, f"chunk_{i}.sol")
                                 with open(chunk_file_path, "wb") as chunk_file:
                                     chunk_file.write(chunk.encode("utf-8"))
@@ -1512,6 +1510,7 @@ MB exceeds 100MB limit for {effective_username}")
                             logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
                         except Exception as e:
                             logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
+                # No db.commit() — transaction commits automatically
             return {"report": aggregated, "risk_score": str(aggregated["risk_score"]), "overage_cost": overage_cost}
         else:
             logger.info(f"Calling Grok API for {effective_username} with tier {current_tier}")
@@ -1563,6 +1562,7 @@ MB exceeds 100MB limit for {effective_username}")
                                     logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
                                 except Exception as e:
                                     logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
+                    # No db.commit() — transaction commits automatically
                     return {"report": audit_json, "risk_score": str(audit_json.get("risk_score", "N/A")), "overage_cost": overage_cost}
                 else:
                     logger.error(f"No Grok API response for {effective_username}")
