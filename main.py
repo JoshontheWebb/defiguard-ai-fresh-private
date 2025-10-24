@@ -23,7 +23,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from slither import Slither
 from slither.exceptions import SlitherError
-from openai import AsyncOpenAI  # <-- ASYNC CLIENT
+from openai import OpenAI  # <-- REVERT TO SYNC (STABLE)
 import re
 from tenacity import retry, stop_after_attempt, wait_fixed
 import uvicorn
@@ -163,17 +163,17 @@ def get_db():
     finally:
         db.close()
 
-# Async client init
+# Sync client init (STABLE)
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
-async def initialize_client():
+def initialize_client():
     logger.info("Starting client initialization...")
     try:
         if not os.getenv("GROK_API_KEY") or not os.getenv("INFURA_PROJECT_ID"):
             logger.error("Missing API keys in .env file")
             raise ValueError("Missing API keys in .env file. Please set GROK_API_KEY and INFURA_PROJECT_ID.")
         global client, w3
-        client = AsyncOpenAI(api_key=os.getenv("GROK_API_KEY"), base_url="https://api.x.ai/v1")
-        logger.info("Async OpenAI client created successfully.")
+        client = OpenAI(api_key=os.getenv("GROK_API_KEY"), base_url="https://api.x.ai/v1")
+        logger.info("OpenAI client created successfully.")
         infura_url = f"https://mainnet.infura.io/v3/{os.getenv('INFURA_PROJECT_ID')}"
         w3 = Web3(Web3.HTTPProvider(infura_url))
         logger.info("Web3 provider initialized.")
@@ -186,11 +186,11 @@ async def initialize_client():
         logger.error(f"Client initialization failed: {str(e)}. Retrying...")
         raise
 
-# Startup: await async init
+# Startup: call sync init
 @app.on_event("startup")
 async def startup_clients():
     global client, w3
-    client, w3 = await initialize_client()
+    client, w3 = initialize_client()  # <-- SYNC CALL IN ASYNC EVENT (SAFE)
 
 # Stripe setup
 STRIPE_API_KEY = os.getenv("STRIPE_API_KEY")
