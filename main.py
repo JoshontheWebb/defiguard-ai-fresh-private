@@ -319,7 +319,7 @@ class UsageTracker:
                 user.has_diamond = False
                 self.count = 0
                 user.last_reset = current_time
-                # REMOVED db.commit() — handled by caller
+                db.commit()
                 logger.info(f"Downgraded {username} to free tier due to non-payment")
             if file_size > self.size_limits.get(user.tier, self.size_limits["free"]) and not user.has_diamond:
                 overage_cost = self.calculate_diamond_overage(file_size) / 100
@@ -329,7 +329,7 @@ class UsageTracker:
                 )
             self.count += 1
             user.last_reset = current_time
-            # REMOVED db.commit() — handled by caller
+            db.commit()
             logger.info(f"UsageTracker incremented to: {self.count} for {username}, current tier: {user.tier}, has_diamond: {user.has_diamond}")
             return self.count
         else:
@@ -1158,6 +1158,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
     temp_path = None
     context = ""
     fuzzing_results = []
+    audit_start_time = datetime.now()  # For failsafe
     # File reading block with size pre-check and button logic adjustment
     try:
         if file.size > 100 * 1024 * 1024: # 100MB limit
@@ -1334,7 +1335,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                             findings = []
                             for i, chunk in enumerate(chunks):
                                 if len(chunk.strip()) == 0:
-                                    continue # Skip empty chunks to prevent syntax errors
+                                    continue  # Skip empty chunks to prevent syntax errors
                                 chunk_file_path = os.path.join(temp_dir, f"chunk_{i}.sol")
                                 with open(chunk_file_path, "wb") as chunk_file:
                                     chunk_file.write(chunk.encode("utf-8"))
@@ -1451,6 +1452,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 details += f" No deployed code found at {contract_address}."
 
         # Grok API processing with transaction and JSON validation
+        GROK_TIMEOUT = 300  # 5 minutes
+        import asyncio
         if user.has_diamond and file_size > 1024 * 1024:
             chunks = [code_str[i:i + 500000] for i in range(0, len(code_str), 500000)]
             results = []
@@ -1461,15 +1464,19 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 logger.info(f"Processing chunk {i+1}/{len(chunks)} for {effective_username}")
                 prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=chunk, details=details, tier="diamond")
                 try:
-                    response = client.chat.completions.create(
-                        model="grok-4",
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=0.0,
-                        response_format={
-                            "type": "json_schema",
-                            "json_schema": {"schema": AUDIT_SCHEMA},
-                            "strict": True
-                        }
+                    response = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            client.chat.completions.create,
+                            model="grok-4",
+                            messages=[{"role": "user", "content": prompt}],
+                            temperature=0.0,
+                            response_format={
+                                "type": "json_schema",
+                                "json_schema": {"schema": AUDIT_SCHEMA},
+                                "strict": True
+                            }
+                        ),
+                        timeout=GROK_TIMEOUT
                     )
                     if response.choices and response.choices[0].message.content:
                         try:
@@ -1481,6 +1488,9 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     else:
                         logger.error(f"No Grok API response for chunk {i+1} for {effective_username}")
                         raise HTTPException(status_code=500, detail=f"No response from Grok API for chunk {i+1}")
+                except asyncio.TimeoutError:
+                    logger.error(f"Grok API timeout for chunk {i+1} for {effective_username}")
+                    raise HTTPException(status_code=504, detail="Grok API timeout: Audit took too long")
                 except Exception as e:
                     logger.error(f"Grok API call failed for {effective_username}, chunk {i+1}: {str(e)}")
                     raise HTTPException(status_code=500, detail=f"Grok API call failed for chunk {i+1}: {str(e)}")
@@ -1510,7 +1520,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                             logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
                         except Exception as e:
                             logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
-                # No db.commit() — transaction commits automatically
             return {"report": aggregated, "risk_score": str(aggregated["risk_score"]), "overage_cost": overage_cost}
         else:
             logger.info(f"Calling Grok API for {effective_username} with tier {current_tier}")
@@ -1519,15 +1528,19 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
             prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=code_str, details=details, tier="diamond" if user.has_diamond else current_tier)
             try:
-                response = client.chat.completions.create(
-                    model="grok-4",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.0,
-                    response_format={
-                        "type": "json_schema",
-                        "json_schema": {"schema": AUDIT_SCHEMA},
-                        "strict": True
-                    }
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        client.chat.completions.create,
+                        model="grok-4",
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=0.0,
+                        response_format={
+                            "type": "json_schema",
+                            "json_schema": {"schema": AUDIT_SCHEMA},
+                            "strict": True
+                        }
+                    ),
+                    timeout=GROK_TIMEOUT
                 )
                 logger.info(f"Grok API response received for {effective_username}")
                 if response.choices and response.choices[0].message.content:
@@ -1562,21 +1575,28 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                                     logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
                                 except Exception as e:
                                     logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
-                    # No db.commit() — transaction commits automatically
                     return {"report": audit_json, "risk_score": str(audit_json.get("risk_score", "N/A")), "overage_cost": overage_cost}
                 else:
                     logger.error(f"No Grok API response for {effective_username}")
                     raise HTTPException(status_code=500, detail="No response from Grok API")
+            except asyncio.TimeoutError:
+                logger.error(f"Grok API timeout for {effective_username}")
+                raise HTTPException(status_code=504, detail="Grok API timeout: Audit took too long")
             except Exception as e:
                 logger.error(f"Grok API call failed for {effective_username}: {str(e)}")
                 raise HTTPException(status_code=500, detail=f"Grok API call failed: {str(e)}")
     except Exception as e:
+        db.rollback()  # Rollback on any error
         logger.error(f"Audit processing error for {effective_username}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Audit processing failed: {str(e)}")
     finally:
         if temp_path and os.path.exists(temp_path):
             os.unlink(temp_path)
             logger.debug(f"Temporary file deleted: {temp_path} for {effective_username}")
+        # FAILSAFE: Reset if audit >5 hours
+        if (datetime.now() - audit_start_time).total_seconds() > 5 * 3600:
+            logger.warning(f"Audit exceeded 5 hours for {effective_username} — resetting usage")
+            usage_tracker.reset_usage(effective_username, db)
 
 ## Section 4.6: Main Entry Point
 if __name__ == "__main__":
