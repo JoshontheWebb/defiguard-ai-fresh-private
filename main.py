@@ -319,7 +319,7 @@ class UsageTracker:
                 user.has_diamond = False
                 self.count = 0
                 user.last_reset = current_time
-                db.commit()
+                # REMOVED db.commit() — handled by caller
                 logger.info(f"Downgraded {username} to free tier due to non-payment")
             if file_size > self.size_limits.get(user.tier, self.size_limits["free"]) and not user.has_diamond:
                 overage_cost = self.calculate_diamond_overage(file_size) / 100
@@ -329,7 +329,7 @@ class UsageTracker:
                 )
             self.count += 1
             user.last_reset = current_time
-            db.commit()
+            # REMOVED db.commit() — handled by caller
             logger.info(f"UsageTracker incremented to: {self.count} for {username}, current tier: {user.tier}, has_diamond: {user.has_diamond}")
             return self.count
         else:
