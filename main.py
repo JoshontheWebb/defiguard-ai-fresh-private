@@ -23,7 +23,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from slither import Slither
 from slither.exceptions import SlitherError
-from openai import AsyncOpenAI  # <-- CHANGED: AsyncOpenAI
+from openai import AsyncOpenAI  # <-- ASYNC
 import re
 from tenacity import retry, stop_after_attempt, wait_fixed
 import uvicorn
@@ -157,7 +157,8 @@ def get_db():
         yield db
     finally:
         db.close()
-# Initialize clients — ASYNC
+
+# Async client init
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
 async def initialize_client():
     logger.info("Starting client initialization...")
