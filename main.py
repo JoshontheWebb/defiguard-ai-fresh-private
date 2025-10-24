@@ -1160,15 +1160,17 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
     fuzzing_results = []
     # File reading block with size pre-check and button logic adjustment
     try:
-        if file.size > 100 * 1024 * 1024:  # 100MB limit
-            logger.error(f"File size {file.size / 1024 / 1024:.2f}MB exceeds 100MB limit for {effective_username}")
+        if file.size > 100 * 1024 * 1024: # 100MB limit
+            logger.error(f"File size {file.size / 1024 / 1024:.2
+
+MB exceeds 100MB limit for {effective_username}")
             raise HTTPException(status_code=400, detail="File exceeds 100MB limit")
         logger.debug(f"Reading file for {effective_username}")
         code_bytes = await file.read()
         file_size = len(code_bytes)
         logger.info(f"File read successfully: {file_size} bytes for user {effective_username}")
         # Adjust button visibility logic (to be handled client-side via script.js)
-        if file_size > 1024 * 1024:  # Diamond size
+        if file_size > 1024 * 1024: # Diamond size
             if user.tier in ["free", "beginner"] and not user.has_diamond:
                 raise HTTPException(
                     status_code=400,
@@ -1333,6 +1335,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                             chunks = [code[i:i + chunk_size] for i in range(0, len(code), chunk_size)]
                             findings = []
                             for i, chunk in enumerate(chunks):
+                                if len(chunk.strip()) == 0:
+                                    continue  # Skip empty chunks to prevent syntax errors
                                 chunk_file_path = os.path.join(temp_dir, f"chunk_{i}.sol")
                                 with open(chunk_file_path, "wb") as chunk_file:
                                     chunk_file.write(chunk.encode("utf-8"))
@@ -1366,7 +1370,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             context = f"Slither analysis failed: {str(e)}; proceeding with raw code"
 
         # Echidna fuzzing with Docker fallback
-        ECHIDNA_TIMEOUT = 600  # Configurable timeout in seconds
+        ECHIDNA_TIMEOUT = 600 # Configurable timeout in seconds
         if usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["fuzzing"]:
             logger.info(f"Starting Echidna fuzzing for {effective_username}")
             try:
@@ -1380,7 +1384,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                         except (subprocess.CalledProcessError, FileNotFoundError):
                             logger.error(f"Docker not available on attempt {attempt_number} for {effective_username}")
                             return {"fuzzing_results": "Fuzzing skipped: Docker not available on this environment"}
-                        if os.path.getsize(temp_path) > 20 * 1024 * 1024:  # Increased to 20MB for Diamond
+                        if os.path.getsize(temp_path) > 20 * 1024 * 1024: # Increased to 20MB for Diamond
                             logger.warning(f"File size {os.path.getsize(temp_path) / 1024 / 1024:.2f}MB exceeds Echidna limit, skipping")
                             return {"fuzzing_results": "Fuzzing skipped: File size exceeds 20MB limit"}
                         config_path = os.path.join(DATA_DIR, "echidna_config.yaml")
@@ -1482,7 +1486,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 except Exception as e:
                     logger.error(f"Grok API call failed for {effective_username}, chunk {i+1}: {str(e)}")
                     raise HTTPException(status_code=500, detail=f"Grok API call failed for chunk {i+1}: {str(e)}")
-            with db.begin():  # Transaction for database updates
+            with db.begin(): # Transaction for database updates
                 aggregated = {
                     "risk_score": max(r["risk_score"] for r in results),
                     "issues": sum([r["issues"] for r in results], []),
@@ -1508,7 +1512,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                             logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
                         except Exception as e:
                             logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
-                        db.commit()  # Commit within transaction if overage succeeds
             return {"report": aggregated, "risk_score": str(aggregated["risk_score"]), "overage_cost": overage_cost}
         else:
             logger.info(f"Calling Grok API for {effective_username} with tier {current_tier}")
@@ -1542,7 +1545,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     if user.has_diamond:
                         audit_json["remediation_roadmap"] = "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review."
                     audit_json["fuzzing_results"] = fuzzing_results
-                    with db.begin():  # Transaction for database updates
+                    with db.begin(): # Transaction for database updates
                         user = db.query(User).filter(User.username == effective_username).first()
                         if user:
                             history = json.loads(user.audit_history)
@@ -1560,7 +1563,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                                     logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
                                 except Exception as e:
                                     logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
-                                db.commit()  # Commit within transaction if overage succeeds
                     return {"report": audit_json, "risk_score": str(audit_json.get("risk_score", "N/A")), "overage_cost": overage_cost}
                 else:
                     logger.error(f"No Grok API response for {effective_username}")
