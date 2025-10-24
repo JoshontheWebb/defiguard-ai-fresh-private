@@ -657,6 +657,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Section11: Audit Handling
+        // Create spinner once after DOM is ready
+        if (loading && !loading.querySelector('.spinner')) {
+            const spinner = document.createElement('div');
+            spinner.className = 'spinner';
+            const loadingText = document.createElement('p');
+            loadingText.textContent = 'Analyzing contract...';
+            loading.appendChild(spinner);
+            loading.appendChild(loadingText);
+            console.log('[DEBUG] Audit spinner created once in DOM, time=' + new Date().toISOString());
+        }
+
         const handleAuditResponse = (data) => {
             const report = data.report;
             const overageCost = data.overage_cost;
@@ -737,28 +748,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.error(`[ERROR] No CSRF token for audit, time=${new Date().toISOString()}`);
                     return;
                 }
-                let spinner = loading.querySelector('.spinner');
-                if (!spinner) {
-                    try {
-                        spinner = document.createElement('div');
-                        spinner.className = 'spinner';
-                        const loadingText = document.createElement('p');
-                        loadingText.textContent = 'Loading...';
-                        loading.appendChild(spinner);
-                        loading.appendChild(loadingText);
-                    } catch (err) {
-                        console.error(`[ERROR] Failed to create spinner: ${err.message}, time=${new Date().toISOString()}`);
-                        usageWarning.textContent = 'Error initializing audit loading.';
-                        usageWarning.classList.add('error');
-                        return;
-                    }
-                }
+
+                // SHOW SPINNER
                 loading.classList.add('show');
                 resultsDiv.classList.remove('show');
                 usageWarning.textContent = '';
                 usageWarning.classList.remove('error', 'success');
                 loading.setAttribute('aria-hidden', 'false');
                 resultsDiv.setAttribute('aria-hidden', 'true');
+
                 const fileInput = auditForm.querySelector('#file');
                 const file = fileInput.files[0];
                 if (!file) {
@@ -768,6 +766,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.error(`[ERROR] No file selected for audit, time=${new Date().toISOString()}`);
                     return;
                 }
+
                 const username = localStorage.getItem('username');
                 if (!username) {
                     console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
@@ -777,6 +776,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     usageWarning.classList.add('error');
                     return;
                 }
+
                 const fileSizeMB = file.size / (1024 * 1024);
                 if (fileSizeMB > 1 && maxFileSize !== null && file.size > maxFileSize) {
                     loading.classList.remove('show');
@@ -836,6 +836,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     usageWarning.appendChild(upgradeButton);
                     return;
                 }
+
                 if (auditCount >= auditLimit) {
                     loading.classList.remove('show');
                     usageWarning.textContent = `Usage limit exceeded (${auditCount}/${auditLimit} audits). Upgrade your tier.`;
@@ -888,9 +889,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     usageWarning.appendChild(upgradeButton);
                     return;
                 }
+
                 const formData = new FormData(auditForm);
                 formData.append('csrf_token', token);
-                loading.classList.add('show');
+
                 try {
                     console.log(`[DEBUG] Sending /audit request for username=${username}, time=${new Date().toISOString()}`);
                     const response = await fetch(`/audit?username=${encodeURIComponent(username)}`, {
