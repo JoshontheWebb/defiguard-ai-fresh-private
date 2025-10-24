@@ -677,7 +677,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-             // Section11: Audit Handling
+                // Section11: Audit Handling
         // Create spinner once after DOM is ready
         if (loading && !loading.querySelector('.spinner')) {
             const spinner = document.createElement('div');
@@ -738,7 +738,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 fuzzingList.innerHTML = '<li>No fuzzing results available.</li>';
             } else {
                 report.fuzzing_results.forEach(result => {
- Rc                   const li = document.createElement('li');
+                    const li = document.createElement('li');
                     li.textContent = `Vulnerability: ${result.vulnerability} | Description: ${result.description}`;
                     li.setAttribute('tabindex', '0');
                     fuzzingList.appendChild(li);
@@ -763,6 +763,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const handleSubmit = (event) => {
             event.preventDefault();
             withCsrfToken(async (token) => {
+                console.log('[DEBUG] withCsrfToken called, token:', token);
                 if (!token) {
                     loading.classList.remove('show');
                     usageWarning.textContent = 'Unable to establish secure connection.';
@@ -771,16 +772,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
-                // SHOW SPINNER WITH FORCE REPAINT
+                // SHOW SPINNER + FORCE REPAINT
                 loading.classList.add('show');
-                // Force repaint
-                requestAnimationFrame(() => {
-                    requestAnimationFrame(() => {
-                        console.log('[DEBUG] Spinner forced repaint via requestAnimationFrame');
-                        // Trigger layout
-                        void loading.offsetHeight;
-                    });
-                });
+                void loading.offsetHeight; // Force layout repaint
+                console.log('[DEBUG] Spinner shown and repainted');
                 resultsDiv.classList.remove('show');
                 usageWarning.textContent = '';
                 usageWarning.classList.remove('error', 'success');
@@ -798,6 +793,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 const username = localStorage.getItem('username');
+                console.log('[DEBUG] Username from localStorage:', username);
                 if (!username) {
                     console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
                     window.location.href = '/auth';
@@ -875,7 +871,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     upgradeButton.textContent = 'Upgrade to Beginner';
                     upgradeButton.className = 'upgrade-button';
                     upgradeButton.addEventListener('click', () => {
-                        withCsrfToken(async ( (token) => {
+                        withCsrfToken(async (token) => {
                             if (!token) {
                                 usageWarning.textContent = 'Unable to establish secure connection.';
                                 usageWarning.classList.add('error');
@@ -959,7 +955,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.error(`[ERROR] Audit error: ${error.message}, time=${new Date().toISOString()}`);
                     if (loading) loading.classList.remove('show');
                     if (usageWarning) usageWarning.textContent = `Error initiating audit: ${error.message}`;
-                    if (usageWarning) usageWarning.classList.add('error error');
+                    if (usageWarning) usageWarning.classList.add('error');
                 } finally {
                     if (loading) loading.classList.remove('show');
                 }
