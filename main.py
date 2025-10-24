@@ -1190,7 +1190,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
     audit_start_time = datetime.now()  # For failsafe
     # File reading block with size pre-check and button logic adjustment
     try:
-        if file.size > 100 * 1024 * 1024: # 100MB limit
+        if file.size > 100 * 1024 * 1024:  # 100MB limit
             logger.error(f"File size {file.size / 1024 / 1024:.2f}MB exceeds 100MB limit for {effective_username}")
             raise HTTPException(status_code=400, detail="File exceeds 100MB limit")
         logger.debug(f"Reading file for {effective_username}")
@@ -1198,7 +1198,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         file_size = len(code_bytes)
         logger.info(f"File read successfully: {file_size} bytes for user {effective_username}")
         # Adjust button visibility logic (to be handled client-side via script.js)
-        if file_size > 1024 * 1024: # Diamond size
+        if file_size > 1024 * 1024:  # Diamond size
             if user.tier in ["free", "beginner"] and not user.has_diamond:
                 raise HTTPException(
                     status_code=400,
@@ -1360,7 +1360,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     with open(temp_path, "r", encoding="utf-8") as f:
                         code = f.read()
                         if len(code) > chunk_size:
-                            chunks = [code[i:i + chunk_size] for i in range(0, len(code), chunk_size)]
+                            chunks = [code[i:i + chunk_size] for i in range(0, len(code), i + chunk_size)]
                             findings = []
                             for i, chunk in enumerate(chunks):
                                 if len(chunk.strip()) == 0:
@@ -1398,7 +1398,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             context = f"Slither analysis failed: {str(e)}; proceeding with raw code"
 
         # Echidna fuzzing with Docker fallback
-        ECHIDNA_TIMEOUT = 600 # Configurable timeout in seconds
+        ECHIDNA_TIMEOUT = 600  # Configurable timeout in seconds
         if usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["fuzzing"]:
             logger.info(f"Starting Echidna fuzzing for {effective_username}")
             try:
@@ -1412,7 +1412,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                         except (subprocess.CalledProcessError, FileNotFoundError):
                             logger.error(f"Docker not available on attempt {attempt_number} for {effective_username}")
                             return {"fuzzing_results": "Fuzzing skipped: Docker not available on this environment"}
-                        if os.path.getsize(temp_path) > 20 * 1024 * 1024: # Increased to 20MB for Diamond
+                        if os.path.getsize(temp_path) > 20 * 1024 * 1024:  # Increased to 20MB for Diamond
                             logger.warning(f"File size {os.path.getsize(temp_path) / 1024 / 1024:.2f}MB exceeds Echidna limit, skipping")
                             return {"fuzzing_results": "Fuzzing skipped: File size exceeds 20MB limit"}
                         config_path = os.path.join(DATA_DIR, "echidna_config.yaml")
@@ -1492,8 +1492,10 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 logger.info(f"Processing chunk {i+1}/{len(chunks)} for {effective_username}")
                 prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=chunk, details=details, tier="diamond")
                 try:
+                    # SYNC CALL IN THREAD + TIMEOUT
                     response = await asyncio.wait_for(
-                        client.chat.completions.create(  # <-- DIRECT ASYNC CALL
+                        asyncio.to_thread(
+                            client.chat.completions.create,
                             model="grok-4",
                             messages=[{"role": "user", "content": prompt}],
                             temperature=0.0,
@@ -1555,8 +1557,10 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
             prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=code_str, details=details, tier="diamond" if user.has_diamond else current_tier)
             try:
+                # SYNC CALL IN THREAD + TIMEOUT
                 response = await asyncio.wait_for(
-                    client.chat.completions.create(  # <-- DIRECT ASYNC CALL
+                    asyncio.to_thread(
+                        client.chat.completions.create,
                         model="grok-4",
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.0,
