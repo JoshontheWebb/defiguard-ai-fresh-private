@@ -23,7 +23,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from slither import Slither
 from slither.exceptions import SlitherError
-from openai import AsyncOpenAI  # <-- ASYNC
+from openai import AsyncOpenAI  # <-- ASYNC CLIENT
 import re
 from tenacity import retry, stop_after_attempt, wait_fixed
 import uvicorn
