@@ -304,7 +304,7 @@ class UsageTracker:
                     total_cost += 2 * 2.00
                     total_cost += (remaining_mb - 2) * 5.00
         return round(total_cost * 100)
-    def increment(self, file_size, username=None, db: Session = None):
+    def increment(self, file_size, username=None, db: Session = None, commit: bool = True):
         if username:
             user = db.query(User).filter(User.username == username).first()
             if not user:
@@ -319,7 +319,8 @@ class UsageTracker:
                 user.has_diamond = False
                 self.count = 0
                 user.last_reset = current_time
-                db.commit()
+                if commit:
+                    db.commit()
                 logger.info(f"Downgraded {username} to free tier due to non-payment")
             if file_size > self.size_limits.get(user.tier, self.size_limits["free"]) and not user.has_diamond:
                 overage_cost = self.calculate_diamond_overage(file_size) / 100
@@ -329,7 +330,8 @@ class UsageTracker:
                 )
             self.count += 1
             user.last_reset = current_time
-            db.commit()
+            if commit:
+                db.commit()
             logger.info(f"UsageTracker incremented to: {self.count} for {username}, current tier: {user.tier}, has_diamond: {user.has_diamond}")
             return self.count
         else:
@@ -1218,7 +1220,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             )
         limits = {"free": FREE_LIMIT, "beginner": BEGINNER_LIMIT, "pro": PRO_LIMIT, "diamond": PRO_LIMIT}
         try:
-            current_count = usage_tracker.increment(file_size, effective_username, db)
+            current_count = usage_tracker.increment(file_size, effective_username, db, commit=False)
             logger.info(f"Audit request {current_count} processed for contract {contract_address or 'uploaded'} with tier {current_tier} for user {effective_username}")
         except Exception as e:
             if isinstance(e, HTTPException) and e.status_code == 400 and "exceeds" in e.detail:
@@ -1452,7 +1454,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 details += f" No deployed code found at {contract_address}."
 
         # Grok API processing with transaction and JSON validation
-        GROK_TIMEOUT = 300  # 5 minutes
+        GROK_TIMEOUT = 600  # 10 minutes for large files
         import asyncio
         if user.has_diamond and file_size > 1024 * 1024:
             chunks = [code_str[i:i + 500000] for i in range(0, len(code_str), 500000)]
@@ -1494,7 +1496,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 except Exception as e:
                     logger.error(f"Grok API call failed for {effective_username}, chunk {i+1}: {str(e)}")
                     raise HTTPException(status_code=500, detail=f"Grok API call failed for chunk {i+1}: {str(e)}")
-            with db.begin(): # Transaction for database updates
+            with db.begin(): # Single transaction
                 aggregated = {
                     "risk_score": max(r["risk_score"] for r in results),
                     "issues": sum([r["issues"] for r in results], []),
@@ -1557,7 +1559,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     if user.has_diamond:
                         audit_json["remediation_roadmap"] = "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review."
                     audit_json["fuzzing_results"] = fuzzing_results
-                    with db.begin(): # Transaction for database updates
+                    with db.begin(): # Single transaction
                         user = db.query(User).filter(User.username == effective_username).first()
                         if user:
                             history = json.loads(user.audit_history)
@@ -1586,16 +1588,16 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 logger.error(f"Grok API call failed for {effective_username}: {str(e)}")
                 raise HTTPException(status_code=500, detail=f"Grok API call failed: {str(e)}")
     except Exception as e:
-        db.rollback()  # Rollback on any error
+        db.rollback()  # Kill zombie
         logger.error(f"Audit processing error for {effective_username}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Audit processing failed: {str(e)}")
     finally:
         if temp_path and os.path.exists(temp_path):
             os.unlink(temp_path)
             logger.debug(f"Temporary file deleted: {temp_path} for {effective_username}")
-        # FAILSAFE: Reset if audit >5 hours
-        if (datetime.now() - audit_start_time).total_seconds() > 5 * 3600:
-            logger.warning(f"Audit exceeded 5 hours for {effective_username} — resetting usage")
+        # FAILSAFE: Reset if audit >6 hours
+        if (datetime.now() - audit_start_time).total_seconds() > 6 * 3600:
+            logger.warning(f"Audit exceeded 6 hours for {effective_username} — resetting usage")
             usage_tracker.reset_usage(effective_username, db)
 
 ## Section 4.6: Main Entry Point
