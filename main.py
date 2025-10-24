@@ -31,6 +31,11 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 from pydantic import BaseModel
 from dotenv import load_dotenv
+
+# Global clients — initialized in startup
+client = None
+w3 = None
+
 # Ensure logging directory exists (Render-specific)
 LOG_DIR = "/opt/render/project/data"
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -166,6 +171,7 @@ async def initialize_client():
         if not os.getenv("GROK_API_KEY") or not os.getenv("INFURA_PROJECT_ID"):
             logger.error("Missing API keys in .env file")
             raise ValueError("Missing API keys in .env file. Please set GROK_API_KEY and INFURA_PROJECT_ID.")
+        global client, w3
         client = AsyncOpenAI(api_key=os.getenv("GROK_API_KEY"), base_url="https://api.x.ai/v1")
         logger.info("Async OpenAI client created successfully.")
         infura_url = f"https://mainnet.infura.io/v3/{os.getenv('INFURA_PROJECT_ID')}"
