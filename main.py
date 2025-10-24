@@ -1,4 +1,4 @@
-##section 1##
+## Section 1
 import logging
 import os
 import platform
@@ -23,7 +23,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from slither import Slither
 from slither.exceptions import SlitherError
-from openai import OpenAI
+from openai import AsyncOpenAI  # <-- CHANGED: AsyncOpenAI
 import re
 from tenacity import retry, stop_after_attempt, wait_fixed
 import uvicorn
@@ -157,15 +157,34 @@ def get_db():
         yield db
     finally:
         db.close()
-# Initialize clients
-client = OpenAI(api_key=os.getenv("GROK_API_KEY"))
-INFURA_PROJECT_ID = os.getenv("INFURA_PROJECT_ID")
-w3 = Web3(Web3.HTTPProvider(f"https://mainnet.infura.io/v3/{INFURA_PROJECT_ID}"))
-logger.info("Initializing OpenAI and Web3 clients...")
-logger.info("Starting client initialization...")
-logger.info("OpenAI client created successfully.")
-logger.info("Web3 provider initialized.")
-logger.info("Clients initialized successfully.")
+# Initialize clients — ASYNC
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
+async def initialize_client():
+    logger.info("Starting client initialization...")
+    try:
+        if not os.getenv("GROK_API_KEY") or not os.getenv("INFURA_PROJECT_ID"):
+            logger.error("Missing API keys in .env file")
+            raise ValueError("Missing API keys in .env file. Please set GROK_API_KEY and INFURA_PROJECT_ID.")
+        client = AsyncOpenAI(api_key=os.getenv("GROK_API_KEY"), base_url="https://api.x.ai/v1")
+        logger.info("Async OpenAI client created successfully.")
+        infura_url = f"https://mainnet.infura.io/v3/{os.getenv('INFURA_PROJECT_ID')}"
+        w3 = Web3(Web3.HTTPProvider(infura_url))
+        logger.info("Web3 provider initialized.")
+        if not w3.is_connected():
+            logger.error("Infura not connected")
+            raise ConnectionError("Failed to connect to Ethereum via Infura. Check INFURA_PROJECT_ID.")
+        logger.info("Clients initialized successfully.")
+        return client, w3
+    except Exception as e:
+        logger.error(f"Client initialization failed: {str(e)}. Retrying...")
+        raise
+
+# Startup: await async init
+@app.on_event("startup")
+async def startup_clients():
+    global client, w3
+    client, w3 = await initialize_client()
+
 # Stripe setup
 STRIPE_API_KEY = os.getenv("STRIPE_API_KEY")
 stripe.api_key = STRIPE_API_KEY
@@ -1454,8 +1473,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 details += f" No deployed code found at {contract_address}."
 
         # Grok API processing with transaction and JSON validation
-        GROK_TIMEOUT = 600  # 10 minutes for large files
-        import asyncio
+        GROK_TIMEOUT = 600  # 10 minutes
         if user.has_diamond and file_size > 1024 * 1024:
             chunks = [code_str[i:i + 500000] for i in range(0, len(code_str), 500000)]
             results = []
@@ -1467,8 +1485,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=chunk, details=details, tier="diamond")
                 try:
                     response = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            client.chat.completions.create,
+                        client.chat.completions.create(  # <-- DIRECT ASYNC CALL
                             model="grok-4",
                             messages=[{"role": "user", "content": prompt}],
                             temperature=0.0,
@@ -1496,7 +1513,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 except Exception as e:
                     logger.error(f"Grok API call failed for {effective_username}, chunk {i+1}: {str(e)}")
                     raise HTTPException(status_code=500, detail=f"Grok API call failed for chunk {i+1}: {str(e)}")
-            with db.begin(): # Single transaction
+            with db.begin():
                 aggregated = {
                     "risk_score": max(r["risk_score"] for r in results),
                     "issues": sum([r["issues"] for r in results], []),
@@ -1531,8 +1548,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=code_str, details=details, tier="diamond" if user.has_diamond else current_tier)
             try:
                 response = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        client.chat.completions.create,
+                    client.chat.completions.create(  # <-- DIRECT ASYNC CALL
                         model="grok-4",
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.0,
@@ -1559,7 +1575,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     if user.has_diamond:
                         audit_json["remediation_roadmap"] = "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review."
                     audit_json["fuzzing_results"] = fuzzing_results
-                    with db.begin(): # Single transaction
+                    with db.begin():
                         user = db.query(User).filter(User.username == effective_username).first()
                         if user:
                             history = json.loads(user.audit_history)
@@ -1588,14 +1604,13 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 logger.error(f"Grok API call failed for {effective_username}: {str(e)}")
                 raise HTTPException(status_code=500, detail=f"Grok API call failed: {str(e)}")
     except Exception as e:
-        db.rollback()  # Kill zombie
+        db.rollback()
         logger.error(f"Audit processing error for {effective_username}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Audit processing failed: {str(e)}")
     finally:
         if temp_path and os.path.exists(temp_path):
             os.unlink(temp_path)
             logger.debug(f"Temporary file deleted: {temp_path} for {effective_username}")
-        # FAILSAFE: Reset if audit >6 hours
         if (datetime.now() - audit_start_time).total_seconds() > 6 * 3600:
             logger.warning(f"Audit exceeded 6 hours for {effective_username} — resetting usage")
             usage_tracker.reset_usage(effective_username, db)
