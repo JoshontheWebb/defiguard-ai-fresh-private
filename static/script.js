@@ -677,7 +677,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        // Section11: Audit Handling
+            // Section11: Audit Handling
         // Create spinner once after DOM is ready
         if (loading && !loading.querySelector('.spinner')) {
             const spinner = document.createElement('div');
@@ -690,6 +690,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const handleAuditResponse = (data) => {
+            console.log('[DEBUG] handleAuditResponse called with data:', data);
             const report = data.report;
             const overageCost = data.overage_cost;
             riskScoreSpan.textContent = report.risk_score;
@@ -762,6 +763,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const handleSubmit = (event) => {
             event.preventDefault();
             withCsrfToken(async (token) => {
+                console.log('[DEBUG] withCsrfToken called, token:', token);
                 if (!token) {
                     loading.classList.remove('show');
                     usageWarning.textContent = 'Unable to establish secure connection.';
@@ -778,7 +780,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 });
                 resultsDiv.classList.remove('show');
-                usagesWarning.textContent = '';
+                usageWarning.textContent = '';
                 usageWarning.classList.remove('error', 'success');
                 loading.setAttribute('aria-hidden', 'false');
                 resultsDiv.setAttribute('aria-hidden', 'true');
@@ -794,6 +796,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 const username = localStorage.getItem('username');
+                console.log('[DEBUG] Username from localStorage:', username);
                 if (!username) {
                     console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
                     window.location.href = '/auth';
@@ -929,10 +932,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                     console.log(`[DEBUG] /audit response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
                     if (!response.ok) {
-                        const errorData = await response.json().catch(async () => ({
-                            detail: await response.text() || 'Unknown server error'
-                        }));
-                        console.error(`[ERROR] /audit failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, headers=${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
+                        const text = await response.text();
+                        console.error(`[ERROR] /audit failed: status=${response.status}, response_text=${text}, time=${new Date().toISOString()}`);
+                        const errorData = text ? JSON.parse(text) : {};
                         if (errorData.session_url) {
                             console.log(`[DEBUG] Redirecting to Stripe for audit limit/file size upgrade, session_url=${errorData.session_url}, time=${new Date().toISOString()}`);
                             window.location.href = errorData.session_url;
@@ -940,7 +942,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                         throw new Error(errorData.detail || `Audit request failed: ${response.status}`);
                     }
-                    const data = await response.json();
+                    const text = await response.text();
+                    console.log('[DEBUG] /audit raw response:', text);
+                    let data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch (parseError) {
+                        console.error('[ERROR] Failed to parse /audit response as JSON:', parseError.message, 'raw:', text);
+                        throw new Error('Invalid response from server');
+                    }
+                    console.log('[DEBUG] Parsed audit response:', data);
                     handleAuditResponse(data);
                     await fetchTierData();
                 } catch (error) {
