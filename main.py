@@ -23,7 +23,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from slither import Slither
 from slither.exceptions import SlitherError
-from openai import OpenAI  # <-- REVERT TO SYNC (STABLE)
+from openai import OpenAI  # Sync
 import re
 from tenacity import retry, stop_after_attempt, wait_fixed
 import uvicorn
@@ -31,6 +31,7 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 from pydantic import BaseModel
 from dotenv import load_dotenv
+import asyncio
 
 # Global clients — initialized in startup
 client = None
