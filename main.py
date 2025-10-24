@@ -1329,7 +1329,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         logger.error(f"Tier or usage check error for {effective_username}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Tier or usage check failed: {str(e)}")
 
-    # Audit processing block with transaction
+    # Audit processing block — NO db.begin()
     try:
         logger.info(f"Starting audit process for {effective_username}")
         try:
@@ -1360,7 +1360,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     with open(temp_path, "r", encoding="utf-8") as f:
                         code = f.read()
                         if len(code) > chunk_size:
-                            chunks = [code[i:i + chunk_size] for i in range(0, len(code), i + chunk_size)]
+                            chunks = [code[i:i + chunk_size] for i in range(0, len(code), chunk_size)]
                             findings = []
                             for i, chunk in enumerate(chunks):
                                 if len(chunk.strip()) == 0:
@@ -1480,7 +1480,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 logger.error(f"On-chain code fetch failed for {effective_username}: {str(e)}")
                 details += f" No deployed code found at {contract_address}."
 
-        # Grok API processing with transaction and JSON validation
+        # Grok API processing — NO db.begin()
         GROK_TIMEOUT = 600  # 10 minutes
         if user.has_diamond and file_size > 1024 * 1024:
             chunks = [code_str[i:i + 500000] for i in range(0, len(code_str), 500000)]
@@ -1523,32 +1523,25 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 except Exception as e:
                     logger.error(f"Grok API call failed for {effective_username}, chunk {i+1}: {str(e)}")
                     raise HTTPException(status_code=500, detail=f"Grok API call failed for chunk {i+1}: {str(e)}")
-            with db.begin():
-                aggregated = {
-                    "risk_score": max(r["risk_score"] for r in results),
-                    "issues": sum([r["issues"] for r in results], []),
-                    "predictions": sum([r["predictions"] for r in results], []),
-                    "recommendations": sum([r["recommendations"] for r in results], []),
-                    "remediation_roadmap": "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review.",
-                    "fuzzing_results": fuzzing_results
-                }
-                user = db.query(User).filter(User.username == effective_username).first()
-                if user:
-                    history = json.loads(user.audit_history)
-                    history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": aggregated["risk_score"]})
-                    user.audit_history = json.dumps(history)
-                    overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
-                    if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
-                        try:
-                            stripe.SubscriptionItem.create_usage_record(
-                                user.stripe_subscription_item_id,
-                                quantity=int(overage_mb),
-                                timestamp=int(time.time()),
-                                action="increment"
-                            )
-                            logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
-                        except Exception as e:
-                            logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
+            # MANUAL COMMIT AFTER HISTORY + OVERAGE
+            user = db.query(User).filter(User.username == effective_username).first()
+            if user:
+                history = json.loads(user.audit_history)
+                history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": aggregated["risk_score"]})
+                user.audit_history = json.dumps(history)
+                overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
+                if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
+                    try:
+                        stripe.SubscriptionItem.create_usage_record(
+                            user.stripe_subscription_item_id,
+                            quantity=int(overage_mb),
+                            timestamp=int(time.time()),
+                            action="increment"
+                        )
+                        logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
+                    except Exception as e:
+                        logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
+            db.commit()  # <-- MANUAL COMMIT
             return {"report": aggregated, "risk_score": str(aggregated["risk_score"]), "overage_cost": overage_cost}
         else:
             logger.info(f"Calling Grok API for {effective_username} with tier {current_tier}")
@@ -1587,24 +1580,25 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     if user.has_diamond:
                         audit_json["remediation_roadmap"] = "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review."
                     audit_json["fuzzing_results"] = fuzzing_results
-                    with db.begin():
-                        user = db.query(User).filter(User.username == effective_username).first()
-                        if user:
-                            history = json.loads(user.audit_history)
-                            history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": audit_json["risk_score"]})
-                            user.audit_history = json.dumps(history)
-                            overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
-                            if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
-                                try:
-                                    stripe.SubscriptionItem.create_usage_record(
-                                        user.stripe_subscription_item_id,
-                                        quantity=int(overage_mb),
-                                        timestamp=int(time.time()),
-                                        action="increment"
-                                    )
-                                    logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
-                                except Exception as e:
-                                    logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
+                    # MANUAL COMMIT AFTER HISTORY + OVERAGE
+                    user = db.query(User).filter(User.username == effective_username).first()
+                    if user:
+                        history = json.loads(user.audit_history)
+                        history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": audit_json["risk_score"]})
+                        user.audit_history = json.dumps(history)
+                        overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
+                        if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
+                            try:
+                                stripe.SubscriptionItem.create_usage_record(
+                                    user.stripe_subscription_item_id,
+                                    quantity=int(overage_mb),
+                                    timestamp=int(time.time()),
+                                    action="increment"
+                                )
+                                logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
+                            except Exception as e:
+                                logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
+                    db.commit()  # <-- MANUAL COMMIT
                     return {"report": audit_json, "risk_score": str(audit_json.get("risk_score", "N/A")), "overage_cost": overage_cost}
                 else:
                     logger.error(f"No Grok API response for {effective_username}")
