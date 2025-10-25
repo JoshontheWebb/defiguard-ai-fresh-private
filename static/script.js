@@ -752,6 +752,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 usageWarning.classList.add('success');
             }
             loading.classList.remove('show');
+            loading.style.display = 'none'; // Hide after results
             resultsDiv.classList.add('show');
             loading.setAttribute('aria-hidden', 'true');
             resultsDiv.setAttribute('aria-hidden', 'false');
@@ -772,13 +773,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
-                // SHOW SPINNER WITH FORCE REPAINT
+                // SHOW SPINNER WITH FORCE DISPLAY
                 loading.classList.add('show');
-                void loading.offsetHeight; // Force layout/repaint
-                console.log('[DEBUG] Spinner shown and repainted with offsetHeight');
-                requestAnimationFrame(() => {
-                    console.log('[DEBUG] Spinner confirmed in next frame');
-                });
+                loading.style.display = 'flex'; // Force display
+                void loading.offsetHeight; // Force repaint
+                console.log('[DEBUG] Spinner shown: display=flex, classList.show=' + loading.classList.contains('show'));
+                console.log('[DEBUG] Computed style after show:', getComputedStyle(loading).display, getComputedStyle(loading).opacity);
                 resultsDiv.classList.remove('show');
                 usageWarning.textContent = '';
                 usageWarning.classList.remove('error', 'success');
@@ -789,6 +789,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const file = fileInput.files[0];
                 if (!file) {
                     loading.classList.remove('show');
+                    loading.style.display = 'none';
                     usageWarning.textContent = 'Please select a file to audit';
                     usageWarning.classList.add('error');
                     console.error(`[ERROR] No file selected for audit, time=${new Date().toISOString()}`);
@@ -801,6 +802,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
                     window.location.href = '/auth';
                     loading.classList.remove('show');
+                    loading.style.display = 'none';
                     usageWarning.textContent = 'Please sign in to perform an audit';
                     usageWarning.classList.add('error');
                     return;
@@ -809,11 +811,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const fileSizeMB = file.size / (1024 * 1024);
                 if (fileSizeMB > 1 && maxFileSize !== null && file.size > maxFileSize) {
                     loading.classList.remove('show');
+                    loading.style.display = 'none';
                     usageWarning.textContent = 'File too large, Upgrade to Diamond tier in order to utilize Diamond features.';
                     usageWarning.classList.add('error');
                     return;
                 } else if (maxFileSize !== null && file.size > maxFileSize) {
                     loading.classList.remove('show');
+                    loading.style.display = 'none';
                     const overageCost = calculateDiamondOverage(file);
                     usageWarning.textContent = `File size (${fileSizeMB.toFixed(2)}MB) exceeds ${maxFileSize === Infinity ? 'unlimited' : (maxFileSize / 1024 / 1024) + 'MB'} limit for your tier. Upgrade to Diamond add-on ($50/mo + $${overageCost.toFixed(2)} overage).`;
                     usageWarning.classList.add('error');
@@ -868,6 +872,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (auditCount >= auditLimit) {
                     loading.classList.remove('show');
+                    loading.style.display = 'none';
                     usageWarning.textContent = `Usage limit exceeded (${auditCount}/${auditLimit} audits). Upgrade your tier.`;
                     usageWarning.classList.add('error');
                     const upgradeButton = document.createElement('button');
@@ -956,14 +961,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     await fetchTierData();
                 } catch (error) {
                     console.error(`[ERROR] Audit error: ${error.message}, time=${new Date().toISOString()}`);
-                    if (loading) loading.classList.remove('show');
+                    if (loading) {
+                        loading.classList.remove('show');
+                        loading.style.display = 'none';
+                    }
                     if (usageWarning) usageWarning.textContent = `Error initiating audit: ${error.message}`;
                     if (usageWarning) usageWarning.classList.add('error');
                 } finally {
-                    if (loading) loading.classList.remove('show');
+                    if (loading) {
+                        loading.classList.remove('show');
+                        loading.style.display = 'none';
+                    }
                 }
             });
         };
+        auditForm?.addEventListener('submit', handleSubmit);
         auditForm?.addEventListener('submit', handleSubmit);
 
         // Section12: Report Download
