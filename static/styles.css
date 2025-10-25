@@ -529,20 +529,22 @@ header .logo-container:hover {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(255, 255, 255, 0.9);
-    display: flex; /* ALWAYS FLEX */
+    background: rgba(26, 37, 47, 0.95); /* Dark overlay */
+    display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    z-index: 1000 !important;
     opacity: 0;
+    visibility: hidden; /* Hide by default */
     pointer-events: none;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
     border-radius: 15px;
 }
 
 .loading.show {
     opacity: 1;
+    visibility: visible; /* Show */
     pointer-events: auto;
 }
 
@@ -558,7 +560,7 @@ header .logo-container:hover {
 
 .loading p {
     font-size: clamp(1rem, 1.5vw, 1.1rem);
-    color: var(--text-dark);
+    color: var(--text-light); /* White text */
     font-weight: 600;
 }
 

@@ -677,7 +677,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-                // Section11: Audit Handling
+        // Section11: Audit Handling
         // Create spinner once after DOM is ready
         if (loading && !loading.querySelector('.spinner')) {
             const spinner = document.createElement('div');
@@ -774,6 +774,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // SHOW SPINNER
                 loading.classList.add('show');
+                console.log('[DEBUG] Spinner .show class added');
+                void loading.offsetHeight;
+                console.log('[DEBUG] Spinner repaint forced, visibility=' + getComputedStyle(loading).visibility);
+                resultsDiv.classList.remove('show');
                 usageWarning.textContent = '';
                 usageWarning.classList.remove('error', 'success');
                 loading.setAttribute('aria-hidden', 'false');
@@ -781,6 +785,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Queue fetch to allow repaint
                 setTimeout(async () => {
+                    console.log('[DEBUG] Spinner fetch queued');
                     const fileInput = auditForm.querySelector('#file');
                     const file = fileInput.files[0];
                     if (!file) {
@@ -958,7 +963,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     } finally {
                         loading.classList.remove('show');
                     }
-                }, 0); // Queue to allow repaint
+                }, 0); // Queue fetch
             });
         };
         auditForm?.addEventListener('submit', handleSubmit);
