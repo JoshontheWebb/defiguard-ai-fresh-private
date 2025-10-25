@@ -677,7 +677,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-                // Section11: Audit Handling
+        // Section11: Audit Handling
         // Create spinner once after DOM is ready
         if (loading && !loading.querySelector('.spinner')) {
             const spinner = document.createElement('div');
@@ -772,10 +772,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
-                // SHOW SPINNER + FORCE REPAINT
+                // SHOW SPINNER WITH FORCE REPAINT
                 loading.classList.add('show');
-                void loading.offsetHeight; // Force layout repaint
-                console.log('[DEBUG] Spinner shown and repainted');
+                void loading.offsetHeight; // Force layout/repaint
+                console.log('[DEBUG] Spinner shown and repainted with offsetHeight');
+                requestAnimationFrame(() => {
+                    console.log('[DEBUG] Spinner confirmed in next frame');
+                });
                 resultsDiv.classList.remove('show');
                 usageWarning.textContent = '';
                 usageWarning.classList.remove('error', 'success');
