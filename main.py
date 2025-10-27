@@ -953,11 +953,20 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
                 for item in stripe.Subscription.retrieve(session.subscription).get("items", {}).get("data", []):
                     if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
                         user.stripe_subscription_item_id = item.id
+                # Fix: Handle Pro upgrade from lower tiers
+                current_tier = user.tier
+                if tier == "pro" and current_tier in ["free", "beginner"]:
+                    user.tier = "pro"
+                    if not user.api_key:
+                        user.api_key = secrets.token_urlsafe(32)
+                elif tier == "diamond" and current_tier == "pro":
+                    user.has_diamond = True
+                    user.last_reset = datetime.now() + timedelta(days=30)
                 usage_tracker.set_tier(tier, has_diamond, username, db)
                 usage_tracker.reset_usage(username, db)
                 request.session["username"] = username # Ensure session persists
-                logger.info(f"Tier upgrade completed for {username} to {tier}, has_diamond: {has_diamond}, session: {request.session}")
                 db.commit()
+                logger.info(f"Tier upgrade completed for {username} to {tier}, current tier: {user.tier}, has_diamond: {user.has_diamond}, session: {request.session}")
             elif temp_id:
                 logger.info(f"Payment completed for {username}, starting audit for temp_id {temp_id}, session: {request.session}")
                 request.session["username"] = username # Ensure session persists
