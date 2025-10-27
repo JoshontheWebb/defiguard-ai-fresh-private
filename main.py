@@ -766,13 +766,13 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
         line_items = []
         if tier in ["beginner", "pro"]:
             line_items.append({"price": price_id, "quantity": 1})
-            if tier == "pro" and has_diamond:
+            if has_diamond and tier == "pro" and not user.has_diamond:
                 line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1})
         elif tier == "diamond" and user.tier not in ["pro", "diamond"]:
             line_items.append({"price": STRIPE_PRICE_PRO, "quantity": 1})
             line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1})
         elif tier == "diamond" and user.tier == "pro":
-            line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1})  # Only Diamond add-on for existing Pro users
+            line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1}) # Only Diamond add-on for existing Pro users
         logger.debug(f"Creating Stripe checkout session for {username} to {tier}, line_items={line_items}")
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -836,13 +836,13 @@ async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), req
         line_items = []
         if tier in ["beginner", "pro"]:
             line_items.append({"price": price_id, "quantity": 1})
-            if tier == "pro" and has_diamond:
+            if has_diamond and tier == "pro" and not user.has_diamond:
                 line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1})
         elif tier == "diamond" and user.tier not in ["pro", "diamond"]:
             line_items.append({"price": STRIPE_PRICE_PRO, "quantity": 1})
             line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1})
         elif tier == "diamond" and user.tier == "pro":
-            line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1})  # Only Diamond add-on for existing Pro users
+            line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1}) # Only Diamond add-on for existing Pro users
         logger.debug(f"Creating Stripe checkout session for {effective_username} to {tier}, line_items={line_items}")
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -884,7 +884,7 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
             if not user:
                 logger.error(f"User {username} not found for tier upgrade")
                 return RedirectResponse(url=f"/ui?upgrade=error&message=User%20not%20found")
-           
+          
             user.tier = tier
             user.has_diamond = has_diamond if tier == "pro" else False
             if tier == "pro" and not user.api_key:
