@@ -1044,12 +1044,18 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(None
             logger.error(f"Stripe checkout creation failed for {effective_username} Diamond audit: STRIPE_METERED_PRICE_DIAMOND not set")
             os.unlink(temp_path)
             raise HTTPException(status_code=503, detail="Payment processing unavailable: Missing STRIPE_METERED_PRICE_DIAMOND in environment variables.")
+
+        # DYNAMIC DOMAIN: Use current request URL
+        base_url = f"{request.url.scheme}://{request.url.netloc}"
+        success_url = f"{base_url}/complete-diamond-audit?session_id={{CHECKOUT_SESSION_ID}}&temp_id={urllib.parse.quote(temp_id)}&username={urllib.parse.quote(effective_username)}"
+        cancel_url = f"{base_url}/ui"
+
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
             line_items=[{"price": STRIPE_METERED_PRICE_DIAMOND, "quantity": 1}],
             mode="subscription",
-            success_url=f"https://defiguard-ai-fresh-private-test.onrender.com/complete-diamond-audit?session_id={{CHECKOUT_SESSION_ID}}&temp_id={urllib.parse.quote(temp_id)}&username={urllib.parse.quote(effective_username)}",
-            cancel_url="https://defiguard-ai-fresh-private-test.onrender.com/ui",
+            success_url=success_url,
+            cancel_url=cancel_url,
             metadata={"temp_id": temp_id, "username": effective_username}
         )
         logger.info(f"Redirecting {effective_username} to Stripe checkout for Diamond audit overage, session: {request.session}")
