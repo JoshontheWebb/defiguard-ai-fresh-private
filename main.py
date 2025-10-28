@@ -958,8 +958,14 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
                 if os.path.exists(temp_path):
                     try:
                         with open(temp_path, "rb") as f:
-                            # FIX: Add headers to prevent NoneType error
-                            file = UploadFile(filename="temp.sol", file=f, headers={"content-type": "application/octet-stream"})
+                            # FIX: Use Headers + content_type to fully mock UploadFile
+                            from starlette.datastructures import Headers
+                            file = UploadFile(
+                                filename="temp.sol",
+                                file=f,
+                                headers=Headers({"content-type": "application/octet-stream"}),
+                                content_type="application/octet-stream"
+                            )
                             result = await audit_contract(file, None, username, db, None)
                         os.unlink(temp_path)
                         logger.info(f"Webhook: Diamond audit auto-completed for {username}, temp_id={temp_id}")
