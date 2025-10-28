@@ -18,7 +18,7 @@ from web3 import Web3
 import stripe
 import bcrypt
 import sqlite3
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from slither import Slither
@@ -157,6 +157,14 @@ class User(Base):
     audit_history = Column(String, default="[]")
     stripe_subscription_id = Column(String, nullable=True)
     stripe_subscription_item_id = Column(String, nullable=True)
+class PendingAudit(Base):
+    __tablename__ = "pending_audits"
+    id = Column(String, primary_key=True, index=True)  # UUID as string
+    username = Column(String, index=True)
+    temp_path = Column(String)
+    status = Column(String, default="pending")  # pending, processing, complete
+    results = Column(Text, nullable=True)  # JSON string of audit results
+    created_at = Column(DateTime, default=datetime.now)
 Base.metadata.create_all(bind=engine)
 def get_db():
     db = SessionLocal()
@@ -939,7 +947,7 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
         if event["type"] == "checkout.session.completed":
             session = event["data"]["object"]
             username = session["metadata"].get("username")
-            temp_id = session["metadata"].get("temp_id")
+            pending_id = session["metadata"].get("pending_id")
             audit_type = session["metadata"].get("audit_type")
             if not username:
                 logger.warning(f"Webhook: Missing username in metadata, event_id={event['id']}")
@@ -949,26 +957,15 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
                 logger.error(f"Webhook: User {username} not found")
                 return Response(status_code=200)
             # -------------------------------------------------
-            # 1. DIAMOND OVERAGE AUDIT – run automatically
+            # 1. DIAMOND OVERAGE AUDIT – run automatically if pending_id
             # -------------------------------------------------
-            if temp_id and audit_type == "diamond_overage":
-                temp_path = os.path.join(DATA_DIR, "temp_files", f"{temp_id}.sol")
-                if os.path.exists(temp_path):
-                    try:
-                        with open(temp_path, "rb") as f:
-                            from starlette.datastructures import Headers
-                            file = UploadFile(
-                                filename="temp.sol",
-                                file=f,
-                                headers=Headers({"content-type": "application/octet-stream"})
-                            )
-                            result = await audit_contract(file, None, username, db, None)
-                        os.unlink(temp_path)
-                        logger.info(f"Webhook: Diamond audit auto-completed for {username}, temp_id={temp_id}")
-                    except Exception as e:
-                        logger.error(f"Webhook: Audit failed for {username}: {str(e)}")
-                else:
-                    logger.warning(f"Webhook: Temp file not found for {username}, temp_id={temp_id}")
+            if pending_id and audit_type == "diamond_overage":
+                pending_audit = db.query(PendingAudit).filter(PendingAudit.id == pending_id).first()
+                if pending_audit:
+                    pending_audit.status = "processing"
+                    db.commit()
+                    asyncio.create_task(process_pending_audit(db, pending_id))
+                    logger.info(f"Webhook: Started background Diamond audit for {username}, pending_id={pending_id}")
             # -------------------------------------------------
             # 2. TIER UPGRADE – existing logic (unchanged)
             # -------------------------------------------------
@@ -998,6 +995,32 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Webhook processing error for event {event['id']}: {str(e)}")
         return Response(status_code=500, content=f"Webhook processing failed: {str(e)}")
+async def process_pending_audit(db: Session, pending_id: str):
+    try:
+        pending_audit = db.query(PendingAudit).filter(PendingAudit.id == pending_id).first()
+        if not pending_audit or pending_audit.status != "processing":
+            logger.warning(f"Pending audit not found or invalid status for id {pending_id}")
+            return
+        temp_path = pending_audit.temp_path
+        if not os.path.exists(temp_path):
+            logger.error(f"Temp file not found for pending audit {pending_id}")
+            pending_audit.status = "complete"
+            pending_audit.results = json.dumps({"error": "Temp file not found"})
+            db.commit()
+            return
+        with open(temp_path, "rb") as f:
+            file = UploadFile(filename="temp.sol", file=f)
+            result = await audit_contract(file, None, pending_audit.username, db, None)
+        os.unlink(temp_path)
+        pending_audit.results = json.dumps(result.dict())
+        pending_audit.status = "complete"
+        db.commit()
+        logger.info(f"Background pending audit completed for id {pending_id}")
+    except Exception as e:
+        logger.error(f"Background pending audit failed for id {pending_id}: {str(e)}")
+        pending_audit.status = "complete"
+        pending_audit.results = json.dumps({"error": str(e)})
+        db.commit()
 ## Section 4.5: Audit Endpoints
 @app.post("/upload-temp")
 async def upload_temp(file: UploadFile = File(...), username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
@@ -1028,7 +1051,6 @@ async def upload_temp(file: UploadFile = File(...), username: str = Query(None),
         raise HTTPException(status_code=500, detail=f"Failed to upload temporary file: {str(e)}")
     logger.info(f"Temporary file uploaded for {effective_username}: {temp_id}, size: {file_size / 1024 / 1024:.2f}MB")
     return {"temp_id": temp_id, "file_size": file_size}
-
 @app.post("/diamond-audit")
 async def diamond_audit(file: UploadFile = File(...), username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
     await verify_csrf_token(request)
@@ -1039,8 +1061,8 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(None
         logger.error("No username provided for /diamond-audit; redirecting to login")
         raise HTTPException(status_code=401, detail="Please login to continue")
     user = db.query(User).filter(User.username == effective_username).first()
-    if not user or not user.has_diamond:
-        raise HTTPException(status_code=403, detail="Diamond audit requires Diamond add-on")
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     try:
         code_bytes = await file.read()
         file_size = len(code_bytes)
@@ -1048,44 +1070,71 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(None
             raise HTTPException(status_code=400, detail="File size exceeds 50MB limit")
         overage_cost = usage_tracker.calculate_diamond_overage(file_size)
         logger.info(f"Preparing Diamond audit for {effective_username} with overage ${overage_cost / 100:.2f} for file size {file_size / 1024 / 1024:.2f}MB")
-        temp_id = str(uuid.uuid4())
-        temp_dir = os.path.join(DATA_DIR, "temp_files")
-        os.makedirs(temp_dir, exist_ok=True)
-        temp_path = os.path.join(temp_dir, f"{temp_id}.sol")
-        try:
+        if user.has_diamond:
+            # Process audit directly if already subscribed
+            result = await audit_contract(file, None, effective_username, db, request)
+            # Report overage post-audit
+            overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
+            if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
+                try:
+                    stripe.SubscriptionItem.create_usage_record(
+                        user.stripe_subscription_item_id,
+                        quantity=int(overage_mb),
+                        timestamp=int(time.time()),
+                        action="increment"
+                    )
+                    logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe post-audit")
+                except Exception as e:
+                    logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
+            return result
+        else:
+            # Persist to PendingAudit and redirect to subscribe to Diamond add-on
+            pending_id = str(uuid.uuid4())
+            temp_dir = os.path.join(DATA_DIR, "temp_files")
+            os.makedirs(temp_dir, exist_ok=True)
+            temp_path = os.path.join(temp_dir, f"{pending_id}.sol")
             with open(temp_path, "wb") as f:
                 f.write(code_bytes)
-        except PermissionError as e:
-            logger.error(f"Failed to write temp file: {str(e)}")
-            raise HTTPException(status_code=500, detail="Failed to save temporary file due to permissions")
-        if not STRIPE_API_KEY:
-            logger.error(f"Stripe checkout creation failed for {effective_username} Diamond audit: STRIPE_API_KEY not set")
-            os.unlink(temp_path)
-            raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
-        if not STRIPE_METERED_PRICE_DIAMOND:
-            logger.error(f"Stripe checkout creation failed for {effective_username} Diamond audit: STRIPE_METERED_PRICE_DIAMOND not set")
-            os.unlink(temp_path)
-            raise HTTPException(status_code=503, detail="Payment processing unavailable: Missing STRIPE_METERED_PRICE_DIAMOND in environment variables.")
-
-        # DYNAMIC DOMAIN: Use current request URL
-        base_url = f"{request.url.scheme}://{request.url.netloc}"
-        success_url = f"{base_url}/ui?upgrade=success&audit=complete"  # ← ONLY CHANGE
-        cancel_url = f"{base_url}/ui"
-
-        session = stripe.checkout.Session.create(
-            payment_method_types=["card"],
-            line_items=[{"price": STRIPE_METERED_PRICE_DIAMOND, "quantity": 1}],
-            mode="subscription",
-            success_url=success_url,
-            cancel_url=cancel_url,
-            metadata={"temp_id": temp_id, "username": effective_username, "audit_type": "diamond_overage"}
-        )
-        logger.info(f"Redirecting {effective_username} to Stripe checkout for Diamond audit overage, session: {request.session}")
-        return {"session_url": session.url}
+            pending_audit = PendingAudit(id=pending_id, username=effective_username, temp_path=temp_path)
+            db.add(pending_audit)
+            db.commit()
+            if not STRIPE_API_KEY:
+                logger.error(f"Stripe checkout creation failed for {effective_username} Diamond add-on: STRIPE_API_KEY not set")
+                os.unlink(temp_path)
+                db.delete(pending_audit)
+                db.commit()
+                raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
+            if not STRIPE_PRICE_DIAMOND:
+                logger.error(f"Stripe checkout creation failed for {effective_username} Diamond add-on: STRIPE_PRICE_DIAMOND not set")
+                os.unlink(temp_path)
+                db.delete(pending_audit)
+                db.commit()
+                raise HTTPException(status_code=503, detail="Payment processing unavailable: Missing STRIPE_PRICE_DIAMOND in environment variables.")
+            # DYNAMIC DOMAIN: Use current request URL
+            base_url = f"{request.url.scheme}://{request.url.netloc}"
+            success_url = f"{base_url}/ui?upgrade=success&audit=complete" # ← ONLY CHANGE
+            cancel_url = f"{base_url}/ui"
+            session = stripe.checkout.Session.create(
+                payment_method_types=["card"],
+                line_items=[{"price": STRIPE_PRICE_DIAMOND, "quantity": 1}],
+                mode="subscription",
+                success_url=success_url,
+                cancel_url=cancel_url,
+                metadata={"pending_id": pending_id, "username": effective_username, "audit_type": "diamond_overage"}
+            )
+            logger.info(f"Redirecting {effective_username} to Stripe checkout for Diamond add-on")
+            return {"session_url": session.url}
     except Exception as e:
         logger.error(f"Diamond audit error for {effective_username}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-
+@app.get("/pending-status/{pending_id}")
+async def pending_status(pending_id: str, db: Session = Depends(get_db)):
+    pending_audit = db.query(PendingAudit).filter(PendingAudit.id == pending_id).first()
+    if not pending_audit:
+        raise HTTPException(status_code=404, detail="Pending audit not found")
+    if pending_audit.status == "complete" and pending_audit.results:
+        return json.loads(pending_audit.results)
+    return {"status": pending_audit.status}
 @app.get("/complete-diamond-audit")
 async def complete_diamond_audit(session_id: str = Query(...), temp_id: str = Query(...), username: str = Query(None), request: Request = None, db: Session = Depends(get_db)):
     session_username = request.session.get("username")
@@ -1119,7 +1168,6 @@ async def complete_diamond_audit(session_id: str = Query(...), temp_id: str = Qu
     except Exception as e:
         logger.error(f"Complete diamond audit failed for {effective_username}: {str(e)}")
         return RedirectResponse(url=f"/ui?upgrade=error&message={str(e)}")
-
 @app.get("/api/audit")
 async def api_audit(username: str, api_key: str, db: Session = Depends(get_db)):
     try:
@@ -1131,7 +1179,6 @@ async def api_audit(username: str, api_key: str, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"API audit error for {username}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-
 @app.get("/upgrade")
 async def upgrade_page():
     try:
@@ -1140,7 +1187,6 @@ async def upgrade_page():
     except Exception as e:
         logger.error(f"Upgrade page error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-
 @app.get("/facets/{contract_address}")
 async def get_facets(contract_address: str, request: Request, username: str = Query(None), db: Session = Depends(get_db)):
     try:
@@ -1156,7 +1202,7 @@ async def get_facets(contract_address: str, request: Request, username: str = Qu
         if current_tier not in ["pro", "diamond"] and not has_diamond:
             logger.warning(f"Facet preview denied for {effective_username or 'anonymous'} (tier: {current_tier}, has_diamond: {has_diamond})")
             raise HTTPException(status_code=403, detail="Facet preview requires Pro tier or Diamond add-on. Upgrade at /ui.")
-        if not INFURA_PROJECT_ID:
+        if not os.getenv("INFURA_PROJECT_ID"):
             logger.error(f"Facet fetch failed for {effective_username}: INFURA_PROJECT_ID not set")
             raise HTTPException(status_code=503, detail="On-chain analysis unavailable: Please set INFURA_PROJECT_ID in environment variables.")
         diamond_abi = [
