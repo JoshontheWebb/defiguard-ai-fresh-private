@@ -23,7 +23,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from slither import Slither
 from slither.exceptions import SlitherError
-from openai import OpenAI  # Sync
+from openai import OpenAI # Sync
 import re
 from tenacity import retry, stop_after_attempt, wait_fixed
 import uvicorn
@@ -32,11 +32,9 @@ from eth_account.messages import encode_defunct
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import asyncio
-
 # Global clients — initialized in startup
 client = None
 w3 = None
-
 # Ensure logging directory exists (Render-specific)
 LOG_DIR = "/opt/render/project/data"
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -118,6 +116,9 @@ async def get_csrf_token(request: Request) -> str:
         logger.error(f"Failed to get CSRF token: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to generate CSRF token: {str(e)}")
 async def verify_csrf_token(request: Request):
+    if request is None:
+        logger.debug("Skipping CSRF validation for internal call")
+        return
     provided_token = request.headers.get("X-CSRF-Token")
     expected_token = request.session.get("csrf_token")
     logger.debug(f"Verifying CSRF token: Provided={provided_token}, Expected={expected_token}, session: {request.session}")
@@ -163,7 +164,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
 # Sync client init (STABLE)
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
 def initialize_client():
@@ -186,13 +186,11 @@ def initialize_client():
     except Exception as e:
         logger.error(f"Client initialization failed: {str(e)}. Retrying...")
         raise
-
 # Startup: call sync init
 @app.on_event("startup")
 async def startup_clients():
     global client, w3
-    client, w3 = initialize_client()  # <-- SYNC CALL IN ASYNC EVENT (SAFE)
-
+    client, w3 = initialize_client() # <-- SYNC CALL IN ASYNC EVENT (SAFE)
 # Stripe setup
 STRIPE_API_KEY = os.getenv("STRIPE_API_KEY")
 stripe.api_key = STRIPE_API_KEY
@@ -916,7 +914,7 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
     except Exception as e:
         logger.error(f"Unexpected error in complete-tier-checkout for {username}: {str(e)}")
         return RedirectResponse(url=f"/ui?upgrade=error&message=Unexpected%20error:%20{str(e)}")
-    ## Section 4.4: Webhook Endpoint
+   ## Section 4.4: Webhook Endpoint
 @app.post("/webhook")
 async def webhook(request: Request, db: Session = Depends(get_db)):
     payload = await request.body()
