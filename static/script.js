@@ -341,66 +341,131 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Section9: Tier Management
-        const fetchTierData = async () => {
-            try {
-                const username = localStorage.getItem('username') || '';
-                const url = username ? `/tier?username=${encodeURIComponent(username)}` : '/tier';
-                console.log(`[DEBUG] Fetching tier data from ${url}, time=${new Date().toISOString()}`);
-                const response = await fetch(url, {
-                    headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
-                    credentials: 'include'
-                });
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(`Failed to fetch tier data: ${response.status} ${errorData.detail || response.statusText}`);
+const fetchTierData = async () => {
+    try {
+        const username = localStorage.getItem('username') || '';
+        const url = username ? `/tier?username=${encodeURIComponent(username)}` : '/tier';
+        console.log(`[DEBUG] Fetching tier data from ${url}, time=${new Date().toISOString()}`);
+        const response = await fetch(url, {
+            headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
+            credentials: 'include'
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(`Failed to fetch tier data: ${response.status} ${errorData.detail || response.statusText}`);
+        }
+        const data = await response.json();
+        const { tier, size_limit, feature_flags, api_key, audit_count, audit_limit, has_diamond } = data;
+        auditCount = audit_count;
+        auditLimit = audit_limit;
+        localStorage.setItem('tier', tier);
+        localStorage.setItem('diamond_feature', has_diamond.toString());
+        localStorage.setItem('size_limit', size_limit);
+        tierInfo.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} (${size_limit === 'Unlimited' ? 'Unlimited audits' : `${auditCount}/${auditLimit} audits`})`;
+        tierDescription.textContent = `${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} Tier: ${has_diamond ? 'Unlimited file size, full Diamond audits, fuzzing, priority support, NFT rewards' : tier === 'pro' ? 'Unlimited audits, Diamond add-on access ($50/mo), fuzzing, priority support' : tier === 'beginner' ? `Up to 10 audits, 1MB file size (${auditCount}/${auditLimit} remaining), priority support` : `Up to 3 audits, 1MB file size (${auditCount}/${auditLimit} remaining)`}`;
+        sizeLimit.textContent = `Max file size: ${size_limit}`;
+        features.textContent = `Features: ${has_diamond ? 'Diamond audits, Diamond Pattern previews, priority support, NFT rewards' : tier === 'pro' ? 'Diamond add-on access, standard audits, Diamond Pattern previews, fuzzing, priority support' : 'Standard audit features'}${feature_flags.predictions ? ', AI predictions' : ''}${feature_flags.onchain ? ', on-chain analysis' : ''}${feature_flags.reports ? ', exportable reports' : ''}${feature_flags.fuzzing ? ', fuzzing analysis' : ''}${feature_flags.priority_support ? ', priority support' : ''}${feature_flags.nft_rewards ? ', NFT rewards' : ''}`;
+        usageWarning.textContent = tier === 'free' || tier === 'beginner' ? `${tier.charAt(0).toUpperCase() + tier.slice(1)} tier: ${auditCount}/${auditLimit} audits remaining` : '';
+        usageWarning.classList.remove('error');
+        upgradeLink.style.display = !has_diamond ? 'inline-block' : 'none';
+        maxFileSize = size_limit === 'Unlimited' ? Infinity : parseFloat(size_limit.replace('MB', '')) * 1024 * 1024;
+        document.querySelector('#file-help').textContent = '';
+        document.querySelectorAll('.pro-diamond-only').forEach(el => el.style.display = tier === 'pro' || has_diamond ? 'block' : 'none');
+        customReportInput.style.display = tier === 'pro' || has_diamond ? 'block' : 'none';
+        downloadReportButton.style.display = feature_flags.reports ? 'block' : 'none';
+        document.querySelectorAll('.diamond-only').forEach(el => el.style.display = has_diamond ? 'block' : 'none');
+        document.querySelector('.remediation-placeholder').style.display = has_diamond ? 'block' : 'none';
+        document.querySelector('.fuzzing-placeholder').style.display = feature_flags.fuzzing ? 'block' : 'none';
+        document.querySelector('.priority-support').style.display = feature_flags.priority_support ? 'block' : 'none';
+        apiKeySpan.textContent = api_key || 'N/A';
+        document.getElementById('api-key').style.display = api_key ? 'block' : 'none';
+        // Update sidebar tier display
+        const sidebarTierDisplay = document.querySelector('.sidebar .tier-display');
+        if (sidebarTierDisplay) {
+            sidebarTierDisplay.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''}`;
+            console.log(`[DEBUG] Sidebar tier updated: ${sidebarTierDisplay.textContent}, time=${new Date().toISOString()}`);
+        } else {
+            console.warn('[DEBUG] .sidebar .tier-display not found, scheduling recheck');
+            setTimeout(() => {
+                const retryDisplay = document.querySelector('.sidebar .tier-display');
+                if (retryDisplay) {
+                    retryDisplay.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''}`;
+                    console.log(`[DEBUG] Sidebar tier updated after recheck: ${retryDisplay.textContent}, time=${new Date().toISOString()}`);
                 }
-                const data = await response.json();
-                const { tier, size_limit, feature_flags, api_key, audit_count, audit_limit, has_diamond } = data;
-                auditCount = audit_count;
-                auditLimit = audit_limit;
-                localStorage.setItem('tier', tier);
-                localStorage.setItem('diamond_feature', has_diamond.toString());
-                localStorage.setItem('size_limit', size_limit);
-                tierInfo.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} (${size_limit === 'Unlimited' ? 'Unlimited audits' : `${auditCount}/${auditLimit} audits`})`;
-                tierDescription.textContent = `${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} Tier: ${has_diamond ? 'Unlimited file size, full Diamond audits, fuzzing, priority support, NFT rewards' : tier === 'pro' ? 'Unlimited audits, Diamond add-on access ($50/mo), fuzzing, priority support' : tier === 'beginner' ? `Up to 10 audits, 1MB file size (${auditCount}/${auditLimit} remaining), priority support` : `Up to 3 audits, 1MB file size (${auditCount}/${auditLimit} remaining)`}`;
-                sizeLimit.textContent = `Max file size: ${size_limit}`;
-                features.textContent = `Features: ${has_diamond ? 'Diamond audits, Diamond Pattern previews, priority support, NFT rewards' : tier === 'pro' ? 'Diamond add-on access, standard audits, Diamond Pattern previews, fuzzing, priority support' : 'Standard audit features'}${feature_flags.predictions ? ', AI predictions' : ''}${feature_flags.onchain ? ', on-chain analysis' : ''}${feature_flags.reports ? ', exportable reports' : ''}${feature_flags.fuzzing ? ', fuzzing analysis' : ''}${feature_flags.priority_support ? ', priority support' : ''}${feature_flags.nft_rewards ? ', NFT rewards' : ''}`;
-                usageWarning.textContent = tier === 'free' || tier === 'beginner' ? `${tier.charAt(0).toUpperCase() + tier.slice(1)} tier: ${auditCount}/${auditLimit} audits remaining` : '';
-                usageWarning.classList.remove('error');
-                upgradeLink.style.display = !has_diamond ? 'inline-block' : 'none';
-                maxFileSize = size_limit === 'Unlimited' ? Infinity : parseFloat(size_limit.replace('MB', '')) * 1024 * 1024;
-                document.querySelector('#file-help').textContent = '';
-                document.querySelectorAll('.pro-diamond-only').forEach(el => el.style.display = tier === 'pro' || has_diamond ? 'block' : 'none');
-                customReportInput.style.display = tier === 'pro' || has_diamond ? 'block' : 'none';
-                downloadReportButton.style.display = feature_flags.reports ? 'block' : 'none';
-                document.querySelectorAll('.diamond-only').forEach(el => el.style.display = has_diamond ? 'block' : 'none');
-                document.querySelector('.remediation-placeholder').style.display = has_diamond ? 'block' : 'none';
-                document.querySelector('.fuzzing-placeholder').style.display = feature_flags.fuzzing ? 'block' : 'none';
-                document.querySelector('.priority-support').style.display = feature_flags.priority_support ? 'block' : 'none';
-                apiKeySpan.textContent = api_key || 'N/A';
-                document.getElementById('api-key').style.display = api_key ? 'block' : 'none';
-                // Update sidebar tier display
-                const sidebarTierDisplay = document.querySelector('.sidebar .tier-display');
-                if (sidebarTierDisplay) {
-                    sidebarTierDisplay.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''}`;
-                    console.log(`[DEBUG] Sidebar tier updated: ${sidebarTierDisplay.textContent}, time=${new Date().toISOString()}`);
-                } else {
-                    console.warn('[DEBUG] .sidebar .tier-display not found, scheduling recheck');
-                    setTimeout(() => {
-                        const retryDisplay = document.querySelector('.sidebar .tier-display');
-                        if (retryDisplay) {
-                            retryDisplay.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''}`;
-                            console.log(`[DEBUG] Sidebar tier updated after recheck: ${retryDisplay.textContent}, time=${new Date().toISOString()}`);
-                        }
-                    }, 500);
-                }
-                console.log(`[DEBUG] Tier data fetched: tier=${tier}, has_diamond=${has_diamond}, auditCount=${auditCount}, auditLimit=${auditLimit}, time=${new Date().toISOString()}`);
-            } catch (error) {
-                console.error(`[ERROR] Tier fetch error: ${error.message}, time=${new Date().toISOString()}`);
-                usageWarning.textContent = `Error fetching tier data: ${error.message}`;
-                usageWarning.classList.add('error');
+            }, 500);
+        }
+        console.log(`[DEBUG] Tier data fetched: tier=${tier}, has_diamond=${has_diamond}, auditCount=${auditCount}, auditLimit=${auditLimit}, time=${new Date().toISOString()}`);
+    } catch (error) {
+        console.error(`[ERROR] Tier fetch error: ${error.message}, time=${new Date().toISOString()}`);
+        usageWarning.textContent = `Error fetching tier data: ${error.message}`;
+        usageWarning.classList.add('error');
+    }
+};
+
+tierSwitchButton.addEventListener('click', () => {
+    withCsrfToken(async (token) => {
+        if (!token) {
+            usageWarning.textContent = 'Unable to establish secure connection.';
+            usageWarning.classList.add('error');
+            console.error(`[ERROR] No CSRF token for tier switch, time=${new Date().toISOString()}`);
+            return;
+        }
+        const selectedTier = tierSelect.value;
+        if (!tierSelect) {
+            console.error(`[ERROR] tierSelect element not found, time=${new Date().toISOString()}`);
+            usageWarning.textContent = 'Error: Tier selection unavailable';
+            usageWarning.classList.add('error');
+            return;
+        }
+        if (!selectedTier || !['beginner', 'pro', 'diamond'].includes(selectedTier)) {
+            console.error(`[ERROR] Invalid or missing tier selected: ${selectedTier}, time=${new Date().toISOString()}`);
+            usageWarning.textContent = `Error: Invalid tier '${selectedTier || 'none'}'. Choose beginner, pro, or diamond`;
+            usageWarning.classList.add('error');
+            return;
+        }
+        const username = localStorage.getItem('username');
+        if (!username) {
+            console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
+            window.location.href = '/auth';
+            return;
+        }
+        const hasDiamond = selectedTier === 'diamond';
+        const effectiveTier = selectedTier; // Pass the selected tier directly
+        console.log(`[DEBUG] Initiating tier switch: username=${username}, tier=${effectiveTier}, has_diamond=${hasDiamond}, time=${new Date().toISOString()}`);
+        try {
+            const requestBody = JSON.stringify({
+                username: username,
+                tier: effectiveTier,
+                has_diamond: hasDiamond,
+                csrf_token: token
+            });
+            console.log(`[DEBUG] Sending /create-tier-checkout request with body: ${requestBody}, time=${new Date().toISOString()}`);
+            const response = await fetch('/create-tier-checkout', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': token,
+                    'Accept': 'application/json'
+                },
+                credentials: 'include',
+                body: requestBody
+            });
+            console.log(`[DEBUG] /create-tier-checkout response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error(`[ERROR] /create-tier-checkout failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
+                throw new Error(errorData.detail || `Failed to initiate tier upgrade: ${response.status}`);
             }
-        };
+            const data = await response.json();
+            console.log(`[DEBUG] Stripe checkout session created: session_url=${data.session_url}, time=${new Date().toISOString()}`);
+            window.location.href = data.session_url;
+        } catch (error) {
+            console.error(`[ERROR] Tier switch error: ${error.message}, time=${new Date().toISOString()}`);
+            usageWarning.textContent = `Error initiating tier upgrade: ${error.message}`;
+            usageWarning.classList.add('error');
+        }
+    });
+});
 
         // Section7: Payment Handling
         const handlePostPaymentRedirect = async () => {
