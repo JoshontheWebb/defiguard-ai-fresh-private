@@ -943,16 +943,13 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
             username = session["metadata"].get("username")
             temp_id = session["metadata"].get("temp_id")
             audit_type = session["metadata"].get("audit_type")
-
             if not username:
                 logger.warning(f"Webhook: Missing username in metadata, event_id={event['id']}")
                 return Response(status_code=200)
-
             user = db.query(User).filter(User.username == username).first()
             if not user:
                 logger.error(f"Webhook: User {username} not found")
                 return Response(status_code=200)
-
             # -------------------------------------------------
             # 1. DIAMOND OVERAGE AUDIT – run automatically
             # -------------------------------------------------
@@ -961,17 +958,15 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
                 if os.path.exists(temp_path):
                     try:
                         with open(temp_path, "rb") as f:
-                            file = UploadFile(filename="temp.sol", file=f)
-                            # Run audit directly from webhook
+                            # FIX: Add headers to prevent NoneType error
+                            file = UploadFile(filename="temp.sol", file=f, headers={"content-type": "application/octet-stream"})
                             result = await audit_contract(file, None, username, db, None)
                         os.unlink(temp_path)
                         logger.info(f"Webhook: Diamond audit auto-completed for {username}, temp_id={temp_id}")
                     except Exception as e:
                         logger.error(f"Webhook: Audit failed for {username}: {str(e)}")
-                        # optional: save error state in DB
                 else:
                     logger.warning(f"Webhook: Temp file not found for {username}, temp_id={temp_id}")
-
             # -------------------------------------------------
             # 2. TIER UPGRADE – existing logic (unchanged)
             # -------------------------------------------------
