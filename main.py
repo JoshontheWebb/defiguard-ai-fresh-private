@@ -942,33 +942,59 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
             session = event["data"]["object"]
             username = session["metadata"].get("username")
             temp_id = session["metadata"].get("temp_id")
-            tier = session["metadata"].get("tier")
-            has_diamond = session["metadata"].get("has_diamond") == "true"
+            audit_type = session["metadata"].get("audit_type")
+
+            if not username:
+                logger.warning(f"Webhook: Missing username in metadata, event_id={event['id']}")
+                return Response(status_code=200)
+
             user = db.query(User).filter(User.username == username).first()
-            if user and tier:
-                user.stripe_subscription_id = session.subscription
-                for item in stripe.Subscription.retrieve(session.subscription).get("items", {}).get("data", []):
-                    if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
-                        user.stripe_subscription_item_id = item.id
-                # Fix: Handle Pro upgrade from lower tiers
-                current_tier = user.tier
-                if tier == "pro" and current_tier in ["free", "beginner"]:
-                    user.tier = "pro"
-                    if not user.api_key:
-                        user.api_key = secrets.token_urlsafe(32)
-                elif tier == "diamond" and current_tier == "pro":
-                    user.has_diamond = True
-                    user.last_reset = datetime.now() + timedelta(days=30)
-                usage_tracker.set_tier(tier, has_diamond, username, db)
-                usage_tracker.reset_usage(username, db)
-                request.session["username"] = username # Ensure session persists
-                db.commit()
-                logger.info(f"Tier upgrade completed for {username} to {tier}, current tier: {user.tier}, has_diamond: {user.has_diamond}, session: {request.session}")
-            elif temp_id:
-                logger.info(f"Payment completed for {username}, starting audit for temp_id {temp_id}, session: {request.session}")
-                request.session["username"] = username # Ensure session persists
+            if not user:
+                logger.error(f"Webhook: User {username} not found")
+                return Response(status_code=200)
+
+            # -------------------------------------------------
+            # 1. DIAMOND OVERAGE AUDIT – run automatically
+            # -------------------------------------------------
+            if temp_id and audit_type == "diamond_overage":
+                temp_path = os.path.join(DATA_DIR, "temp_files", f"{temp_id}.sol")
+                if os.path.exists(temp_path):
+                    try:
+                        with open(temp_path, "rb") as f:
+                            file = UploadFile(filename="temp.sol", file=f)
+                            # Run audit directly from webhook
+                            result = await audit_contract(file, None, username, db, None)
+                        os.unlink(temp_path)
+                        logger.info(f"Webhook: Diamond audit auto-completed for {username}, temp_id={temp_id}")
+                    except Exception as e:
+                        logger.error(f"Webhook: Audit failed for {username}: {str(e)}")
+                        # optional: save error state in DB
+                else:
+                    logger.warning(f"Webhook: Temp file not found for {username}, temp_id={temp_id}")
+
+            # -------------------------------------------------
+            # 2. TIER UPGRADE – existing logic (unchanged)
+            # -------------------------------------------------
             else:
-                logger.warning(f"Webhook event ignored: missing username or tier/temp_id, event_id={event['id']}")
+                tier = session["metadata"].get("tier")
+                has_diamond = session["metadata"].get("has_diamond") == "true"
+                if user and tier:
+                    user.stripe_subscription_id = session.subscription
+                    for item in stripe.Subscription.retrieve(session.subscription).get("items", {}).get("data", []):
+                        if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
+                            user.stripe_subscription_item_id = item.id
+                    current_tier = user.tier
+                    if tier == "pro" and current_tier in ["free", "beginner"]:
+                        user.tier = "pro"
+                        if not user.api_key:
+                            user.api_key = secrets.token_urlsafe(32)
+                    elif tier == "diamond" and current_tier == "pro":
+                        user.has_diamond = True
+                        user.last_reset = datetime.now() + timedelta(days=30)
+                    usage_tracker.set_tier(tier, has_diamond, username, db)
+                    usage_tracker.reset_usage(username, db)
+                    db.commit()
+                    logger.info(f"Webhook: Tier upgrade completed for {username} to {tier}")
         else:
             logger.debug(f"Webhook event ignored: unhandled type {event['type']}, event_id={event['id']}")
         return Response(status_code=200)
@@ -1047,7 +1073,7 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(None
 
         # DYNAMIC DOMAIN: Use current request URL
         base_url = f"{request.url.scheme}://{request.url.netloc}"
-        success_url = f"{base_url}/complete-diamond-audit?session_id={{CHECKOUT_SESSION_ID}}&temp_id={urllib.parse.quote(temp_id)}&username={urllib.parse.quote(effective_username)}"
+        success_url = f"{base_url}/ui?upgrade=success&audit=complete"  # ← ONLY CHANGE
         cancel_url = f"{base_url}/ui"
 
         session = stripe.checkout.Session.create(
@@ -1056,7 +1082,7 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(None
             mode="subscription",
             success_url=success_url,
             cancel_url=cancel_url,
-            metadata={"temp_id": temp_id, "username": effective_username}
+            metadata={"temp_id": temp_id, "username": effective_username, "audit_type": "diamond_overage"}
         )
         logger.info(f"Redirecting {effective_username} to Stripe checkout for Diamond audit overage, session: {request.session}")
         return {"session_url": session.url}
