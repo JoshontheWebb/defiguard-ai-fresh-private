@@ -128,194 +128,201 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Section3: DOM Initialization
-waitForDOM({
-    auditForm: '.audit-section form',
-    loading: '.loading',
-    resultsDiv: '.results',
-    riskScoreSpan: '#risk-score',
-    issuesBody: '#issues-body',
-    predictionsList: '#predictions-list',
-    recommendationsList: '#recommendations-list',
-    fuzzingList: '#fuzzing-list',
-    remediationRoadmap: '#remediation-roadmap',
-    usageWarning: '.usage-warning',
-    tierInfo: '.tier-info span',
-    tierDescription: '#tier-description',
-    sizeLimit: '#size-limit',
-    features: '#features',
-    upgradeLink: '#upgrade-link',
-    tierSelect: '#tier-select',
-    tierSwitchButton: '#tier-switch',
-    contractAddressInput: '#contract_address',
-    facetWell: '#facet-preview',
-    downloadReportButton: '#download-report',
-    diamondAuditButton: '#diamond-audit',
-    customReportInput: '#custom_report',
-    apiKeySpan: '#api-key-value',
-    logoutSidebar: '#logout-sidebar',
-    authStatus: '#auth-status',
-    pendingMessage: '#pending-message'  // Added for pending audit status
-}, ({ auditForm, loading, resultsDiv, riskScoreSpan, issuesBody, predictionsList, recommendationsList, fuzzingList, remediationRoadmap, usageWarning, tierInfo, tierDescription, sizeLimit, features, upgradeLink, tierSelect, tierSwitchButton, contractAddressInput, facetWell, downloadReportButton, diamondAuditButton, customReportInput, apiKeySpan, logoutSidebar, authStatus, pendingMessage }) => {
-    let maxFileSize = null;
-    let auditCount = 0;
-    let auditLimit = 3;
+    waitForDOM({
+        auditForm: '.audit-section form',
+        loading: '.loading',
+        resultsDiv: '.results',
+        riskScoreSpan: '#risk-score',
+        issuesBody: '#issues-body',
+        predictionsList: '#predictions-list',
+        recommendationsList: '#recommendations-list',
+        fuzzingList: '#fuzzing-list',
+        remediationRoadmap: '#remediation-roadmap',
+        usageWarning: '.usage-warning',
+        tierInfo: '.tier-info span',
+        tierDescription: '#tier-description',
+        sizeLimit: '#size-limit',
+        features: '#features',
+        upgradeLink: '#upgrade-link',
+        tierSelect: '#tier-select',
+        tierSwitchButton: '#tier-switch',
+        contractAddressInput: '#contract_address',
+        facetWell: '#facet-preview',
+        downloadReportButton: '#download-report',
+        diamondAuditButton: '#diamond-audit',
+        customReportInput: '#custom_report',
+        apiKeySpan: '#api-key-value',
+        logoutSidebar: '#logout-sidebar',
+        authStatus: '#auth-status',
+        pendingMessage: '#pending-message'  // Added for pending audit status
+    }, ({ auditForm, loading, resultsDiv, riskScoreSpan, issuesBody, predictionsList, recommendationsList, fuzzingList, remediationRoadmap, usageWarning, tierInfo, tierDescription, sizeLimit, features, upgradeLink, tierSelect, tierSwitchButton, contractAddressInput, facetWell, downloadReportButton, diamondAuditButton, customReportInput, apiKeySpan, logoutSidebar, authStatus, pendingMessage }) => {
+        let maxFileSize = null;
+        let auditCount = 0;
+        let auditLimit = 3;
 
-    // Ensure .audit-section is position: relative for .loading overlay
-    const auditSection = document.querySelector('.audit-section');
-    if (auditSection && getComputedStyle(auditSection).position !== 'relative') {
-        auditSection.style.position = 'relative';
-        auditSection.style.overflow = 'hidden';
-        console.log('[DEBUG] Applied position: relative to .audit-section for spinner overlay');
-    }
-
-    // Create spinner once after DOM is ready
-    if (loading && !loading.querySelector('.spinner')) {
-        const spinner = document.createElement('div');
-        spinner.className = 'spinner';
-        const loadingText = document.createElement('p');
-        loadingText.textContent = 'Analyzing contract...';
-        loading.appendChild(spinner);
-        loading.appendChild(loadingText);
-        console.log('[DEBUG] Audit spinner created once in DOM, time=' + new Date().toISOString());
-    }
-
-    // ... [rest of Section3 unchanged] ...
-});
-
-    // Section4: File and Pricing Logic
-    const AUDIT_CONTRACT_BUTTON = document.querySelector('button[type="submit"]');
-    const DIAMOND_AUDIT_BUTTON = document.getElementById('diamond-audit');
-    const DIAMOND_PRICE = document.getElementById('diamond-price');
-
-    const calculateDiamondOverage = (file) => {
-        if (!file) {
-            if (DIAMOND_PRICE) DIAMOND_PRICE.style.display = 'none';
-            return 0;
+        // Ensure .audit-section is position: relative for .loading overlay
+        const auditSection = document.querySelector('.audit-section');
+        if (auditSection && getComputedStyle(auditSection).position !== 'relative') {
+            auditSection.style.position = 'relative';
+            auditSection.style.overflow = 'hidden';
+            console.log('[DEBUG] Applied position: relative to .audit-section for spinner overlay');
         }
-        const size = file.size;
-        const overageMb = Math.max(0, (size - 1024 * 1024) / (1024 * 1024));
-        let overageCost = 0;
-        if (overageMb > 0) {
-            if (overageMb <= 10) {
-                overageCost = overageMb * 0.50;
-            } else {
-                overageCost += 10 * 0.50;
-                const remainingMb = overageMb - 10;
-                if (remainingMb <= 40) {
-                    overageCost += remainingMb * 1.00;
+
+        // Create spinner once after DOM is ready
+        if (loading && !loading.querySelector('.spinner')) {
+            const spinner = document.createElement('div');
+            spinner.className = 'spinner';
+            const loadingText = document.createElement('p');
+            loadingText.textContent = 'Analyzing contract...';
+            loading.appendChild(spinner);
+            loading.appendChild(loadingText);
+            console.log('[DEBUG] Audit spinner created once in DOM, time=' + new Date().toISOString());
+        }
+
+        // Section4: File and Pricing Logic
+        const AUDIT_CONTRACT_BUTTON = document.querySelector('button[type="submit"]');
+        const DIAMOND_AUDIT_BUTTON = document.getElementById('diamond-audit');
+        const DIAMOND_PRICE = document.getElementById('diamond-price');
+
+        const calculateDiamondOverage = (file) => {
+            if (!file) {
+                if (DIAMOND_PRICE) DIAMOND_PRICE.style.display = 'none';
+                return 0;
+            }
+            const size = file.size;
+            const overageMb = Math.max(0, (size - 1024 * 1024) / (1024 * 1024));
+            let overageCost = 0;
+            if (overageMb > 0) {
+                if (overageMb <= 10) {
+                    overageCost = overageMb * 0.50;
                 } else {
-                    overageCost += 40 * 1.00;
-                    const remainingAfter50 = overageMb - 50;
-                    if (remainingAfter50 <= 2) {
-                        overageCost += remainingAfter50 * 2.00;
+                    overageCost += 10 * 0.50;
+                    const remainingMb = overageMb - 10;
+                    if (remainingMb <= 40) {
+                        overageCost += remainingMb * 1.00;
                     } else {
-                        overageCost += 2 * 2.00;
-                        overageCost += (remainingAfter50 - 2) * 5.00;
+                        overageCost += 40 * 1.00;
+                        const remainingAfter50 = overageMb - 50;
+                        if (remainingAfter50 <= 2) {
+                            overageCost += remainingAfter50 * 2.00;
+                        } else {
+                            overageCost += 2 * 2.00;
+                            overageCost += (remainingAfter50 - 2) * 5.00;
+                        }
                     }
                 }
             }
-        }
-        if (DIAMOND_PRICE) {
-            DIAMOND_PRICE.textContent = `Diamond Audit Overage: $${overageCost.toFixed(2)} for ${(size / 1024 / 1024).toFixed(2)}MB`;
-            DIAMOND_PRICE.style.display = overageCost > 0 ? 'block' : 'none';
-        }
-        console.log(`[DEBUG] Diamond overage calculated: $${overageCost.toFixed(2)} for ${size} bytes, time=${new Date().toISOString()}`);
-        return overageCost;
-    };
+            if (DIAMOND_PRICE) {
+                DIAMOND_PRICE.textContent = `Diamond Audit Overage: $${overageCost.toFixed(2)} for ${(size / 1024 / 1024).toFixed(2)}MB`;
+                DIAMOND_PRICE.style.display = overageCost > 0 ? 'block' : 'none';
+            }
+            console.log(`[DEBUG] Diamond overage calculated: $${overageCost.toFixed(2)} for ${size} bytes, time=${new Date().toISOString()}`);
+            return overageCost;
+        };
 
-    document.getElementById('file')?.addEventListener('change', (event) => {
-        const file = event.target.files[0];
-        if (!file) {
-            AUDIT_CONTRACT_BUTTON.disabled = false;
-            AUDIT_CONTRACT_BUTTON.title = "";
-            if (DIAMOND_AUDIT_BUTTON) DIAMOND_AUDIT_BUTTON.style.display = 'none';
-            usageWarning.textContent = '';
-            usageWarning.classList.remove('warning', 'error');
-            return;
-        }
+        document.getElementById('file')?.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) {
+                AUDIT_CONTRACT_BUTTON.disabled = false;
+                AUDIT_CONTRACT_BUTTON.title = "";
+                if (DIAMOND_AUDIT_BUTTON) DIAMOND_AUDIT_BUTTON.style.display = 'none';
+                if (usageWarning) {
+                    usageWarning.textContent = '';
+                    usageWarning.classList.remove('warning', 'error');
+                }
+                return;
+            }
 
-        const fileSizeMB = file.size / (1024 * 1024);
-        const isOver1MB = fileSizeMB > 1;
+            const fileSizeMB = file.size / (1024 * 1024);
+            const isOver1MB = fileSizeMB > 1;
 
-        if (isOver1MB) {
-            // BLOCK "Audit Contract" for files >1MB
-            AUDIT_CONTRACT_BUTTON.disabled = true;
-            AUDIT_CONTRACT_BUTTON.title = "Files >1MB require Diamond Audit with payment";
-            if (DIAMOND_AUDIT_BUTTON) DIAMOND_AUDIT_BUTTON.style.display = 'block';
-            calculateDiamondOverage(file);
-            usageWarning.textContent = `File >1MB. Use "Request Diamond Audit" to pay and process.`;
-            usageWarning.classList.add('warning');
-            usageWarning.classList.remove('error');
+            if (isOver1MB) {
+                // BLOCK "Audit Contract" for files >1MB
+                AUDIT_CONTRACT_BUTTON.disabled = true;
+                AUDIT_CONTRACT_BUTTON.title = "Files >1MB require Diamond Audit with payment";
+                if (DIAMOND_AUDIT_BUTTON) DIAMOND_AUDIT_BUTTON.style.display = 'block';
+                calculateDiamondOverage(file);
+                if (usageWarning) {
+                    usageWarning.textContent = `File >1MB. Use "Request Diamond Audit" to pay and process.`;
+                    usageWarning.classList.add('warning');
+                    usageWarning.classList.remove('error');
+                }
+            } else {
+                // ALLOW "Audit Contract" for files ≤1MB
+                AUDIT_CONTRACT_BUTTON.disabled = false;
+                AUDIT_CONTRACT_BUTTON.title = "";
+                if (DIAMOND_AUDIT_BUTTON) DIAMOND_AUDIT_BUTTON.style.display = 'none';
+                if (usageWarning) {
+                    usageWarning.textContent = '';
+                    usageWarning.classList.remove('warning', 'error');
+                }
+            }
+        });
+
+        // Section6: Authentication
+        const updateAuthStatus = () => {
+            const username = localStorage.getItem('username');
+            console.log(`[DEBUG] updateAuthStatus: username=${username}, localStorage=${JSON.stringify(localStorage)}, time=${new Date().toISOString()}`);
+            if (authStatus) {
+                authStatus.textContent = username ? `Signed in as ${username}` : 'Sign In / Create Account';
+                if (username) {
+                    authStatus.innerHTML = `Signed in as ${username}`;
+                    sidebar.classList.add('logged-in');
+                } else {
+                    authStatus.innerHTML = '<a href="/auth">Sign In / Create Account</a>';
+                    sidebar.classList.remove('logged-in');
+                }
+            } else {
+                console.error('[ERROR] #auth-status not found in DOM');
+            }
+        };
+
+        window.addEventListener('storage', () => {
+            console.log('[DEBUG] Storage event detected, re-running updateAuthStatus');
+            updateAuthStatus();
+        });
+
+        let authCheckAttempts = 0;
+        const maxAuthCheckAttempts = 60;
+        const authCheckInterval = setInterval(() => {
+            console.log(`[DEBUG] Periodic auth check attempt ${authCheckAttempts + 1}/${maxAuthCheckAttempts}, username=${localStorage.getItem('username')}`);
+            updateAuthStatus();
+            authCheckAttempts++;
+            if (authCheckAttempts >= maxAuthCheckAttempts) {
+                clearInterval(authCheckInterval);
+                console.log('[DEBUG] Stopped periodic auth check');
+            }
+        }, 500);
+
+        window.addEventListener('authUpdate', () => {
+            console.log('[DEBUG] Custom authUpdate event detected, re-running updateAuthStatus');
+            updateAuthStatus();
+        });
+
+        setTimeout(() => {
+            console.log(`[DEBUG] Extended auth check after load, username=${localStorage.getItem('username')}, time=${new Date().toISOString()}`);
+            updateAuthStatus();
+        }, 5000);
+
+        setTimeout(() => {
+            console.log(`[DEBUG] Persistent auth check, username=${localStorage.getItem('username')}, time=${new Date().toISOString()}`);
+            updateAuthStatus();
+        }, 10000);
+
+        if (logoutSidebar) {
+            logoutSidebar.addEventListener('click', (e) => {
+                e.preventDefault();
+                console.log(`[DEBUG] Logout initiated from sidebar, time=${new Date().toISOString()}`);
+                localStorage.removeItem('username');
+                console.log('[DEBUG] Local storage cleared (username only)');
+                updateAuthStatus();
+                window.location.href = '/auth';
+            });
         } else {
-            // ALLOW "Audit Contract" for files ≤1MB
-            AUDIT_CONTRACT_BUTTON.disabled = false;
-            AUDIT_CONTRACT_BUTTON.title = "";
-            if (DIAMOND_AUDIT_BUTTON) DIAMOND_AUDIT_BUTTON.style.display = 'none';
-            usageWarning.textContent = '';
-            usageWarning.classList.remove('warning', 'error');
+            console.error('[ERROR] #logout-sidebar not found in DOM');
         }
-    });
 
-    // Section6: Authentication
-    const updateAuthStatus = () => {
-        const username = localStorage.getItem('username');
-        console.log(`[DEBUG] updateAuthStatus: username=${username}, localStorage=${JSON.stringify(localStorage)}, time=${new Date().toISOString()}`);
-        if (!authStatus) {
-            console.error('[ERROR] #auth-status not found in DOM');
-            return;
-        }
-        authStatus.textContent = username ? `Signed in as ${username}` : 'Sign In / Create Account';
-        if (username) {
-            authStatus.innerHTML = `Signed in as ${username}`;
-            sidebar.classList.add('logged-in');
-        } else {
-            authStatus.innerHTML = '<a href="/auth">Sign In / Create Account</a>';
-            sidebar.classList.remove('logged-in');
-        }
-    };
-
-    window.addEventListener('storage', () => {
-        console.log('[DEBUG] Storage event detected, re-running updateAuthStatus');
-        updateAuthStatus();
-    });
-
-    let authCheckAttempts = 0;
-    const maxAuthCheckAttempts = 60;
-    const authCheckInterval = setInterval(() => {
-        console.log(`[DEBUG] Periodic auth check attempt ${authCheckAttempts + 1}/${maxAuthCheckAttempts}, username=${localStorage.getItem('username')}`);
-        updateAuthStatus();
-        authCheckAttempts++;
-        if (authCheckAttempts >= maxAuthCheckAttempts) {
-            clearInterval(authCheckInterval);
-            console.log('[DEBUG] Stopped periodic auth check');
-        }
-    }, 500);
-
-    window.addEventListener('authUpdate', () => {
-        console.log('[DEBUG] Custom authUpdate event detected, re-running updateAuthStatus');
-        updateAuthStatus();
-    });
-
-    setTimeout(() => {
-        console.log(`[DEBUG] Extended auth check after load, username=${localStorage.getItem('username')}, time=${new Date().toISOString()}`);
-        updateAuthStatus();
-    }, 5000);
-
-    setTimeout(() => {
-        console.log(`[DEBUG] Persistent auth check, username=${localStorage.getItem('username')}, time=${new Date().toISOString()}`);
-        updateAuthStatus();
-    }, 10000);
-
-    logoutSidebar.addEventListener('click', (e) => {
-        e.preventDefault();
-        console.log(`[DEBUG] Logout initiated from sidebar, time=${new Date().toISOString()}`);
-        localStorage.removeItem('username');
-        console.log('[DEBUG] Local storage cleared (username only)');
-        updateAuthStatus();
-        window.location.href = '/auth';
-    });
-
-    // Section9: Tier Management
+        // Section9: Tier Management
 const fetchTierData = async () => {
     try {
         const username = localStorage.getItem('username') || '';
@@ -336,24 +343,24 @@ const fetchTierData = async () => {
         localStorage.setItem('tier', tier);
         localStorage.setItem('diamond_feature', has_diamond.toString());
         localStorage.setItem('size_limit', size_limit);
-        tierInfo.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} (${size_limit === 'Unlimited' ? 'Unlimited audits' : `${auditCount}/${auditLimit} audits`})`;
-        tierDescription.textContent = `${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} Tier: ${has_diamond ? 'Unlimited file size, full Diamond audits, fuzzing, priority support, NFT rewards' : tier === 'pro' ? 'Unlimited audits, Diamond add-on access ($50/mo), fuzzing, priority support' : tier === 'beginner' ? `Up to 10 audits, 1MB file size (${auditCount}/${auditLimit} remaining), priority support` : `Up to 3 audits, 1MB file size (${auditCount}/${auditLimit} remaining)`}`;
-        sizeLimit.textContent = `Max file size: ${size_limit}`;
-        features.textContent = `Features: ${has_diamond ? 'Diamond audits, Diamond Pattern previews, priority support, NFT rewards' : tier === 'pro' ? 'Diamond add-on access, standard audits, Diamond Pattern previews, fuzzing, priority support' : 'Standard audit features'}${feature_flags.predictions ? ', AI predictions' : ''}${feature_flags.onchain ? ', on-chain analysis' : ''}${feature_flags.reports ? ', exportable reports' : ''}${feature_flags.fuzzing ? ', fuzzing analysis' : ''}${feature_flags.priority_support ? ', priority support' : ''}${feature_flags.nft_rewards ? ', NFT rewards' : ''}`;
-        usageWarning.textContent = tier === 'free' || tier === 'beginner' ? `${tier.charAt(0).toUpperCase() + tier.slice(1)} tier: ${auditCount}/${auditLimit} audits remaining` : '';
-        usageWarning.classList.remove('error');
-        upgradeLink.style.display = !has_diamond ? 'inline-block' : 'none';
+        if (tierInfo) tierInfo.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} (${size_limit === 'Unlimited' ? 'Unlimited audits' : `${auditCount}/${auditLimit} audits`})`;
+        if (tierDescription) tierDescription.textContent = `${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} Tier: ${has_diamond ? 'Unlimited file size, full Diamond audits, fuzzing, priority support, NFT rewards' : tier === 'pro' ? 'Unlimited audits, Diamond add-on access ($50/mo), fuzzing, priority support' : tier === 'beginner' ? `Up to 10 audits, 1MB file size (${auditCount}/${auditLimit} remaining), priority support` : `Up to 3 audits, 1MB file size (${auditCount}/${auditLimit} remaining)`}`;
+        if (sizeLimit) sizeLimit.textContent = `Max file size: ${size_limit}`;
+        if (features) features.textContent = `Features: ${has_diamond ? 'Diamond audits, Diamond Pattern previews, priority support, NFT rewards' : tier === 'pro' ? 'Diamond add-on access, standard audits, Diamond Pattern previews, fuzzing, priority support' : 'Standard audit features'}${feature_flags.predictions ? ', AI predictions' : ''}${feature_flags.onchain ? ', on-chain analysis' : ''}${feature_flags.reports ? ', exportable reports' : ''}${feature_flags.fuzzing ? ', fuzzing analysis' : ''}${feature_flags.priority_support ? ', priority support' : ''}${feature_flags.nft_rewards ? ', NFT rewards' : ''}`;
+        if (usageWarning) usageWarning.textContent = tier === 'free' || tier === 'beginner' ? `${tier.charAt(0).toUpperCase() + tier.slice(1)} tier: ${auditCount}/${auditLimit} audits remaining` : '';
+        if (usageWarning) usageWarning.classList.remove('error');
+        if (upgradeLink) upgradeLink.style.display = !has_diamond ? 'inline-block' : 'none';
         maxFileSize = size_limit === 'Unlimited' ? Infinity : parseFloat(size_limit.replace('MB', '')) * 1024 * 1024;
-        document.querySelector('#file-help').textContent = '';
+        if (document.querySelector('#file-help')) document.querySelector('#file-help').textContent = '';
         document.querySelectorAll('.pro-diamond-only').forEach(el => el.style.display = tier === 'pro' || has_diamond ? 'block' : 'none');
-        customReportInput.style.display = tier === 'pro' || has_diamond ? 'block' : 'none';
-        downloadReportButton.style.display = feature_flags.reports ? 'block' : 'none';
+        if (customReportInput) customReportInput.style.display = tier === 'pro' || has_diamond ? 'block' : 'none';
+        if (downloadReportButton) downloadReportButton.style.display = feature_flags.reports ? 'block' : 'none';
         document.querySelectorAll('.diamond-only').forEach(el => el.style.display = has_diamond ? 'block' : 'none');
-        document.querySelector('.remediation-placeholder').style.display = has_diamond ? 'block' : 'none';
-        document.querySelector('.fuzzing-placeholder').style.display = feature_flags.fuzzing ? 'block' : 'none';
-        document.querySelector('.priority-support').style.display = feature_flags.priority_support ? 'block' : 'none';
-        apiKeySpan.textContent = api_key || 'N/A';
-        document.getElementById('api-key').style.display = api_key ? 'block' : 'none';
+        if (document.querySelector('.remediation-placeholder')) document.querySelector('.remediation-placeholder').style.display = has_diamond ? 'block' : 'none';
+        if (document.querySelector('.fuzzing-placeholder')) document.querySelector('.fuzzing-placeholder').style.display = feature_flags.fuzzing ? 'block' : 'none';
+        if (document.querySelector('.priority-support')) document.querySelector('.priority-support').style.display = feature_flags.priority_support ? 'block' : 'none';
+        if (apiKeySpan) apiKeySpan.textContent = api_key || 'N/A';
+        if (document.getElementById('api-key')) document.getElementById('api-key').style.display = api_key ? 'block' : 'none';
         // Update sidebar tier display
         const sidebarTierDisplay = document.querySelector('.sidebar .tier-display');
         if (sidebarTierDisplay) {
@@ -372,8 +379,8 @@ const fetchTierData = async () => {
         console.log(`[DEBUG] Tier data fetched: tier=${tier}, has_diamond=${has_diamond}, auditCount=${auditCount}, auditLimit=${auditLimit}, time=${new Date().toISOString()}`);
     } catch (error) {
         console.error(`[ERROR] Tier fetch error: ${error.message}, time=${new Date().toISOString()}`);
-        usageWarning.textContent = `Error fetching tier data: ${error.message}`;
-        usageWarning.classList.add('error');
+        if (usageWarning) usageWarning.textContent = `Error fetching tier data: ${error.message}`;
+        if (usageWarning) usageWarning.classList.add('error');
     }
 };
 
@@ -563,13 +570,13 @@ handlePostPaymentRedirect();
                         </tr>
                     </thead>
                     <tbody>
-                    ${data.facets.map(facet => `
-                        <tr tabindex="0">
-                            <td>${facet.facetAddress}</td>
-                            <td>${facet.functionSelectors.join(', ')}</td>
-                            <td>${facet.functions.join(', ')}</td>
-                        </tr>
-                    `).join('')}
+                        ${data.facets.map(facet => `
+                            <tr tabindex="0">
+                                <td>${facet.facetAddress}</td>
+                                <td>${facet.functionSelectors.join(', ')}</td>
+                                <td>${facet.functions.join(', ')}</td>
+                            </tr>
+                        `).join('')}
                     </tbody>
                 `;
                 const heading = document.createElement('h3');
@@ -1068,3 +1075,4 @@ auditForm?.addEventListener('submit', handleSubmit);
             }
         }, { passive: true });
     });
+});
