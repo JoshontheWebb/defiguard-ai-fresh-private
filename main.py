@@ -639,12 +639,10 @@ async def read_auth(request: Request):
 from fastapi import Body
 from pydantic import BaseModel
 import urllib.parse
-
 class TierUpgradeRequest(BaseModel):
     username: Optional[str] = None
     tier: str
     has_diamond: bool = False
-
 @app.post("/signup/{username}")
 async def signup(username: str, request: Request, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
@@ -672,7 +670,6 @@ async def signup(username: str, request: Request, db: Session = Depends(get_db))
     for handler in logging.getLogger().handlers:
         handler.flush()
     return {"message": f"User {username} signed up with free tier"}
-
 @app.post("/signin/{username}")
 async def signin(username: str, request: Request, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
@@ -698,7 +695,6 @@ async def signin(username: str, request: Request, db: Session = Depends(get_db))
     for handler in logging.getLogger().handlers:
         handler.flush()
     return {"message": f"Signed in as {username}"}
-
 @app.get("/tier")
 async def get_tier(request: Request, username: str = Query(None), db: Session = Depends(get_db)):
     session_username = request.session.get("username")
@@ -741,7 +737,6 @@ async def get_tier(request: Request, username: str = Query(None), db: Session = 
         "audit_limit": audit_limit,
         "has_diamond": has_diamond
     }
-
 @app.post("/set-tier/{username}/{tier}")
 async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), request: Request = None, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
@@ -784,7 +779,7 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
             line_items=line_items,
             mode="subscription",
             success_url=f"https://defiguard-ai-fresh-private.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(username)}",
-            cancel_url="https://defiguard-ai-fresh-private.onrender.com/ui",
+            cancel_url=f"https://defiguard-ai-fresh-private.onrender.com/ui?username={urllib.parse.quote(username)}",  # ← PRESERVE USERNAME ON CANCEL
             metadata={"username": username, "tier": tier, "has_diamond": str(has_diamond).lower()}
         )
         logger.info(f"Redirecting {username} to Stripe checkout for {tier} tier, has_diamond: {has_diamond}, session: {request.session}")
@@ -808,7 +803,6 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
     finally:
         if os.path.exists(lock_file):
             os.unlink(lock_file)
-
 @app.post("/create-tier-checkout")
 async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), request: Request = None, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
@@ -818,8 +812,6 @@ async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), req
     if not effective_username:
         logger.error("No username provided for /create-tier-checkout; redirecting to login")
         raise HTTPException(status_code=401, detail="Please login to continue")
-    # Refresh user object to ensure latest database state
-    db.expire_all()  # Clear any cached objects
     user = db.query(User).filter(User.username == effective_username).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -846,19 +838,18 @@ async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), req
             line_items.append({"price": price_id, "quantity": 1})
             if has_diamond and tier == "pro" and not user.has_diamond:
                 line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1})
-        elif tier == "diamond":
-            if user.tier not in ["pro", "diamond"]:
-                line_items.append({"price": STRIPE_PRICE_PRO, "quantity": 1})
-                line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1})
-            elif user.tier == "pro":
-                line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1}) # Only Diamond add-on for existing Pro users
+        elif tier == "diamond" and user.tier not in ["pro", "diamond"]:
+            line_items.append({"price": STRIPE_PRICE_PRO, "quantity": 1})
+            line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1})
+        elif tier == "diamond" and user.tier == "pro":
+            line_items.append({"price": STRIPE_PRICE_DIAMOND, "quantity": 1}) # Only Diamond add-on for existing Pro users
         logger.debug(f"Creating Stripe checkout session for {effective_username} to {tier}, line_items={line_items}")
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
             line_items=line_items,
             mode="subscription",
             success_url=f"https://defiguard-ai-fresh-private.onrender.com/complete-tier-checkout?session_id={{CHECKOUT_SESSION_ID}}&tier={urllib.parse.quote(tier)}&has_diamond={urllib.parse.quote(str(has_diamond).lower())}&username={urllib.parse.quote(effective_username)}",
-            cancel_url="https://defiguard-ai-fresh-private.onrender.com/ui",
+            cancel_url=f"https://defiguard-ai-fresh-private.onrender.com/ui?username={urllib.parse.quote(effective_username)}",  # ← PRESERVE USERNAME ON CANCEL
             metadata={"username": effective_username, "tier": tier, "has_diamond": str(has_diamond).lower()}
         )
         logger.info(f"Created Stripe checkout session for {effective_username} to {tier}, has_diamond: {has_diamond}, session: {request.session}")
@@ -879,7 +870,6 @@ async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), req
     except Exception as e:
         logger.error(f"Unexpected error in Stripe checkout for {effective_username} to {tier}: {str(e)}")
         raise HTTPException(status_code=503, detail=f"Failed to create checkout session: {str(e)}")
-
 @app.get("/complete-tier-checkout")
 async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query(...), has_diamond: bool = Query(False), username: str = Query(...), request: Request = None, db: Session = Depends(get_db)):
     logger.debug(f"Complete-tier-checkout request: session_id={session_id}, tier={tier}, has_diamond={has_diamond}, username={username}, session: {request.session}")
@@ -894,7 +884,7 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
             if not user:
                 logger.error(f"User {username} not found for tier upgrade")
                 return RedirectResponse(url=f"/ui?upgrade=error&message=User%20not%20found")
-        
+          
             user.tier = tier
             user.has_diamond = has_diamond if tier == "pro" else False
             if tier == "pro" and not user.api_key:
@@ -925,7 +915,8 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
         return RedirectResponse(url=f"/ui?upgrade=error&message=Payment%20processing%20error:%20{str(e)}")
     except Exception as e:
         logger.error(f"Unexpected error in complete-tier-checkout for {username}: {str(e)}")
-        return RedirectResponse(url=f"/ui?upgrade=error&message=Unexpected%20error:%20{str(e)}")## Section 4.4: Webhook Endpoint
+        return RedirectResponse(url=f"/ui?upgrade=error&message=Unexpected%20error:%20{str(e)}")
+    ## Section 4.4: Webhook Endpoint
 @app.post("/webhook")
 async def webhook(request: Request, db: Session = Depends(get_db)):
     payload = await request.body()

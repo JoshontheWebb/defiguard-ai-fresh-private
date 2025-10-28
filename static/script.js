@@ -180,106 +180,79 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // ... [rest of Section3 unchanged] ...
 
-        // Section4: File and Pricing Logic
-        const calculateDiamondOverage = (file) => {
-            if (!file) {
-                document.getElementById('diamond-price').style.display = 'none';
-                return 0;
-            }
-            const size = file.size;
-            const overageMb = Math.max(0, (size - 1024 * 1024) / (1024 * 1024));
-            let overageCost = 0;
-            if (overageMb > 0) {
-                if (overageMb <= 10) {
-                    overageCost = overageMb * 0.50;
+// Section4: File and Pricing Logic
+const AUDIT_CONTRACT_BUTTON = document.querySelector('button[type="submit"]');
+const DIAMOND_AUDIT_BUTTON = document.getElementById('diamond-audit');
+const DIAMOND_PRICE = document.getElementById('diamond-price');
+
+const calculateDiamondOverage = (file) => {
+    if (!file) {
+        if (DIAMOND_PRICE) DIAMOND_PRICE.style.display = 'none';
+        return 0;
+    }
+    const size = file.size;
+    const overageMb = Math.max(0, (size - 1024 * 1024) / (1024 * 1024));
+    let overageCost = 0;
+    if (overageMb > 0) {
+        if (overageMb <= 10) {
+            overageCost = overageMb * 0.50;
+        } else {
+            overageCost += 10 * 0.50;
+            const remainingMb = overageMb - 10;
+            if (remainingMb <= 40) {
+                overageCost += remainingMb * 1.00;
+            } else {
+                overageCost += 40 * 1.00;
+                const remainingAfter50 = overageMb - 50;
+                if (remainingAfter50 <= 2) {
+                    overageCost += remainingAfter50 * 2.00;
                 } else {
-                    overageCost += 10 * 0.50;
-                    const remainingMb = overageMb - 10;
-                    if (remainingMb <= 40) {
-                        overageCost += remainingMb * 1.00;
-                    } else {
-                        overageCost += 40 * 1.00;
-                        const remainingAfter50 = overageMb - 50;
-                        if (remainingAfter50 <= 2) {
-                            overageCost += remainingAfter50 * 2.00;
-                        } else {
-                            overageCost += 2 * 2.00;
-                            overageCost += (remainingAfter50 - 2) * 5.00;
-                        }
-                    }
+                    overageCost += 2 * 2.00;
+                    overageCost += (remainingAfter50 - 2) * 5.00;
                 }
             }
-            const priceElement = document.getElementById('diamond-price');
-            if (priceElement) {
-                priceElement.textContent = `Diamond Audit Overage: $${overageCost.toFixed(2)} for ${(size / 1024 / 1024).toFixed(2)}MB`;
-                priceElement.style.display = overageCost > 0 ? 'block' : 'none';
-            }
-            console.log(`[DEBUG] Diamond overage calculated: $${overageCost.toFixed(2)} for ${size} bytes, time=${new Date().toISOString()}`);
-            return overageCost;
-        };
+        }
+    }
+    if (DIAMOND_PRICE) {
+        DIAMOND_PRICE.textContent = `Diamond Audit Overage: $${overageCost.toFixed(2)} for ${(size / 1024 / 1024).toFixed(2)}MB`;
+        DIAMOND_PRICE.style.display = overageCost > 0 ? 'block' : 'none';
+    }
+    console.log(`[DEBUG] Diamond overage calculated: $${overageCost.toFixed(2)} for ${size} bytes, time=${new Date().toISOString()}`);
+    return overageCost;
+};
 
-        document.getElementById('file')?.addEventListener('change', (event) => {
-            const file = event.target.files[0];
-            const fileSizeMB = file ? file.size / (1024 * 1024) : 0;
-            if (fileSizeMB > 1 && maxFileSize !== null && file.size > maxFileSize) {
-                usageWarning.textContent = 'File too large, Upgrade to Diamond tier in order to utilize Diamond features.';
-                usageWarning.classList.add('error');
-            } else if (maxFileSize !== null && file.size > maxFileSize) {
-                const overageCost = calculateDiamondOverage(file);
-                usageWarning.textContent = `File size (${fileSizeMB.toFixed(2)}MB) exceeds ${maxFileSize === Infinity ? 'unlimited' : (maxFileSize / 1024 / 1024) + 'MB'} limit for your tier. Upgrade to Diamond add-on ($50/mo + $${overageCost.toFixed(2)} overage).`;
-                usageWarning.classList.add('error');
-                const upgradeButton = document.createElement('button');
-                upgradeButton.textContent = 'Upgrade to Pro + Diamond';
-                upgradeButton.className = 'upgrade-button';
-                upgradeButton.addEventListener('click', () => {
-                    withCsrfToken(async (token) => {
-                        if (!token) {
-                            usageWarning.textContent = 'Unable to establish secure connection.';
-                            usageWarning.classList.add('error');
-                            console.error(`[ERROR] No CSRF token for upgrade, time=${new Date().toISOString()}`);
-                            return;
-                        }
-                        try {
-                            const requestBody = JSON.stringify({
-                                username: localStorage.getItem('username'),
-                                tier: 'pro',
-                                has_diamond: true,
-                                csrf_token: token
-                            });
-                            console.log(`[DEBUG] Sending /create-tier-checkout request with body: ${requestBody}, time=${new Date().toISOString()}`);
-                            const response = await fetch('/create-tier-checkout', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-CSRF-Token': token,
-                                    'Accept': 'application/json'
-                                },
-                                credentials: 'include',
-                                body: requestBody
-                            });
-                            console.log(`[DEBUG] /create-tier-checkout response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
-                            if (!response.ok) {
-                                const errorData = await response.json().catch(() => ({}));
-                                console.error(`[ERROR] /create-tier-checkout failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
-                                throw new Error(errorData.detail || 'Failed to initiate tier upgrade');
-                            }
-                            const data = await response.json();
-                            console.log(`[DEBUG] Redirecting to Stripe for Pro + Diamond upgrade due to file size, session_url=${data.session_url}, time=${new Date().toISOString()}`);
-                            window.location.href = data.session_url;
-                        } catch (error) {
-                            console.error(`[ERROR] Upgrade error: ${error.message}, time=${new Date().toISOString()}`);
-                            usageWarning.textContent = `Error initiating upgrade: ${error.message}`;
-                            usageWarning.classList.add('error');
-                        }
-                    });
-                });
-                usageWarning.appendChild(upgradeButton);
-            } else {
-                usageWarning.textContent = '';
-                usageWarning.classList.remove('error');
-            }
-            calculateDiamondOverage(file);
-        });
+document.getElementById('file')?.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (!file) {
+        AUDIT_CONTRACT_BUTTON.disabled = false;
+        AUDIT_CONTRACT_BUTTON.title = "";
+        if (DIAMOND_AUDIT_BUTTON) DIAMOND_AUDIT_BUTTON.style.display = 'none';
+        usageWarning.textContent = '';
+        usageWarning.classList.remove('warning', 'error');
+        return;
+    }
+
+    const fileSizeMB = file.size / (1024 * 1024);
+    const isOver1MB = fileSizeMB > 1;
+
+    if (isOver1MB) {
+        // BLOCK "Audit Contract" for files >1MB
+        AUDIT_CONTRACT_BUTTON.disabled = true;
+        AUDIT_CONTRACT_BUTTON.title = "Files >1MB require Diamond Audit with payment";
+        if (DIAMOND_AUDIT_BUTTON) DIAMOND_AUDIT_BUTTON.style.display = 'block';
+        calculateDiamondOverage(file);
+        usageWarning.textContent = `File >1MB. Use "Request Diamond Audit" to pay and process.`;
+        usageWarning.classList.add('warning');
+        usageWarning.classList.remove('error');
+    } else {
+        // ALLOW "Audit Contract" for files ≤1MB
+        AUDIT_CONTRACT_BUTTON.disabled = false;
+        AUDIT_CONTRACT_BUTTON.title = "";
+        if (DIAMOND_AUDIT_BUTTON) DIAMOND_AUDIT_BUTTON.style.display = 'none';
+        usageWarning.textContent = '';
+        usageWarning.classList.remove('warning', 'error');
+    }
+});
 
         // Section6: Authentication
         const updateAuthStatus = () => {
@@ -467,72 +440,85 @@ tierSwitchButton.addEventListener('click', () => {
     });
 });
 
-        // Section7: Payment Handling
-        const handlePostPaymentRedirect = async () => {
-            const urlParams = new URLSearchParams(window.location.search);
-            const sessionId = urlParams.get('session_id');
-            const tier = urlParams.get('tier');
-            const hasDiamond = urlParams.get('has_diamond') === 'true';
-            const tempId = urlParams.get('temp_id');
-            const username = urlParams.get('username') || localStorage.getItem('username');
-            const upgradeStatus = urlParams.get('upgrade');
-            const message = urlParams.get('message');
-            console.log(`[DEBUG] Handling post-payment redirect: session_id=${sessionId}, tier=${tier}, has_diamond=${hasDiamond}, temp_id=${tempId}, username=${username}, upgrade=${upgradeStatus}, message=${message}, time=${new Date().toISOString()}`);
-            if (upgradeStatus) {
-                usageWarning.textContent = message || (upgradeStatus === 'success' ? 'Tier upgrade completed' : 'Tier upgrade failed');
-                usageWarning.classList.add(upgradeStatus === 'success' ? 'success' : 'error');
-                console.log(`[DEBUG] Post-payment status: upgrade=${upgradeStatus}, message=${message}, time=${new Date().toISOString()}`);
-                window.history.replaceState({}, document.title, '/ui');
-                await fetchTierData();
+       // Section7: Payment Handling
+const handlePostPaymentRedirect = async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionId = urlParams.get('session_id');
+    const tier = urlParams.get('tier');
+    const hasDiamond = urlParams.get('has_diamond') === 'true';
+    const tempId = urlParams.get('temp_id');
+    const username = urlParams.get('username') || localStorage.getItem('username');
+    const upgradeStatus = urlParams.get('upgrade');
+    const message = urlParams.get('message');
+    console.log(`[DEBUG] Handling post-payment redirect: session_id=${sessionId}, tier=${tier}, has_diamond=${hasDiamond}, temp_id=${tempId}, username=${username}, upgrade=${upgradeStatus}, message=${message}, time=${new Date().toISOString()}`);
+
+    // PRESERVE USERNAME ON CANCEL (ADDED)
+    if (username) {
+        localStorage.setItem('username', username);
+        console.log(`[DEBUG] Username preserved on redirect: ${username}`);
+    }
+
+    if (upgradeStatus) {
+        usageWarning.textContent = message || (upgradeStatus === 'success' ? 'Tier upgrade completed' : 'Tier upgrade failed');
+        usageWarning.classList.add(upgradeStatus === 'success' ? 'success' : 'error');
+        console.log(`[DEBUG] Post-payment status: upgrade=${upgradeStatus}, message=${message}, time=${new Date().toISOString()}`);
+        window.history.replaceState({}, document.title, '/ui');
+        await fetchTierData();
+        return;
+    }
+
+    if (sessionId && username) {
+        try {
+            let endpoint = '';
+            let query = '';
+            if (tempId) {
+                endpoint = '/complete-diamond-audit';
+                query = `session_id=${encodeURIComponent(sessionId)}&temp_id=${encodeURIComponent(tempId)}&username=${encodeURIComponent(username)}`;
+            } else if (tier) {
+                endpoint = '/complete-tier-checkout';
+                query = `session_id=${encodeURIComponent(sessionId)}&tier=${encodeURIComponent(tier)}&has_diamond=${hasDiamond}&username=${encodeURIComponent(username)}`;
+            } else {
+                console.error(`[ERROR] Invalid post-payment redirect: missing tier or temp_id, time=${new Date().toISOString()}`);
+                usageWarning.textContent = 'Error: Invalid payment redirect parameters';
+                usageWarning.classList.add('error');
                 return;
             }
-            if (sessionId && username) {
-                try {
-                    let endpoint = '';
-                    let query = '';
-                    if (tempId) {
-                        endpoint = '/complete-diamond-audit';
-                        query = `session_id=${encodeURIComponent(sessionId)}&temp_id=${encodeURIComponent(tempId)}&username=${encodeURIComponent(username)}`;
-                    } else if (tier) {
-                        endpoint = '/complete-tier-checkout';
-                        query = `session_id=${encodeURIComponent(sessionId)}&tier=${encodeURIComponent(tier)}&has_diamond=${hasDiamond}&username=${encodeURIComponent(username)}`;
-                    } else {
-                        console.error(`[ERROR] Invalid post-payment redirect: missing tier or temp_id, time=${new Date().toISOString()}`);
-                        usageWarning.textContent = 'Error: Invalid payment redirect parameters';
-                        usageWarning.classList.add('error');
-                        return;
-                    }
-                    console.log(`[DEBUG] Fetching ${endpoint}?${query}, time=${new Date().toISOString()}`);
-                    const response = await fetch(`${endpoint}?${query}`, {
-                        method: 'GET',
-                        headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
-                        credentials: 'include'
-                    });
-                    if (!response.ok) {
-                        const errorData = await response.json().catch(() => ({}));
-                        throw new Error(errorData.detail || `Failed to complete ${tempId ? 'Diamond audit' : 'tier upgrade'}`);
-                    }
-                    localStorage.setItem('username', username);
-                    usageWarning.textContent = `Successfully completed ${tempId ? 'Diamond audit' : 'tier upgrade'}`;
-                    usageWarning.classList.add('success');
-                    console.log(`[DEBUG] Post-payment completed: endpoint=${endpoint}, time=${new Date().toISOString()}`);
-                    await fetchTierData();
-                    window.history.replaceState({}, document.title, '/ui');
-                } catch (error) {
-                    console.error(`[ERROR] Post-payment redirect error: ${error.message}, endpoint=${endpoint}, time=${new Date().toISOString()}`);
-                    usageWarning.textContent = `Error completing ${tempId ? 'Diamond audit' : 'tier upgrade'}: ${error.message}`;
-                    usageWarning.classList.add('error');
-                    if (error.message.includes('User not found') || error.message.includes('Please login')) {
-                        console.log(`[DEBUG] Redirecting to /auth due to user not found, time=${new Date().toISOString()}`);
-                        window.location.href = '/auth?redirect_reason=post_payment';
-                    }
-                }
-            } else {
-                console.warn(`[DEBUG] No post-payment redirect params found: session_id=${sessionId}, username=${username}, time=${new Date().toISOString()}`);
+            console.log(`[DEBUG] Fetching ${endpoint}?${query}, time=${new Date().toISOString()}`);
+            const response = await fetch(`${endpoint}?${query}`, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
+                credentials: 'include'
+            });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || `Failed to complete ${tempId ? 'Diamond audit' : 'tier upgrade'}`);
             }
-        };
+            localStorage.setItem('username', username);
+            usageWarning.textContent = `Successfully completed ${tempId ? 'Diamond audit' : 'tier upgrade'}`;
+            usageWarning.classList.add('success');
+            console.log(`[DEBUG] Post-payment completed: endpoint=${endpoint}, time=${new Date().toISOString()}`);
+            await fetchTierData();
+            window.history.replaceState({}, document.title, '/ui');
+        } catch (error) {
+            console.error(`[ERROR] Post-payment redirect error: ${error.message}, endpoint=${endpoint}, time=${new Date().toISOString()}`);
+            usageWarning.textContent = `Error completing ${tempId ? 'Diamond audit' : 'tier upgrade'}: ${error.message}`;
+            usageWarning.classList.add('error');
+            if (error.message.includes('User not found') || error.message.includes('Please login')) {
+                console.log(`[DEBUG] Redirecting to /auth due to user not found, time=${new Date().toISOString()}`);
+                window.location.href = '/auth?redirect_reason=post_payment';
+            }
+        }
+    } else if (username) {
+        // CANCEL FLOW: Restore tier (ADDED)
+        console.log(`[DEBUG] Payment canceled. Restoring tier for ${username}, time=${new Date().toISOString()}`);
+        await fetchTierData();
+        window.history.replaceState({}, document.title, '/ui');
+    } else {
+        console.warn(`[DEBUG] No post-payment redirect params found: session_id=${sessionId}, username=${username}, time=${new Date().toISOString()}`);
+    }
+};
 
-        handlePostPaymentRedirect();
+handlePostPaymentRedirect();
 
         // Section8: Facet Preview
         const fetchFacetPreview = async (contractAddress, attempt = 1, maxAttempts = 3) => {
