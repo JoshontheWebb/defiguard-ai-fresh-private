@@ -563,13 +563,13 @@ handlePostPaymentRedirect();
                         </tr>
                     </thead>
                     <tbody>
-                        ${data.facets.map(facet => `
-                            <tr tabindex="0">
-                                <td>${facet.facetAddress}</td>
-                                <td>${facet.functionSelectors.join(', ')}</td>
-                                <td>${facet.functions.join(', ')}</td>
-                            </tr>
-                        `).join('')}
+                    ${data.facets.map(facet => `
+                        <tr tabindex="0">
+                            <td>${facet.facetAddress}</td>
+                            <td>${facet.functionSelectors.join(', ')}</td>
+                            <td>${facet.functions.join(', ')}</td>
+                        </tr>
+                    `).join('')}
                     </tbody>
                 `;
                 const heading = document.createElement('h3');
