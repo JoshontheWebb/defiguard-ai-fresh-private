@@ -958,13 +958,11 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
                 if os.path.exists(temp_path):
                     try:
                         with open(temp_path, "rb") as f:
-                            # FIX: Use Headers + content_type to fully mock UploadFile
                             from starlette.datastructures import Headers
                             file = UploadFile(
                                 filename="temp.sol",
                                 file=f,
-                                headers=Headers({"content-type": "application/octet-stream"}),
-                                content_type="application/octet-stream"
+                                headers=Headers({"content-type": "application/octet-stream"})
                             )
                             result = await audit_contract(file, None, username, db, None)
                         os.unlink(temp_path)
@@ -1002,7 +1000,6 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Webhook processing error for event {event['id']}: {str(e)}")
         return Response(status_code=500, content=f"Webhook processing failed: {str(e)}")
-
 ## Section 4.5: Audit Endpoints
 @app.post("/upload-temp")
 async def upload_temp(file: UploadFile = File(...), username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
