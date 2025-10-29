@@ -995,6 +995,7 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Webhook processing error for event {event['id']}: {str(e)}")
         return Response(status_code=500, content=f"Webhook processing failed: {str(e)}")
+
 async def process_pending_audit(db: Session, pending_id: str):
     try:
         pending_audit = db.query(PendingAudit).filter(PendingAudit.id == pending_id).first()
@@ -1008,8 +1009,9 @@ async def process_pending_audit(db: Session, pending_id: str):
             pending_audit.results = json.dumps({"error": "Temp file not found"})
             db.commit()
             return
+        file_size = os.path.getsize(temp_path)
         with open(temp_path, "rb") as f:
-            file = UploadFile(filename="temp.sol", file=f)
+            file = UploadFile(filename="temp.sol", file=f, size=file_size)
             result = await audit_contract(file, None, pending_audit.username, db, None)
         os.unlink(temp_path)
         pending_audit.results = json.dumps(result.dict())
@@ -1078,7 +1080,7 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(None
         logger.info(f"Preparing Diamond audit for {effective_username} with overage ${overage_cost / 100:.2f} for file size {file_size / 1024 / 1024:.2f}MB")
         if user.has_diamond:
             # Process audit directly if already subscribed
-            new_file = UploadFile(filename=file.filename, file=BytesIO(code_bytes))
+            new_file = UploadFile(filename=file.filename, file=BytesIO(code_bytes), size=file_size)
             result = await audit_contract(new_file, None, effective_username, db, request)
             # Report overage post-audit
             overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
@@ -1165,8 +1167,9 @@ async def complete_diamond_audit(session_id: str = Query(...), temp_id: str = Qu
             temp_path = os.path.join(DATA_DIR, "temp_files", f"{temp_id}.sol")
             if not os.path.exists(temp_path):
                 raise HTTPException(status_code=404, detail="Temporary file not found")
+            file_size = os.path.getsize(temp_path)
             with open(temp_path, "rb") as f:
-                file = UploadFile(filename="temp.sol", file=f)
+                file = UploadFile(filename="temp.sol", file=f, size=file_size)
                 result = await audit_contract(file, None, effective_username, db, request)
             os.unlink(temp_path)
             logger.info(f"Diamond audit completed for {effective_username} after payment, session: {request.session}")
