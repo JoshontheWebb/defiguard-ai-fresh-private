@@ -1119,7 +1119,7 @@ async def diamond_audit(file: UploadFile = File(...), username: str = Query(None
                 raise HTTPException(status_code=503, detail="Payment processing unavailable: Please set STRIPE_API_KEY in environment variables.")
             # DYNAMIC DOMAIN: Use current request URL
             base_url = f"{request.url.scheme}://{request.url.netloc}"
-            success_url = f"{base_url}/ui?upgrade=success&audit=complete" # ← ONLY CHANGE
+            success_url = f"{base_url}/ui?upgrade=success&audit=complete&pending_id={urllib.parse.quote(pending_id)}" # ← ONLY CHANGE
             cancel_url = f"{base_url}/ui"
             session = stripe.checkout.Session.create(
                 payment_method_types=["card"],

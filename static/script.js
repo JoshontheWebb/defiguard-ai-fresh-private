@@ -235,9 +235,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const fileSizeMB = file.size / (1024 * 1024);
             const isOver1MB = fileSizeMB > 1;
+            const hasDiamond = localStorage.getItem('diamond_feature') === 'true';
 
-            if (isOver1MB) {
-                // BLOCK "Audit Contract" for files >1MB
+            if (isOver1MB && !hasDiamond) {
+                // BLOCK "Audit Contract" for files >1MB without Diamond
                 AUDIT_CONTRACT_BUTTON.disabled = true;
                 AUDIT_CONTRACT_BUTTON.title = "Files >1MB require Diamond Audit with payment";
                 if (DIAMOND_AUDIT_BUTTON) DIAMOND_AUDIT_BUTTON.style.display = 'block';
@@ -248,13 +249,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     usageWarning.classList.remove('error');
                 }
             } else {
-                // ALLOW "Audit Contract" for files ≤1MB
+                // ALLOW "Audit Contract" for files ≤1MB or with Diamond
                 AUDIT_CONTRACT_BUTTON.disabled = false;
                 AUDIT_CONTRACT_BUTTON.title = "";
                 if (DIAMOND_AUDIT_BUTTON) DIAMOND_AUDIT_BUTTON.style.display = 'none';
                 if (usageWarning) {
                     usageWarning.textContent = '';
                     usageWarning.classList.remove('warning', 'error');
+                }
+                if (isOver1MB && hasDiamond) {
+                    calculateDiamondOverage(file);
+                    if (usageWarning) {
+                        usageWarning.textContent = `Diamond overage will be charged post-audit.`;
+                        usageWarning.classList.add('warning');
+                    }
                 }
             }
         });
@@ -459,7 +467,9 @@ const handlePostPaymentRedirect = async () => {
     const username = urlParams.get('username') || localStorage.getItem('username');
     const upgradeStatus = urlParams.get('upgrade');
     const message = urlParams.get('message');
-    console.log(`[DEBUG] Handling post-payment redirect: session_id=${sessionId}, tier=${tier}, has_diamond=${hasDiamond}, temp_id=${tempId}, username=${username}, upgrade=${upgradeStatus}, message=${message}, time=${new Date().toISOString()}`);
+    const audit = urlParams.get('audit');
+    const pendingId = urlParams.get('pending_id');
+    console.log(`[DEBUG] Handling post-payment redirect: session_id=${sessionId}, tier=${tier}, has_diamond=${hasDiamond}, temp_id=${tempId}, username=${username}, upgrade=${upgradeStatus}, message=${message}, audit=${audit}, pending_id=${pendingId}, time=${new Date().toISOString()}`);
 
     // PRESERVE USERNAME ON CANCEL (ADDED)
     if (username) {
@@ -473,6 +483,11 @@ const handlePostPaymentRedirect = async () => {
         console.log(`[DEBUG] Post-payment status: upgrade=${upgradeStatus}, message=${message}, time=${new Date().toISOString()}`);
         window.history.replaceState({}, document.title, '/ui');
         await fetchTierData();
+        return;
+    }
+
+    if (audit === 'complete' && pendingId) {
+        pollPendingStatus(pendingId);
         return;
     }
 
@@ -528,6 +543,54 @@ const handlePostPaymentRedirect = async () => {
 };
 
 handlePostPaymentRedirect();
+
+async function pollPendingStatus(pending_id) {
+    const pollInterval = 5000; // 5s
+    const maxPolls = 60; // 5 min
+    let polls = 0;
+    const interval = setInterval(async () => {
+        polls++;
+        try {
+            const response = await fetch(`/pending-status/${pending_id}`, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                credentials: 'include'
+            });
+            if (!response.ok) {
+                if (response.status === 404) {
+                    clearInterval(interval);
+                    usageWarning.textContent = 'Pending audit not found';
+                    usageWarning.classList.add('error');
+                    return;
+                }
+                throw new Error(`Failed to check pending status: ${response.status}`);
+            }
+            const data = await response.json();
+            if (data.status === 'complete') {
+                clearInterval(interval);
+                handleAuditResponse(data);
+                usageWarning.textContent = 'Diamond audit completed!';
+                usageWarning.classList.add('success');
+                console.log(`[DEBUG] Pending audit complete, results handled, time=${new Date().toISOString()}`);
+            } else if (data.status === 'processing') {
+                usageWarning.textContent = 'Processing Diamond audit...';
+                usageWarning.classList.add('warning');
+            } else {
+                usageWarning.textContent = `Audit status: ${data.status}`;
+            }
+            console.log(`[DEBUG] Poll ${polls}/${maxPolls} for pending_id=${pending_id}, status=${data.status || data}, time=${new Date().toISOString()}`);
+        } catch (error) {
+            console.error(`[ERROR] Poll error: ${error.message}, time=${new Date().toISOString()}`);
+            usageWarning.textContent = `Error checking audit status: ${error.message}`;
+            usageWarning.classList.add('error');
+        }
+        if (polls >= maxPolls) {
+            clearInterval(interval);
+            usageWarning.textContent = 'Audit taking longer than expected. Please check back later.';
+            usageWarning.classList.add('warning');
+        }
+    }, pollInterval);
+}
 
         // Section8: Facet Preview
         const fetchFacetPreview = async (contractAddress, attempt = 1, maxAttempts = 3) => {
@@ -753,20 +816,6 @@ const handleAuditResponse = (data) => {
     console.log('[DEBUG] handleAuditResponse called with data:', data);
     const report = data.report;
     const overageCost = data.overage_cost;
-    if (report.error) {
-        const errorMsg = report.error;
-        console.error(`Audit failed: ${errorMsg}`);
-        console.log(`Error: ${errorMsg}`);
-        usageWarning.textContent = `Error: ${errorMsg}`;
-        usageWarning.classList.add('error');
-        // Display in results dashboard
-        issuesBody.innerHTML = `<tr><td colspan="4">Error: ${errorMsg}</td></tr>`;
-        predictionsList.innerHTML = `<li>Error: ${errorMsg}</li>`;
-        recommendationsList.innerHTML = `<li>Error: ${errorMsg}</li>`;
-        fuzzingList.innerHTML = `<li>Error: ${errorMsg}</li>`;
-        remediationRoadmap.textContent = `Error: ${errorMsg}`;
-        return;
-    }
     riskScoreSpan.textContent = report.risk_score;
     riskScoreSpan.parentElement.setAttribute('aria-live', 'polite');
     issuesBody.innerHTML = '';
