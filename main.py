@@ -494,8 +494,6 @@ client, w3 = initialize_client()
 ## Section 3
 def run_echidna(temp_path):
     """Run Echidna fuzzing on the Solidity file and return results."""
-    config_path = None
-    output_path = None
     try:
         import subprocess
         subprocess.run(["docker", "--version"], check=True, capture_output=True, text=True)
@@ -525,22 +523,21 @@ def run_echidna(temp_path):
             echidna_results = result.stdout
         logger.info("Echidna fuzzing completed successfully")
         logger.debug(f"Echidna results: {echidna_results}")
-        return {"fuzzing_results": echidna_results or "No vulnerabilities found by Echidna"}
-    except subprocess.SubprocessError as e:
-        logger.error(f"Echidna fuzzing failed: {str(e)}")
-        return {"fuzzing_results": "Fuzzing skipped: Docker not available on this environment"}
+        return [{"vulnerability": "Fuzzing result", "description": echidna_results or "No vulnerabilities found by Echidna"}]
     except Exception as e:
-        logger.error(f"Echidna fuzzing unexpected error: {str(e)}")
-        return {"fuzzing_results": f"Fuzzing failed: {str(e)}"}
+        logger.error(f"Echidna fuzzing failed: {str(e)}")
+        return [{"vulnerability": "Fuzzing failed", "description": str(e)}]
     finally:
-        if config_path and os.path.exists(config_path):
+        if 'config_path' in locals() and config_path and os.path.exists(config_path):
             os.unlink(config_path)
-        if output_path and os.path.exists(output_path):
+        if 'output_path' in locals() and output_path and os.path.exists(output_path):
             os.unlink(output_path)
+
 def handle_tool_call(tool_call):
     if tool_call.function.name == "fetch_reg":
         return {"result": "Sample reg data: SEC FIT21 requires custody audits."}
     return {"error": "Unknown tool"}
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:8000", "https://defiguard-ai-fresh-private-test.onrender.com"],
@@ -548,6 +545,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 app.add_middleware(
     SessionMiddleware,
     secret_key=secrets.token_urlsafe(32),
@@ -1262,7 +1260,7 @@ async def get_facets(contract_address: str, request: Request, username: str = Qu
         logger.error(f"Facet endpoint error for {username or 'anonymous'}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
-# Main Audit Endpoint
+## Section 4.6 Main Audit Endpoint
 @app.post("/audit", response_model=AuditResponse)
 async def audit_contract(file: UploadFile = File(...), contract_address: str = None, username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
     await verify_csrf_token(request)
@@ -1292,6 +1290,9 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         logger.debug(f"Reading file for {effective_username}")
         code_bytes = await file.read()
         file_size = len(code_bytes)
+        if file_size == 0:
+            logger.error(f"Empty file uploaded for {effective_username}")
+            raise HTTPException(status_code=400, detail="Empty file uploaded")
         logger.info(f"File read successfully: {file_size} bytes for user {effective_username}")
         # Adjust button visibility logic (to be handled client-side via script.js)
         if file_size > 1024 * 1024: # Diamond size
@@ -1407,6 +1408,16 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         logger.error(f"Tier or usage check error for {effective_username}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Tier or usage check failed: {str(e)}")
     # Audit processing block — NO db.begin()
+    report = {
+        "risk_score": "N/A",
+        "issues": [],
+        "predictions": [],
+        "recommendations": [],
+        "remediation_roadmap": None,
+        "fuzzing_results": [],
+        "error": None
+    }
+    overage_cost = None
     try:
         logger.info(f"Starting audit process for {effective_username}")
         try:
@@ -1414,10 +1425,16 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             logger.debug(f"File decoded successfully for {effective_username}")
         except UnicodeDecodeError as decode_err:
             logger.error(f"File decoding failed for {effective_username}: {str(decode_err)}")
-            raise HTTPException(status_code=400, detail=f"File decoding failed: {str(decode_err)}")
-        if not code_str.strip():
+            report["error"] = f"Audit failed: File decoding failed: {str(decode_err)}"
+            return {"report": report, "risk_score": "N/A", "overage_cost": None}
+        if file_size == 0 or not code_str.strip():
             logger.error(f"Empty file uploaded for {effective_username}")
-            raise HTTPException(status_code=400, detail="Empty file uploaded.")
+            report["error"] = "Audit failed: Empty file uploaded"
+            return {"report": report, "risk_score": "N/A", "overage_cost": None}
+        # Check unbalanced quotes
+        if code_str.count('"') % 2 != 0 or code_str.count("'") % 2 != 0:
+            context = "Invalid Solidity code: unbalanced quotes"
+            logger.warning(f"Unbalanced quotes detected in code for {effective_username}")
         temp_dir = os.path.join(DATA_DIR, "temp_files")
         os.makedirs(temp_dir, exist_ok=True)
         with NamedTemporaryFile(delete=False, suffix=".sol", dir=temp_dir) as temp_file:
@@ -1426,6 +1443,9 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             if platform.system() == "Windows":
                 temp_path = temp_path.replace("/", "\\")
         logger.debug(f"Temporary file created for {effective_username}: {temp_path}")
+        if not os.path.exists(temp_path):
+            report["error"] = "Audit failed: Temporary file not found"
+            return {"report": report, "risk_score": "N/A", "overage_cost": None}
         # Slither analysis with API validation and Docker fallback
         try:
             logger.info(f"Starting Slither analysis for {effective_username}")
@@ -1446,7 +1466,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                                     chunk_file.write(chunk.encode("utf-8"))
                                 slither = Slither(chunk_file_path)
                                 if not hasattr(slither, 'detectors'):
-                                    raise HTTPException(status_code=500, detail="Slither API mismatch")
+                                    raise Exception("Slither API mismatch")
                                 for contract in slither.contracts:
                                     findings.extend(detector.detect() for detector in slither.detectors)
                                 os.unlink(chunk_file_path)
@@ -1454,86 +1474,36 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                         else:
                             slither = Slither(temp_path)
                             if not hasattr(slither, 'detectors'):
-                                raise HTTPException(status_code=500, detail="Slither API mismatch")
+                                raise Exception("Slither API mismatch")
                             return [finding for contract in slither.contracts for detector in slither.detectors for finding in detector.detect()]
                 except SlitherError as e:
                     logger.error(f"Slither analysis failed on attempt {attempt_number}: {str(e)}")
                     if attempt_number < 3:
                         raise
-                    raise HTTPException(status_code=400, detail=f"Slither analysis failed: {str(e)}")
+                    return []
                 except Exception as e:
                     logger.error(f"Unexpected Slither error on attempt {attempt_number}: {str(e)}")
-                    raise HTTPException(status_code=500, detail=f"Unexpected Slither error: {str(e)}")
+                    if attempt_number < 3:
+                        raise
+                    return []
             findings = analyze_slither(temp_path)
             context = json.dumps([finding.to_json() for finding in findings]).replace('"', '\"') if findings else "No static issues found"
             logger.debug(f"Slither findings for {effective_username}: {context[:200]}")
-        except HTTPException as e:
-            raise e
         except Exception as e:
+            context = f"Slither analysis failed: {str(e)}"
             logger.error(f"Slither processing failed for {effective_username}: {str(e)}")
-            context = f"Slither analysis failed: {str(e)}; proceeding with raw code"
         # Echidna fuzzing with Docker fallback
         ECHIDNA_TIMEOUT = 600 # Configurable timeout in seconds
         if usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["fuzzing"]:
             logger.info(f"Starting Echidna fuzzing for {effective_username}")
             try:
-                @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
-                def run_echidna(temp_path, attempt_number=1):
-                    logger.debug(f"Echidna retry attempt {attempt_number} for {effective_username}")
-                    try:
-                        try:
-                            import subprocess
-                            subprocess.run(["docker", "--version"], check=True, capture_output=True, text=True)
-                        except (subprocess.CalledProcessError, FileNotFoundError):
-                            logger.error(f"Docker not available on attempt {attempt_number} for {effective_username}")
-                            return {"fuzzing_results": "Fuzzing skipped: Docker not available on this environment"}
-                        if os.path.getsize(temp_path) > 20 * 1024 * 1024: # Increased to 20MB for Diamond
-                            logger.warning(f"File size {os.path.getsize(temp_path) / 1024 / 1024:.2f}MB exceeds Echidna limit, skipping")
-                            return {"fuzzing_results": "Fuzzing skipped: File size exceeds 20MB limit"}
-                        config_path = os.path.join(DATA_DIR, "echidna_config.yaml")
-                        output_path = os.path.join(DATA_DIR, "echidna_output")
-                        with open(config_path, "w") as f:
-                            f.write("format: text\ntestLimit: 10000\nseqLen: 100\ncoverage: true")
-                        cmd = [
-                            "docker", "run", "--rm",
-                            "-v", f"{DATA_DIR}:/app",
-                            "trailofbits/echidna",
-                            f"/app/{os.path.basename(temp_path)}",
-                            "--config", "/app/echidna_config.yaml",
-                            "--output", "/app/echidna_output"
-                        ]
-                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=ECHIDNA_TIMEOUT)
-                        if os.path.exists(output_path):
-                            with open(output_path, "r") as f:
-                                return {"fuzzing_results": f.read()}
-                        return {"fuzzing_results": result.stdout or "No vulnerabilities found by Echidna"}
-                    except subprocess.SubprocessError as e:
-                        logger.error(f"Echidna subprocess failed on attempt {attempt_number}: {str(e)}")
-                        if attempt_number < 3:
-                            raise
-                        return {"fuzzing_results": f"Fuzzing failed: {str(e)}"}
-                    except Exception as e:
-                        logger.error(f"Unexpected Echidna error on attempt {attempt_number}: {str(e)}")
-                        if attempt_number < 3:
-                            raise
-                        return {"fuzzing_results": f"Fuzzing failed: {str(e)}"}
-                    finally:
-                        if os.path.exists(config_path):
-                            os.unlink(config_path)
-                        if os.path.exists(output_path):
-                            os.unlink(output_path)
-                echidna_output = run_echidna(temp_path)
-                if isinstance(echidna_output["fuzzing_results"], str):
-                    fuzzing_results = [{"vulnerability": "Potential issue", "description": echidna_output["fuzzing_results"]}]
-                else:
-                    fuzzing_results = echidna_output["fuzzing_results"]
-                context += f"\nEchidna fuzzing results: {json.dumps(fuzzing_results)}"
-                logger.debug(f"Echidna fuzzing results for {effective_username}: {json.dumps(fuzzing_results)[:200]}")
+                fuzzing_results = run_echidna(temp_path)
             except Exception as e:
+                fuzzing_results = [{"vulnerability": "Fuzzing failed", "description": str(e)}]
                 logger.error(f"Echidna processing failed for {effective_username}: {str(e)}")
-                fuzzing_results = [{"vulnerability": "Fuzzing unavailable", "description": str(e)}]
         else:
             logger.info(f"Fuzzing skipped for {current_tier} tier for {effective_username}")
+            fuzzing_results = []
         # On-chain analysis if enabled
         if contract_address and not usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["onchain"]:
             logger.warning(f"On-chain analysis denied for {effective_username} (tier: {current_tier}, has_diamond: {user.has_diamond})")
@@ -1555,152 +1525,95 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 details += f" No deployed code found at {contract_address}."
         # Grok API processing — NO db.begin()
         GROK_TIMEOUT = 600 # 10 minutes
-        if user.has_diamond and file_size > 1024 * 1024:
-            chunks = [code_str[i:i + 500000] for i in range(0, len(code_str), 500000)]
-            results = []
-            if not os.getenv("GROK_API_KEY"):
-                logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
-                raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
-            for i, chunk in enumerate(chunks):
-                logger.info(f"Processing chunk {i+1}/{len(chunks)} for {effective_username}")
-                prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=chunk, details=details, tier="diamond")
-                try:
-                    # SYNC CALL IN THREAD + TIMEOUT
-                    response = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            client.chat.completions.create,
-                            model="grok-4",
-                            messages=[{"role": "user", "content": prompt}],
-                            temperature=0.0,
-                            response_format={
-                                "type": "json_schema",
-                                "json_schema": {"schema": AUDIT_SCHEMA},
-                                "strict": True
-                            }
-                        ),
-                        timeout=GROK_TIMEOUT
-                    )
-                    if response.choices and response.choices[0].message.content:
-                        try:
-                            results.append(json.loads(response.choices[0].message.content))
-                        except json.JSONDecodeError as e:
-                            logger.error(f"Invalid Grok response format for chunk {i+1} for {effective_username}: {str(e)}")
-                            raise HTTPException(status_code=500, detail=f"Invalid Grok response format: {str(e)}")
-                        logger.debug(f"Grok API response for chunk {i+1} for {effective_username}: {response.choices[0].message.content[:200]}")
-                    else:
-                        logger.error(f"No Grok API response for chunk {i+1} for {effective_username}")
-                        raise HTTPException(status_code=500, detail=f"No response from Grok API for chunk {i+1}")
-                except asyncio.TimeoutError:
-                    logger.error(f"Grok API timeout for chunk {i+1} for {effective_username}")
-                    raise HTTPException(status_code=504, detail="Grok API timeout: Audit took too long")
-                except Exception as e:
-                    logger.error(f"Grok API call failed for {effective_username}, chunk {i+1}: {str(e)}")
-                    raise HTTPException(status_code=500, detail=f"Grok API call failed for chunk {i+1}: {str(e)}")
-            aggregated = {
-                "risk_score": sum(float(r["risk_score"]) for r in results) / len(results) if results else 0,
-                "issues": [issue for r in results for issue in r["issues"]],
-                "predictions": [pred for r in results for pred in r["predictions"]],
-                "recommendations": [rec for r in results for rec in r["recommendations"]],
-                "remediation_roadmap": results[0].get("remediation_roadmap", "N/A") if results else "N/A",
-                "fuzzing_results": fuzzing_results
-            }
-            # MANUAL COMMIT AFTER HISTORY + OVERAGE
-            user = db.query(User).filter(User.username == effective_username).first()
-            if user:
-                history = json.loads(user.audit_history)
-                history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": aggregated["risk_score"]})
-                user.audit_history = json.dumps(history)
-                overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
-                if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
-                    try:
-                        stripe.SubscriptionItem.create_usage_record(
-                            user.stripe_subscription_item_id,
-                            quantity=int(overage_mb),
-                            timestamp=int(time.time()),
-                            action="increment"
-                        )
-                        logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
-                    except Exception as e:
-                        logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
-            db.commit() # <-- MANUAL COMMIT
-            return {"report": aggregated, "risk_score": str(aggregated["risk_score"]), "overage_cost": overage_cost}
-        else:
+        try:
             logger.info(f"Calling Grok API for {effective_username} with tier {current_tier}")
             if not os.getenv("GROK_API_KEY"):
                 logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
-                raise HTTPException(status_code=503, detail="Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
+                raise Exception("Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
             prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=code_str, details=details, tier="diamond" if user.has_diamond else current_tier)
-            try:
-                # SYNC CALL IN THREAD + TIMEOUT
-                response = await asyncio.wait_for(
-                    asyncio.to_thread(
-                        client.chat.completions.create,
-                        model="grok-4",
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=0.0,
-                        response_format={
-                            "type": "json_schema",
-                            "json_schema": {"schema": AUDIT_SCHEMA},
-                            "strict": True
-                        }
-                    ),
-                    timeout=GROK_TIMEOUT
-                )
-                logger.info(f"Grok API response received for {effective_username}")
-                if response.choices and response.choices[0].message.content:
-                    raw_response = response.choices[0].message.content
-                    logger.debug(f"Raw Grok Response for {effective_username}: {raw_response[:200]}")
-                    with open(os.path.join(DATA_DIR, "debug.log"), "a") as f:
-                        f.write(f"[{timestamp}] DEBUG: Raw Grok Response: {raw_response}\n")
-                        f.flush()
-                    try:
-                        audit_json = json.loads(raw_response)
-                    except json.JSONDecodeError as e:
-                        logger.error(f"Invalid Grok response format for {effective_username}: {str(e)}")
-                        raise HTTPException(status_code=500, detail=f"Invalid Grok response format: {str(e)}")
-                    if user.has_diamond:
-                        audit_json["remediation_roadmap"] = "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review."
-                    audit_json["fuzzing_results"] = fuzzing_results
-                    # MANUAL COMMIT AFTER HISTORY + OVERAGE
-                    user = db.query(User).filter(User.username == effective_username).first()
-                    if user:
-                        history = json.loads(user.audit_history)
-                        history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": audit_json["risk_score"]})
-                        user.audit_history = json.dumps(history)
-                        overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
-                        if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
-                            try:
-                                stripe.SubscriptionItem.create_usage_record(
-                                    user.stripe_subscription_item_id,
-                                    quantity=int(overage_mb),
-                                    timestamp=int(time.time()),
-                                    action="increment"
-                                )
-                                logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
-                            except Exception as e:
-                                logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
-                    db.commit() # <-- MANUAL COMMIT
-                    return {"report": audit_json, "risk_score": str(audit_json.get("risk_score", "N/A")), "overage_cost": overage_cost}
-                else:
-                    logger.error(f"No Grok API response for {effective_username}")
-                    raise HTTPException(status_code=500, detail="No response from Grok API")
-            except asyncio.TimeoutError:
-                logger.error(f"Grok API timeout for {effective_username}")
-                raise HTTPException(status_code=504, detail="Grok API timeout: Audit took too long")
-            except Exception as e:
-                logger.error(f"Grok API call failed for {effective_username}: {str(e)}")
-                raise HTTPException(status_code=500, detail=f"Grok API call failed: {str(e)}")
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    client.chat.completions.create,
+                    model="grok-4",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {"schema": AUDIT_SCHEMA},
+                        "strict": True
+                    }
+                ),
+                timeout=GROK_TIMEOUT
+            )
+            logger.info(f"Grok API response received for {effective_username}")
+            if response.choices and response.choices[0].message.content:
+                raw_response = response.choices[0].message.content
+                logger.debug(f"Raw Grok Response for {effective_username}: {raw_response[:200]}")
+                with open(os.path.join(DATA_DIR, "debug.log"), "a") as f:
+                    f.write(f"[{timestamp}] DEBUG: Raw Grok Response: {raw_response}\n")
+                    f.flush()
+                try:
+                    audit_json = json.loads(raw_response)
+                except json.JSONDecodeError as e:
+                    logger.error(f"Invalid Grok response format for {effective_username}: {str(e)}")
+                    raise Exception(f"Invalid Grok response format: {str(e)}")
+                if user.has_diamond:
+                    audit_json["remediation_roadmap"] = audit_json.get("remediation_roadmap", "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review.")
+                audit_json["fuzzing_results"] = fuzzing_results
+                report = audit_json
+            else:
+                logger.error(f"No Grok API response for {effective_username}")
+                raise Exception("No response from Grok API")
+        except Exception as e:
+            logger.error(f"Grok analysis failed for {effective_username}: {str(e)}")
+            report["error"] = f"Grok analysis failed: {str(e)}"
     except Exception as e:
-        db.rollback()
         logger.error(f"Audit processing error for {effective_username}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Audit processing failed: {str(e)}")
+        report["error"] = f"Audit failed: {str(e)}"
     finally:
-        if temp_path and os.path.exists(temp_path):
-            os.unlink(temp_path)
-            logger.debug(f"Temporary file deleted: {temp_path} for {effective_username}")
+        # Overage, history, commit, delete, increment, reset—try/except log continue
+        try:
+            overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
+            overage_cost = usage_tracker.calculate_diamond_overage(file_size) / 100 if overage_mb > 0 else None
+            if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
+                stripe.SubscriptionItem.create_usage_record(
+                    user.stripe_subscription_item_id,
+                    quantity=int(overage_mb),
+                    timestamp=int(time.time()),
+                    action="increment"
+                )
+                logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
+        except Exception as e:
+            logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
+        try:
+            history = json.loads(user.audit_history)
+            history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": report["risk_score"]})
+            user.audit_history = json.dumps(history)
+        except Exception as e:
+            logger.error(f"Failed to update audit history for {effective_username}: {str(e)}")
+        try:
+            db.commit()
+        except Exception as e:
+            logger.error(f"Failed to commit DB for {effective_username}: {str(e)}")
+        try:
+            if temp_path and os.path.exists(temp_path):
+                os.unlink(temp_path)
+                logger.debug(f"Temporary file deleted: {temp_path} for {effective_username}")
+        except Exception as e:
+            logger.error(f"Failed to delete temp file for {effective_username}: {str(e)}")
+        try:
+            usage_tracker.increment(file_size, effective_username, db, commit=True)
+        except Exception as e:
+            logger.error(f"Failed to increment usage for {effective_username}: {str(e)}")
+        try:
+            user.last_reset = datetime.now()
+            db.commit()
+        except Exception as e:
+            logger.error(f"Failed to update last_reset for {effective_username}: {str(e)}")
         if (datetime.now() - audit_start_time).total_seconds() > 6 * 3600:
             logger.warning(f"Audit exceeded 6 hours for {effective_username} — resetting usage")
             usage_tracker.reset_usage(effective_username, db)
+        return {"report": report, "risk_score": report["risk_score"], "overage_cost": overage_cost}
 ## Section 4.6: Main Entry Point
 if __name__ == "__main__":
     import uvicorn

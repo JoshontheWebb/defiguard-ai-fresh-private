@@ -753,6 +753,20 @@ const handleAuditResponse = (data) => {
     console.log('[DEBUG] handleAuditResponse called with data:', data);
     const report = data.report;
     const overageCost = data.overage_cost;
+    if (report.error) {
+        const errorMsg = report.error;
+        console.error(`Audit failed: ${errorMsg}`);
+        console.log(`Error: ${errorMsg}`);
+        usageWarning.textContent = `Error: ${errorMsg}`;
+        usageWarning.classList.add('error');
+        // Display in results dashboard
+        issuesBody.innerHTML = `<tr><td colspan="4">Error: ${errorMsg}</td></tr>`;
+        predictionsList.innerHTML = `<li>Error: ${errorMsg}</li>`;
+        recommendationsList.innerHTML = `<li>Error: ${errorMsg}</li>`;
+        fuzzingList.innerHTML = `<li>Error: ${errorMsg}</li>`;
+        remediationRoadmap.textContent = `Error: ${errorMsg}`;
+        return;
+    }
     riskScoreSpan.textContent = report.risk_score;
     riskScoreSpan.parentElement.setAttribute('aria-live', 'polite');
     issuesBody.innerHTML = '';
