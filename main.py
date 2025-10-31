@@ -1456,7 +1456,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     with open(temp_path, "r", encoding="utf-8") as f:
                         code = f.read()
                         if len(code) > chunk_size:
-                            chunks = [code_str[i:i + 200000] for i in range(0, len(code_str), 200000)]
+                            chunks = [code_str[i:i + 100000] for i in range(0, len(code_str), 100000)]
                             findings = []
                             for i, chunk in enumerate(chunks):
                                 if len(chunk.strip()) == 0:
@@ -1489,9 +1489,18 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             findings = analyze_slither(temp_path)
             context = json.dumps([finding.to_json() for finding in findings]).replace('"', '\"') if findings else "No static issues found"
             logger.debug(f"Slither findings for {effective_username}: {context[:200]}")
-        except Exception as e:
-            context = f"Slither analysis failed: {str(e)}"
-            logger.error(f"Slither processing failed for {effective_username}: {str(e)}")
+        context = ""
+# ... (existing Slither code)
+except Exception as e:
+    context = f"Slither analysis failed: {str(e)}"
+    logger.error(f"Slither processing failed for {effective_username}: {str(e)}")
+
+def summarize_context(context):
+    if len(context) > 10000:
+        return context[:10000] + " ... (summarized top findings)"
+    return context
+
+context = summarize_context(context)
         # Echidna fuzzing with Docker fallback
         ECHIDNA_TIMEOUT = 600 # Configurable timeout in seconds
         if usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["fuzzing"]:
