@@ -540,7 +540,7 @@ const handlePostPaymentRedirect = async () => {
     } else {
         console.warn(`[DEBUG] No post-payment redirect params found: session_id=${sessionId}, username=${username}, time=${new Date().toISOString()}`);
     }
-};
+}
 
 handlePostPaymentRedirect();
 
@@ -594,6 +594,10 @@ async function pollPendingStatus(pending_id) {
 
         // Section8: Facet Preview
         const fetchFacetPreview = async (contractAddress, attempt = 1, maxAttempts = 3) => {
+            if (!contractAddress || contractAddress === 'undefined') {
+                console.error(`[ERROR] Invalid contract address: ${contractAddress}, skipping fetch, time=${new Date().toISOString()}`);
+                return;
+            }
             facetWell.textContent = '';
             const loadingDiv = document.createElement('div');
             loadingDiv.className = 'facet-loading';
@@ -790,8 +794,13 @@ diamondAuditButton?.addEventListener('click', () => {
                 throw new Error(errorData.detail || 'Diamond audit request failed');
             }
             const data = await response.json();
-            console.log(`[DEBUG] Redirecting to Stripe for Diamond audit, session_url=${data.session_url}, time=${new Date().toISOString()}`);
-            window.location.href = data.session_url;
+            if (data.session_url) {
+                console.log(`[DEBUG] Redirecting to Stripe for Diamond audit, session_url=${data.session_url}, time=${new Date().toISOString()}`);
+                window.location.href = data.session_url;
+            } else {
+                handleAuditResponse(data);
+                console.log(`[DEBUG] Direct Diamond audit response handled, time=${new Date().toISOString()}`);
+            }
         } catch (error) {
             console.error(`[ERROR] Diamond audit error: ${error.message}, time=${new Date().toISOString()}`);
             usageWarning.textContent = `Error initiating Diamond audit: ${error.message}`;
@@ -816,6 +825,20 @@ const handleAuditResponse = (data) => {
     console.log('[DEBUG] handleAuditResponse called with data:', data);
     const report = data.report;
     const overageCost = data.overage_cost;
+    if (report.error) {
+        const errorMsg = report.error;
+        console.error(`Audit failed: ${errorMsg}`);
+        console.log(`Error: ${errorMsg}`);
+        usageWarning.textContent = `Error: ${errorMsg}`;
+        usageWarning.classList.add('error');
+        // Display in results dashboard
+        issuesBody.innerHTML = `<tr><td colspan="4">Error: ${errorMsg}</td></tr>`;
+        predictionsList.innerHTML = `<li>Error: ${errorMsg}</li>`;
+        recommendationsList.innerHTML = `<li>Error: ${errorMsg}</li>`;
+        fuzzingList.innerHTML = `<li>Error: ${errorMsg}</li>`;
+        remediationRoadmap.textContent = `Error: ${errorMsg}`;
+        return;
+    }
     riskScoreSpan.textContent = report.risk_score;
     riskScoreSpan.parentElement.setAttribute('aria-live', 'polite');
     issuesBody.innerHTML = '';
