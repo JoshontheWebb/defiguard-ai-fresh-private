@@ -1456,7 +1456,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     with open(temp_path, "r", encoding="utf-8") as f:
                         code = f.read()
                         if len(code) > chunk_size:
-                            chunks = [code[i:i + chunk_size] for i in range(0, len(code), chunk_size)]
+                            chunks = [code_str[i:i + 200000] for i in range(0, len(code_str), 200000)]
                             findings = []
                             for i, chunk in enumerate(chunks):
                                 if len(chunk.strip()) == 0:
