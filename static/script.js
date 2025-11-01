@@ -1032,51 +1032,52 @@ const handleSubmit = (event) => {
             }
             const formData = new FormData(auditForm);
             formData.append('csrf_token', token);
-            try {
-                console.log(`[DEBUG] Sending /audit request for username=${username}, time=${new Date().toISOString()}`);
-                const response = await fetch(`/audit?username=${encodeURIComponent(username)}`, {
-                    method: 'POST',
-                    headers: { 'X-CSRF-Token': token },
-                    body: formData,
-                    credentials: 'include'
-                });
-                console.log(`[DEBUG] /audit response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
-                if (!response.ok) {
-                    const text = await response.text();
-                    console.error(`[ERROR] /audit failed: status=${response.status}, response_text=${text}, time=${new Date().toISOString()}`);
-                    let errorData;
-                    try {
-                        errorData = JSON.parse(text);
-                    } catch {
-                        errorData = { detail: text };
-                    }
-                    if (errorData.session_url) {
-                        console.log(`[DEBUG] Redirecting to Stripe for audit limit/file size upgrade, session_url=${errorData.session_url}, time=${new Date().toISOString()}`);
-                        window.location.href = errorData.session_url;
-                        return;
-                    }
-                    throw new Error(errorData.detail || `Audit request failed: ${response.status}`);
-                }
-                const text = await response.text();
-                console.log('[DEBUG] /audit raw response:', text);
-                let data;
-                try {
-                    data = JSON.parse(text);
-                } catch (parseError) {
-                    console.error('[ERROR] Failed to parse /audit response as JSON:', parseError.message, 'raw:', text);
-                    throw new Error('Invalid response from server');
-                }
-                console.log('[DEBUG] Parsed audit response:', data);
-                handleAuditResponse(data);
-                await fetchTierData();
-            } catch (error) {
-                console.error(`[ERROR] Audit error: ${error.message}, time=${new Date().toISOString()}`);
-                if (loading) loading.classList.remove('show');
-                if (usageWarning) usageWarning.textContent = `Error initiating audit: ${error.message}`;
-                if (usageWarning) usageWarning.classList.add('error');
-            } finally {
-                loading.classList.remove('show');
-            }
+            // Inside the setTimeout in handleSubmit
+try {
+    console.log(`[DEBUG] Sending /audit request for username=${username}, time=${new Date().toISOString()}`);
+    const response = await fetch(`/audit?username=${encodeURIComponent(username)}`, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': token },
+        body: formData,
+        credentials: 'include'
+    });
+    console.log(`[DEBUG] /audit response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
+    if (!response.ok) {
+        const text = await response.text();
+        console.error(`[ERROR] /audit failed: status=${response.status}, response_text=${text}, time=${new Date().toISOString()}`);
+        let errorData;
+        try {
+            errorData = JSON.parse(text);
+        } catch {
+            errorData = { detail: text };
+        }
+        if (errorData.session_url) {
+            console.log(`[DEBUG] Redirecting to Stripe for audit limit/file size upgrade, session_url=${errorData.session_url}, time=${new Date().toISOString()}`);
+            window.location.href = errorData.session_url;
+            return;
+        }
+        throw new Error(errorData.detail || `Audit request failed: ${response.status}`);
+    }
+    const text = await response.text();
+    console.log('[DEBUG] /audit raw response:', text);
+    let data;
+    try {
+        data = JSON.parse(text);
+    } catch (parseError) {
+        console.error('[ERROR] Failed to parse /audit response as JSON:', parseError.message, 'raw:', text);
+        throw new Error('Invalid response from server');
+    }
+    console.log('[DEBUG] Parsed audit response:', data);
+    handleAuditResponse(data);
+    await fetchTierData();
+} catch (error) {
+    console.error(`[ERROR] Audit error: ${error.message}, time=${new Date().toISOString()}`);
+    if (loading) loading.classList.remove('show');
+    if (usageWarning) usageWarning.textContent = `Error initiating audit: ${error.message}`;
+    if (usageWarning) usageWarning.classList.add('error');
+} finally {
+    loading.classList.remove('show');
+}
         }, 0); // Queue fetch
     });
 };
