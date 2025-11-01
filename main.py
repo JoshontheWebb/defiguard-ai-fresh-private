@@ -1446,7 +1446,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         if not os.path.exists(temp_path):
             report["error"] = "Audit failed: Temporary file not found"
             return {"report": report, "risk_score": "N/A", "overage_cost": None}
-        # Slither analysis with API validation and Docker fallback
+                # Slither analysis with API validation and Docker fallback
         try:
             logger.info(f"Starting Slither analysis for {effective_username}")
             @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
@@ -1456,7 +1456,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                     with open(temp_path, "r", encoding="utf-8") as f:
                         code = f.read()
                         if len(code) > chunk_size:
-                            chunks = [code_str[i:i + 100000] for i in range(0, len(code_str), 100000)]
+                            chunks = [code[i:i + 80000] for i in range(0, len(code), 80000)]
                             findings = []
                             for i, chunk in enumerate(chunks):
                                 if len(chunk.strip()) == 0:
@@ -1489,15 +1489,13 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             findings = analyze_slither(temp_path)
             context = json.dumps([finding.to_json() for finding in findings]).replace('"', '\"') if findings else "No static issues found"
             logger.debug(f"Slither findings for {effective_username}: {context[:200]}")
-        context = ""
-# ... (existing Slither code)
-except Exception as e:
-    context = f"Slither analysis failed: {str(e)}"
-    logger.error(f"Slither processing failed for {effective_username}: {str(e)}")
+        except Exception as e:
+            context = f"Slither analysis failed: {str(e)}"
+            logger.error(f"Slither processing failed for {effective_username}: {str(e)}")
 
 def summarize_context(context):
-    if len(context) > 10000:
-        return context[:10000] + " ... (summarized top findings)"
+    if len(context) > 5000:
+        return context[:5000] + " ... (summarized top findings)"
     return context
 
 context = summarize_context(context)

@@ -680,8 +680,8 @@ async function pollPendingStatus(pending_id) {
         };
 
         contractAddressInput?.addEventListener('input', (e) => {
-            const address = e.target.value.trim();
-            if (address && address.match(/^0x[a-fA-F0-9]{40}$/)) {
+            const address = e.targif (address && address.match(/^0x[a-fA-F0-9]{40}$/)) {et.value.trim();
+            
                 fetchFacetPreview(address);
             } else {
                 facetWell.textContent = '';
