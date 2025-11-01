@@ -1446,7 +1446,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         if not os.path.exists(temp_path):
             report["error"] = "Audit failed: Temporary file not found"
             return {"report": report, "risk_score": "N/A", "overage_cost": None}
-                        # Slither analysis with API validation and Docker fallback
+                                # Slither analysis with API validation and Docker fallback
         try:
             logger.info(f"Starting Slither analysis for {effective_username}")
             @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
@@ -1497,8 +1497,6 @@ def summarize_context(context):
     if len(context) > 5000:
         return context[:5000] + " ... (summarized top findings)"
     return context
-
-context = summarize_context(context)
 
 context = summarize_context(context)
         # Echidna fuzzing with Docker fallback
