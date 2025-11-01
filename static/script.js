@@ -20,6 +20,7 @@ function waitForDOM(selectors, callback, maxAttempts = 20, interval = 300) {
     };
     check();
 }
+
 document.addEventListener('DOMContentLoaded', () => {
     // Early initialization for hamburger with retry
     const initHamburger = (attempt = 1, maxAttempts = 5, interval = 500) => {
@@ -71,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     initHamburger();
+
     // Section2: CSRF Token Management
     const fetchCsrfToken = async (attempt = 1, maxAttempts = 3) => {
         try {
@@ -102,6 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return null;
         }
     };
+
     const withCsrfToken = async (fetchFn) => {
         await new Promise(resolve => setTimeout(resolve, 100));
         let token;
@@ -114,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return fetchFn(token);
     };
+
     fetchCsrfToken().catch(error => {
         const messageDiv = document.querySelector('.usage-warning');
         if (messageDiv) {
@@ -122,6 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
             messageDiv.textContent = `Error setting up secure connection: ${error.message}`;
         }
     });
+
     // Section3: DOM Initialization
     waitForDOM({
         auditForm: '.audit-section form',
@@ -1039,7 +1044,12 @@ const handleSubmit = (event) => {
                 if (!response.ok) {
                     const text = await response.text();
                     console.error(`[ERROR] /audit failed: status=${response.status}, response_text=${text}, time=${new Date().toISOString()}`);
-                    const errorData = text ? JSON.parse(text) : {};
+                    let errorData;
+                    try {
+                        errorData = JSON.parse(text);
+                    } catch {
+                        errorData = { detail: text };
+                    }
                     if (errorData.session_url) {
                         console.log(`[DEBUG] Redirecting to Stripe for audit limit/file size upgrade, session_url=${errorData.session_url}, time=${new Date().toISOString()}`);
                         window.location.href = errorData.session_url;
