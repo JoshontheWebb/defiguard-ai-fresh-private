@@ -20,7 +20,6 @@ function waitForDOM(selectors, callback, maxAttempts = 20, interval = 300) {
     };
     check();
 }
-
 document.addEventListener('DOMContentLoaded', () => {
     // Early initialization for hamburger with retry
     const initHamburger = (attempt = 1, maxAttempts = 5, interval = 500) => {
@@ -72,7 +71,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     initHamburger();
-
     // Section2: CSRF Token Management
     const fetchCsrfToken = async (attempt = 1, maxAttempts = 3) => {
         try {
@@ -104,7 +102,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return null;
         }
     };
-
     const withCsrfToken = async (fetchFn) => {
         await new Promise(resolve => setTimeout(resolve, 100));
         let token;
@@ -117,7 +114,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return fetchFn(token);
     };
-
     fetchCsrfToken().catch(error => {
         const messageDiv = document.querySelector('.usage-warning');
         if (messageDiv) {
@@ -126,7 +122,6 @@ document.addEventListener('DOMContentLoaded', () => {
             messageDiv.textContent = `Error setting up secure connection: ${error.message}`;
         }
     });
-
     // Section3: DOM Initialization
     waitForDOM({
         auditForm: '.audit-section form',
@@ -154,12 +149,11 @@ document.addEventListener('DOMContentLoaded', () => {
         apiKeySpan: '#api-key-value',
         logoutSidebar: '#logout-sidebar',
         authStatus: '#auth-status',
-        pendingMessage: '#pending-message'  // Added for pending audit status
+        pendingMessage: '#pending-message' // Added for pending audit status
     }, ({ auditForm, loading, resultsDiv, riskScoreSpan, issuesBody, predictionsList, recommendationsList, fuzzingList, remediationRoadmap, usageWarning, tierInfo, tierDescription, sizeLimit, features, upgradeLink, tierSelect, tierSwitchButton, contractAddressInput, facetWell, downloadReportButton, diamondAuditButton, customReportInput, apiKeySpan, logoutSidebar, authStatus, pendingMessage }) => {
         let maxFileSize = null;
         let auditCount = 0;
         let auditLimit = 3;
-
         // Ensure .audit-section is position: relative for .loading overlay
         const auditSection = document.querySelector('.audit-section');
         if (auditSection && getComputedStyle(auditSection).position !== 'relative') {
@@ -167,7 +161,6 @@ document.addEventListener('DOMContentLoaded', () => {
             auditSection.style.overflow = 'hidden';
             console.log('[DEBUG] Applied position: relative to .audit-section for spinner overlay');
         }
-
         // Create spinner once after DOM is ready
         if (loading && !loading.querySelector('.spinner')) {
             const spinner = document.createElement('div');
@@ -178,12 +171,10 @@ document.addEventListener('DOMContentLoaded', () => {
             loading.appendChild(loadingText);
             console.log('[DEBUG] Audit spinner created once in DOM, time=' + new Date().toISOString());
         }
-
         // Section4: File and Pricing Logic
         const AUDIT_CONTRACT_BUTTON = document.querySelector('button[type="submit"]');
         const DIAMOND_AUDIT_BUTTON = document.getElementById('diamond-audit');
         const DIAMOND_PRICE = document.getElementById('diamond-price');
-
         const calculateDiamondOverage = (file) => {
             if (!file) {
                 if (DIAMOND_PRICE) DIAMOND_PRICE.style.display = 'none';
@@ -219,7 +210,6 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log(`[DEBUG] Diamond overage calculated: $${overageCost.toFixed(2)} for ${size} bytes, time=${new Date().toISOString()}`);
             return overageCost;
         };
-
         document.getElementById('file')?.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (!file) {
@@ -232,11 +222,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 return;
             }
-
             const fileSizeMB = file.size / (1024 * 1024);
             const isOver1MB = fileSizeMB > 1;
             const hasDiamond = localStorage.getItem('diamond_feature') === 'true';
-
             if (isOver1MB && !hasDiamond) {
                 // BLOCK "Audit Contract" for files >1MB without Diamond
                 AUDIT_CONTRACT_BUTTON.disabled = true;
@@ -266,7 +254,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         });
-
         // Section6: Authentication
         const updateAuthStatus = () => {
             const username = localStorage.getItem('username');
@@ -284,12 +271,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error('[ERROR] #auth-status not found in DOM');
             }
         };
-
         window.addEventListener('storage', () => {
             console.log('[DEBUG] Storage event detected, re-running updateAuthStatus');
             updateAuthStatus();
         });
-
         let authCheckAttempts = 0;
         const maxAuthCheckAttempts = 60;
         const authCheckInterval = setInterval(() => {
@@ -301,22 +286,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log('[DEBUG] Stopped periodic auth check');
             }
         }, 500);
-
         window.addEventListener('authUpdate', () => {
             console.log('[DEBUG] Custom authUpdate event detected, re-running updateAuthStatus');
             updateAuthStatus();
         });
-
         setTimeout(() => {
             console.log(`[DEBUG] Extended auth check after load, username=${localStorage.getItem('username')}, time=${new Date().toISOString()}`);
             updateAuthStatus();
         }, 5000);
-
         setTimeout(() => {
             console.log(`[DEBUG] Persistent auth check, username=${localStorage.getItem('username')}, time=${new Date().toISOString()}`);
             updateAuthStatus();
         }, 10000);
-
         if (logoutSidebar) {
             logoutSidebar.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -329,7 +310,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             console.error('[ERROR] #logout-sidebar not found in DOM');
         }
-
         // Section9: Tier Management
 const fetchTierData = async () => {
     try {
@@ -391,7 +371,6 @@ const fetchTierData = async () => {
         if (usageWarning) usageWarning.classList.add('error');
     }
 };
-
 tierSwitchButton.addEventListener('click', () => {
     withCsrfToken(async (token) => {
         if (!token) {
@@ -456,7 +435,6 @@ tierSwitchButton.addEventListener('click', () => {
         }
     });
 });
-
        // Section7: Payment Handling
 const handlePostPaymentRedirect = async () => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -470,13 +448,11 @@ const handlePostPaymentRedirect = async () => {
     const audit = urlParams.get('audit');
     const pendingId = urlParams.get('pending_id');
     console.log(`[DEBUG] Handling post-payment redirect: session_id=${sessionId}, tier=${tier}, has_diamond=${hasDiamond}, temp_id=${tempId}, username=${username}, upgrade=${upgradeStatus}, message=${message}, audit=${audit}, pending_id=${pendingId}, time=${new Date().toISOString()}`);
-
     // PRESERVE USERNAME ON CANCEL (ADDED)
     if (username) {
         localStorage.setItem('username', username);
         console.log(`[DEBUG] Username preserved on redirect: ${username}`);
     }
-
     if (upgradeStatus) {
         usageWarning.textContent = message || (upgradeStatus === 'success' ? 'Tier upgrade completed' : 'Tier upgrade failed');
         usageWarning.classList.add(upgradeStatus === 'success' ? 'success' : 'error');
@@ -485,12 +461,10 @@ const handlePostPaymentRedirect = async () => {
         await fetchTierData();
         return;
     }
-
     if (audit === 'complete' && pendingId) {
         pollPendingStatus(pendingId);
         return;
     }
-
     if (sessionId && username) {
         try {
             let endpoint = '';
@@ -541,9 +515,7 @@ const handlePostPaymentRedirect = async () => {
         console.warn(`[DEBUG] No post-payment redirect params found: session_id=${sessionId}, username=${username}, time=${new Date().toISOString()}`);
     }
 }
-
 handlePostPaymentRedirect();
-
 async function pollPendingStatus(pending_id) {
     const pollInterval = 5000; // 5s
     const maxPolls = 60; // 5 min
@@ -591,7 +563,6 @@ async function pollPendingStatus(pending_id) {
         }
     }, pollInterval);
 }
-
         // Section8: Facet Preview
         const fetchFacetPreview = async (contractAddress, attempt = 1, maxAttempts = 3) => {
             if (!contractAddress || contractAddress === 'undefined') {
@@ -678,16 +649,14 @@ async function pollPendingStatus(pending_id) {
                 }
             }
         };
-
         contractAddressInput?.addEventListener('input', (e) => {
-            const address = e.targif (address && address.match(/^0x[a-fA-F0-9]{40}$/)) {et.value.trim();
-            
+            const address = e.target.value.trim();
+            if (address && address.match(/^0x[a-fA-F0-9]{40}$/)) {
                 fetchFacetPreview(address);
             } else {
                 facetWell.textContent = '';
             }
         });
-
         tierSwitchButton?.addEventListener('click', () => {
             withCsrfToken(async (token) => {
                 if (!token) {
@@ -752,7 +721,6 @@ async function pollPendingStatus(pending_id) {
                 }
             });
         });
-
         // Section10: Diamond Audit
 diamondAuditButton?.addEventListener('click', () => {
     withCsrfToken(async (token) => {
@@ -808,7 +776,6 @@ diamondAuditButton?.addEventListener('click', () => {
         }
     });
 });
-
         // Section11: Audit Handling
 // Create spinner once after DOM is ready
 if (loading && !loading.querySelector('.spinner')) {
@@ -820,7 +787,6 @@ if (loading && !loading.querySelector('.spinner')) {
     loading.appendChild(loadingText);
     console.log('[DEBUG] Audit spinner created once in DOM, time=' + new Date().toISOString());
 }
-
 const handleAuditResponse = (data) => {
     console.log('[DEBUG] handleAuditResponse called with data:', data);
     const report = data.report;
@@ -905,7 +871,6 @@ const handleAuditResponse = (data) => {
     resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
     console.log(`[DEBUG] Audit results displayed and scrolled to, risk_score=${report.risk_score}, overage_cost=${overageCost}, time=${new Date().toISOString()}`);
 };
-
 const handleSubmit = (event) => {
     event.preventDefault();
     withCsrfToken(async (token) => {
@@ -917,7 +882,6 @@ const handleSubmit = (event) => {
             console.error(`[ERROR] No CSRF token for audit, time=${new Date().toISOString()}`);
             return;
         }
-
         // SHOW SPINNER
         loading.classList.add('show');
         console.log('[DEBUG] Spinner .show class added');
@@ -928,7 +892,6 @@ const handleSubmit = (event) => {
         usageWarning.classList.remove('error', 'success');
         loading.setAttribute('aria-hidden', 'false');
         resultsDiv.setAttribute('aria-hidden', 'true');
-
         // Queue fetch to allow repaint
         setTimeout(async () => {
             console.log('[DEBUG] Spinner fetch queued');
@@ -941,7 +904,6 @@ const handleSubmit = (event) => {
                 console.error(`[ERROR] No file selected for audit, time=${new Date().toISOString()}`);
                 return;
             }
-
             const username = localStorage.getItem('username');
             console.log('[DEBUG] Username from localStorage:', username);
             if (!username) {
@@ -952,7 +914,6 @@ const handleSubmit = (event) => {
                 usageWarning.classList.add('error');
                 return;
             }
-
             const fileSizeMB = file.size / (1024 * 1024);
             if (fileSizeMB > 1 && maxFileSize !== null && file.size > maxFileSize) {
                 loading.classList.remove('show');
@@ -1012,7 +973,6 @@ const handleSubmit = (event) => {
                 usageWarning.appendChild(upgradeButton);
                 return;
             }
-
             if (auditCount >= auditLimit) {
                 loading.classList.remove('show');
                 usageWarning.textContent = `Usage limit exceeded (${auditCount}/${auditLimit} audits). Upgrade your tier.`;
@@ -1065,10 +1025,8 @@ const handleSubmit = (event) => {
                 usageWarning.appendChild(upgradeButton);
                 return;
             }
-
             const formData = new FormData(auditForm);
             formData.append('csrf_token', token);
-
             try {
                 console.log(`[DEBUG] Sending /audit request for username=${username}, time=${new Date().toISOString()}`);
                 const response = await fetch(`/audit?username=${encodeURIComponent(username)}`, {
@@ -1113,7 +1071,6 @@ const handleSubmit = (event) => {
     });
 };
 auditForm?.addEventListener('submit', handleSubmit);
-
         // Section12: Report Download
         downloadReportButton?.addEventListener('click', () => {
             const reportData = {
@@ -1144,7 +1101,6 @@ auditForm?.addEventListener('submit', handleSubmit);
             URL.revokeObjectURL(url);
             console.log('[DEBUG] Report downloaded');
         });
-
         // Section13: Header Scroll Behavior
         window.addEventListener('scroll', () => {
             const header = document.querySelector('header');
