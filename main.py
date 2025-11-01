@@ -1261,6 +1261,11 @@ async def get_facets(contract_address: str, request: Request, username: str = Qu
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 ## Section 4.6 Main Audit Endpoint
+def summarize_context(context):
+    if len(context) > 5000:
+        return context[:5000] + " ... (summarized top findings)"
+    return context
+
 @app.post("/audit", response_model=AuditResponse)
 async def audit_contract(file: UploadFile = File(...), contract_address: str = None, username: str = Query(None), db: Session = Depends(get_db), request: Request = None):
     await verify_csrf_token(request)
@@ -1527,47 +1532,48 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 details += f" No deployed code found at {contract_address}."
         # Grok API processing — NO db.begin()
         GROK_TIMEOUT = 600 # 10 minutes
-        logger.info(f"Calling Grok API for {effective_username} with tier {current_tier}")
-        if not os.getenv("GROK_API_KEY"):
-            logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
-            raise Exception("Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
-        prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=code_str, details=details, tier="diamond" if user.has_diamond else current_tier)
-        response = await asyncio.wait_for(
-            asyncio.to_thread(
-                client.chat.completions.create,
-                model="grok-4",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {"schema": AUDIT_SCHEMA},
-                    "strict": True
-                }
-            ),
-            timeout=GROK_TIMEOUT
-        )
-        logger.info(f"Grok API response received for {effective_username}")
-        if response.choices and response.choices[0].message.content:
-            raw_response = response.choices[0].message.content
-            logger.debug(f"Raw Grok Response for {effective_username}: {raw_response[:200]}")
-            with open(os.path.join(DATA_DIR, "debug.log"), "a") as f:
-                f.write(f"[{timestamp}] DEBUG: Raw Grok Response: {raw_response}\n")
-                f.flush()
-            try:
-                audit_json = json.loads(raw_response)
-            except json.JSONDecodeError as e:
-                logger.error(f"Invalid Grok response format for {effective_username}: {str(e)}")
-                raise Exception(f"Invalid Grok response format: {str(e)}")
-            if user.has_diamond:
-                audit_json["remediation_roadmap"] = audit_json.get("remediation_roadmap", "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review.")
-            audit_json["fuzzing_results"] = fuzzing_results
-            report = audit_json
-        else:
-            logger.error(f"No Grok API response for {effective_username}")
-            raise Exception("No response from Grok API")
-    except Exception as e:
-        logger.error(f"Grok analysis failed for {effective_username}: {str(e)}")
-        report["error"] = f"Grok analysis failed: {str(e)}"
+        try:
+            logger.info(f"Calling Grok API for {effective_username} with tier {current_tier}")
+            if not os.getenv("GROK_API_KEY"):
+                logger.error(f"Grok API call failed for {effective_username}: GROK_API_KEY not set")
+                raise Exception("Audit processing unavailable: Please set GROK_API_KEY in environment variables.")
+            prompt = PROMPT_TEMPLATE.format(context=context, fuzzing_results=json.dumps(fuzzing_results), code=code_str, details=details, tier="diamond" if user.has_diamond else current_tier)
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    client.chat.completions.create,
+                    model="grok-4",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    response_format={
+                        "type": "json_schema",
+                        "json_schema": {"schema": AUDIT_SCHEMA},
+                        "strict": True
+                    }
+                ),
+                timeout=GROK_TIMEOUT
+            )
+            logger.info(f"Grok API response received for {effective_username}")
+            if response.choices and response.choices[0].message.content:
+                raw_response = response.choices[0].message.content
+                logger.debug(f"Raw Grok Response for {effective_username}: {raw_response[:200]}")
+                with open(os.path.join(DATA_DIR, "debug.log"), "a") as f:
+                    f.write(f"[{timestamp}] DEBUG: Raw Grok Response: {raw_response}\n")
+                    f.flush()
+                try:
+                    audit_json = json.loads(raw_response)
+                except json.JSONDecodeError as e:
+                    logger.error(f"Invalid Grok response format for {effective_username}: {str(e)}")
+                    raise Exception(f"Invalid Grok response format: {str(e)}")
+                if user.has_diamond:
+                    audit_json["remediation_roadmap"] = audit_json.get("remediation_roadmap", "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review.")
+                audit_json["fuzzing_results"] = fuzzing_results
+                report = audit_json
+            else:
+                logger.error(f"No Grok API response for {effective_username}")
+                raise Exception("No response from Grok API")
+        except Exception as e:
+            logger.error(f"Grok analysis failed for {effective_username}: {str(e)}")
+            report["error"] = f"Grok analysis failed: {str(e)}"
     except Exception as e:
         logger.error(f"Audit processing error for {effective_username}: {str(e)}")
         report["error"] = f"Audit failed: {str(e)}"
@@ -1615,11 +1621,6 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             logger.warning(f"Audit exceeded 6 hours for {effective_username} — resetting usage")
             usage_tracker.reset_usage(effective_username, db)
         return {"report": report, "risk_score": report["risk_score"], "overage_cost": overage_cost}
-
-def summarize_context(context):
-    if len(context) > 5000:
-        return context[:5000] + " ... (summarized top findings)"
-    return context
 ## Section 4.6: Main Entry Point
 if __name__ == "__main__":
     import uvicorn
