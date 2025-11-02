@@ -215,7 +215,9 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log(`[DEBUG] Diamond overage calculated: $${overageCost.toFixed(2)} for ${size} bytes, time=${new Date().toISOString()}`);
             return overageCost;
         };
-        document.getElementById('file')?.addEventListener('change', (event) => {
+        const fileInputEl = document.getElementById('file');
+        if (fileInputEl) {
+            fileInputEl.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (!file) {
                 AUDIT_CONTRACT_BUTTON.disabled = false;
@@ -657,69 +659,73 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         };
-        contractAddressInput?.addEventListener('input', (e) => {
-            const address = e.target.value.trim();
-            if (address && address.match(/^0x[a-fA-F0-9]{40}$/)) {
-                fetchFacetPreview(address);
-            } else {
-                facetWell.textContent = '';
-            }
-        });
-        // Section10: Diamond Audit
-        diamondAuditButton?.addEventListener('click', () => {
-            withCsrfToken(async (token) => {
-                if (!token) {
-                    usageWarning.textContent = 'Unable to establish secure connection.';
-                    usageWarning.classList.add('error');
-                    console.error(`[ERROR] No CSRF token for diamond audit, time=${new Date().toISOString()}`);
-                    return;
-                }
-                const fileInput = document.querySelector('#file');
-                const file = fileInput.files[0];
-                if (!file) {
-                    usageWarning.textContent = 'Please select a file for Diamond audit';
-                    usageWarning.classList.add('error');
-                    console.error(`[ERROR] No file selected for diamond audit, time=${new Date().toISOString()}`);
-                    return;
-                }
-                const username = localStorage.getItem('username');
-                if (!username) {
-                    console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
-                    window.location.href = '/auth';
-                    return;
-                }
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('csrf_token', token);
-                try {
-                    console.log(`[DEBUG] Sending /diamond-audit request for username=${username}, time=${new Date().toISOString()}`);
-                    const response = await fetch(`/diamond-audit?username=${encodeURIComponent(username)}`, {
-                        method: 'POST',
-                        headers: { 'X-CSRF-Token': token },
-                        body: formData,
-                        credentials: 'include'
-                    });
-                    console.log(`[DEBUG] /diamond-audit response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
-                    if (!response.ok) {
-                        const errorData = await response.json().catch(() => ({}));
-                        console.error(`[ERROR] /diamond-audit failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
-                        throw new Error(errorData.detail || 'Diamond audit request failed');
-                    }
-                    const data = await response.json();
-                    if (data.session_url) {
-                        console.log(`[DEBUG] Redirecting to Stripe for Diamond audit, session_url=${data.session_url}, time=${new Date().toISOString()}`);
-                        window.location.href = data.session_url;
-                    } else {
-                        handleAuditResponse(data);
-                        console.log(`[DEBUG] Direct Diamond audit response handled, time=${new Date().toISOString()}`);
-                    }
-                } catch (error) {
-                    console.error(`[ERROR] Diamond audit error: ${error.message}, time=${new Date().toISOString()}`);
-                    usageWarning.textContent = `Error initiating Diamond audit: ${error.message}`;
-                    usageWarning.classList.add('error');
+        if (contractAddressInput) {
+            contractAddressInput.addEventListener('input', (e) => {
+                const address = e.target.value.trim();
+                if (address && address.match(/^0x[a-fA-F0-9]{40}$/)) {
+                    fetchFacetPreview(address);
+                } else {
+                    facetWell.textContent = '';
                 }
             });
-        });
+        }
+        // Section10: Diamond Audit
+        if (diamondAuditButton) {
+            diamondAuditButton.addEventListener('click', () => {
+                withCsrfToken(async (token) => {
+                    if (!token) {
+                        usageWarning.textContent = 'Unable to establish secure connection.';
+                        usageWarning.classList.add('error');
+                        console.error(`[ERROR] No CSRF token for diamond audit, time=${new Date().toISOString()}`);
+                        return;
+                    }
+                    const fileInput = document.querySelector('#file');
+                    const file = fileInput.files[0];
+                    if (!file) {
+                        usageWarning.textContent = 'Please select a file for Diamond audit';
+                        usageWarning.classList.add('error');
+                        console.error(`[ERROR] No file selected for diamond audit, time=${new Date().toISOString()}`);
+                        return;
+                    }
+                    const username = localStorage.getItem('username');
+                    if (!username) {
+                        console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
+                        window.location.href = '/auth';
+                        return;
+                    }
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    formData.append('csrf_token', token);
+                    try {
+                        console.log(`[DEBUG] Sending /diamond-audit request for username=${username}, time=${new Date().toISOString()}`);
+                        const response = await fetch(`/diamond-audit?username=${encodeURIComponent(username)}`, {
+                            method: 'POST',
+                            headers: { 'X-CSRF-Token': token },
+                            body: formData,
+                            credentials: 'include'
+                        });
+                        console.log(`[DEBUG] /diamond-audit response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
+                        if (!response.ok) {
+                            const errorData = await response.json().catch(() => ({}));
+                            console.error(`[ERROR] /diamond-audit failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
+                            throw new Error(errorData.detail || 'Diamond audit request failed');
+                        }
+                        const data = await response.json();
+                        if (data.session_url) {
+                            console.log(`[DEBUG] Redirecting to Stripe for Diamond audit, session_url=${data.session_url}, time=${new Date().toISOString()}`);
+                            window.location.href = data.session_url;
+                        } else {
+                            handleAuditResponse(data);
+                            console.log(`[DEBUG] Direct Diamond audit response handled, time=${new Date().toISOString()}`);
+                        }
+                    } catch (error) {
+                        console.error(`[ERROR] Diamond audit error: ${error.message}, time=${new Date().toISOString()}`);
+                        usageWarning.textContent = `Error initiating Diamond audit: ${error.message}`;
+                        usageWarning.classList.add('error');
+                    }
+                });
+            });
+        }
         // Section11: Audit Handling
         if (loading && !loading.querySelector('.spinner')) {
             const spinner = document.createElement('div');
@@ -1012,37 +1018,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 }, 0);
             });
         };
-        auditForm?.addEventListener('submit', handleSubmit);
+        if (auditForm) {
+            auditForm.addEventListener('submit', handleSubmit);
+        }
         // Section12: Report Download
-        downloadReportButton?.addEventListener('click', () => {
-            const reportData = {
-                risk_score: riskScoreSpan.textContent,
-                issues: Array.from(issuesBody.querySelectorAll('tr')).map(row => ({
-                    type: row.cells[0].textContent,
-                    severity: row.cells[1].textContent,
-                    description: row.cells[2].textContent,
-                    fix: row.cells[3].textContent
-                })),
-                predictions: Array.from(predictionsList.querySelectorAll('li')).map(li => ({
-                    scenario: li.textContent.split(' | ')[0].replace('Scenario: ', ''),
-                    impact: li.textContent.split(' | ')[1].replace('Impact: ', '')
-                })),
-                recommendations: Array.from(recommendationsList.querySelectorAll('li')).map(li => li.textContent),
-                fuzzing_results: Array.from(fuzzingList.querySelectorAll('li')).map(li => ({
-                    vulnerability: li.textContent.split(' | ')[0].replace('Vulnerability: ', ''),
-                    description: li.textContent.split(' | ')[1].replace('Description: ', '')
-                })),
-                remediation_roadmap: remediationRoadmap?.textContent || null
-            };
-            const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `DeFiGuard_Audit_Report_${new Date().toISOString()}.json`;
-            a.click();
-            URL.revokeObjectURL(url);
-            console.log('[DEBUG] Report downloaded');
-        });
+        if (downloadReportButton) {
+            downloadReportButton.addEventListener('click', () => {
+                const reportData = {
+                    risk_score: riskScoreSpan.textContent,
+                    issues: Array.from(issuesBody.querySelectorAll('tr')).map(row => ({
+                        type: row.cells[0].textContent,
+                        severity: row.cells[1].textContent,
+                        description: row.cells[2].textContent,
+                        fix: row.cells[3].textContent
+                    })),
+                    predictions: Array.from(predictionsList.querySelectorAll('li')).map(li => ({
+                        scenario: li.textContent.split(' | ')[0].replace('Scenario: ', ''),
+                        impact: li.textContent.split(' | ')[1].replace('Impact: ', '')
+                    })),
+                    recommendations: Array.from(recommendationsList.querySelectorAll('li')).map(li => li.textContent),
+                    fuzzing_results: Array.from(fuzzingList.querySelectorAll('li')).map(li => ({
+                        vulnerability: li.textContent.split(' | ')[0].replace('Vulnerability: ', ''),
+                        description: li.textContent.split(' | ')[1].replace('Description: ', '')
+                    })),
+                    remediation_roadmap: remediationRoadmap ? remediationRoadmap.textContent : null
+                };
+                const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `DeFiGuard_Audit_Report_${new Date().toISOString()}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                console.log('[DEBUG] Report downloaded');
+            });
+        }
         // Section13: Header Scroll Behavior
         window.addEventListener('scroll', () => {
             const header = document.querySelector('header');
