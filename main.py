@@ -818,49 +818,22 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
     finally:
         if os.path.exists(lock_file):
             os.unlink(lock_file)
+    return {"session_url": session.url}
+# ----------------------------------------------------------------------
+# REGISTER THE CLEAN TIER-CHECKOUT ENDPOINT (accepts JSON body only)
+# ----------------------------------------------------------------------
 @app.post("/create-tier-checkout")
-@app.post("/create-diamond-checkout")
-async def create_diamond_checkout(
-    request: Request,
-    file: UploadFile = File(...),
+async def create_tier_checkout_wrapper(
+    tier_request: TierUpgradeRequest = Body(...),
+    request: Request = None,
     db: Session = Depends(get_db)
 ):
-    await verify_csrf_token(request)
-    username = request.session.get("username")
-    if not username:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    user = db.query(User).filter(User.username == username).first()
-    if not user or not user.has_diamond:
-        raise HTTPException(status_code=403, detail="Diamond add-on required")
-
-    contents = await file.read()
-    file_size = len(contents)
-    if file_size <= 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File within Pro limits")
-
-    temp_file = NamedTemporaryFile(delete=False)
-    temp_file.write(contents)
-    temp_file.close()
-
-    pending_id = str(uuid.uuid4())
-    pending = PendingAudit(id=pending_id, username=username, temp_path=temp_file.name)
-    db.add(pending)
-    db.commit()
-
-    overage_mb = max(0, (file_size - 1024 * 1024) / (1024 * 1024))
-    session = stripe.checkout.Session.create(
-        payment_method_types=["card"],
-        line_items=[{
-            "price": os.getenv("STRIPE_METERED_PRICE_DIAMOND"),
-            "quantity": int(overage_mb) if overage_mb > 0 else 1
-        }],
-        mode="payment",
-        success_url=f"https://yourdomain.com/ui?pending_id={pending_id}",
-        cancel_url="https://yourdomain.com/ui",
-        metadata={"audit_type": "diamond_overage", "pending_id": pending_id}
-    )
-    return {"session_url": session.url}
+    """
+    Thin wrapper to register the correct /create-tier-checkout route.
+    The real logic lives in the function above (create_tier_checkout).
+    This fixes the 422 error caused by the old file-based version.
+    """
+    return await create_tier_checkout(tier_request, request, db)
 async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), request: Request = None, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
     session_username = request.session.get("username")
