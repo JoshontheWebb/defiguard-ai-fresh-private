@@ -144,6 +144,7 @@ DATABASE_URL = "sqlite:////opt/render/project/data/users.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
@@ -158,23 +159,17 @@ class User(Base):
     stripe_subscription_id = Column(String, nullable=True)
     stripe_subscription_item_id = Column(String, nullable=True)
 
+# SINGLE PENDINGAUDIT DEFINITION
 class PendingAudit(Base):
     __tablename__ = "pending_audits"
+    __table_args__ = {'extend_existing': True}
     id = Column(String, primary_key=True, index=True)
     username = Column(String, index=True)
     temp_path = Column(String)
     status = Column(String, default="pending")
     results = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.now)
-    stripe_subscription_item_id = Column(String, nullable=True)
-class PendingAudit(Base):
-    __tablename__ = "pending_audits"
-    id = Column(String, primary_key=True, index=True)  # UUID as string
-    username = Column(String, index=True)
-    temp_path = Column(String)
-    status = Column(String, default="pending")  # pending, processing, complete
-    results = Column(Text, nullable=True)  # JSON string of audit results
-    created_at = Column(DateTime, default=datetime.now)
+
 Base.metadata.create_all(bind=engine)
 def get_db():
     db = SessionLocal()

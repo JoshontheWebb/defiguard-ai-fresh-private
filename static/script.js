@@ -518,6 +518,14 @@ tierSwitchButton.addEventListener('click', () => {
         };
         handlePostPaymentRedirect();
 
+        // Start polling if we returned from Stripe with a pending_id
+        const urlParams = new URLSearchParams(window.location.search);
+        const pendingId = urlParams.get('pending_id');
+        if (pendingId) {
+            console.log(`[DEBUG] Found pending_id=${pendingId} – starting poll`);
+            pollPendingStatus(pendingId);
+        }
+
         // Poll /pending-status/<id> until complete
         async function pollPendingStatus(pending_id) {
             const pollInterval = 5000;   // 5 seconds
