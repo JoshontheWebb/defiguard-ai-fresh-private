@@ -29,7 +29,7 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 import uvicorn
 from eth_account import Account
 from eth_account.messages import encode_defunct
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 from dotenv import load_dotenv
 import asyncio
 # Global clients — initialized in startup
