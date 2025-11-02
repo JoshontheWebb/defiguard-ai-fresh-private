@@ -440,134 +440,139 @@ tierSwitchButton.addEventListener('click', () => {
         }
     });
 });
-       // Section7: Payment Handling
-const handlePostPaymentRedirect = async () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const sessionId = urlParams.get('session_id');
-    const tier = urlParams.get('tier');
-    const hasDiamond = urlParams.get('has_diamond') === 'true';
-    const tempId = urlParams.get('temp_id');
-    const username = urlParams.get('username') || localStorage.getItem('username');
-    const upgradeStatus = urlParams.get('upgrade');
-    const message = urlParams.get('message');
-    const audit = urlParams.get('audit');
-    const pendingId = urlParams.get('pending_id');
-    console.log(`[DEBUG] Handling post-payment redirect: session_id=${sessionId}, tier=${tier}, has_diamond=${hasDiamond}, temp_id=${tempId}, username=${username}, upgrade=${upgradeStatus}, message=${message}, audit=${audit}, pending_id=${pendingId}, time=${new Date().toISOString()}`);
-    // PRESERVE USERNAME ON CANCEL (ADDED)
-    if (username) {
-        localStorage.setItem('username', username);
-        console.log(`[DEBUG] Username preserved on redirect: ${username}`);
-    }
-    if (upgradeStatus) {
-        usageWarning.textContent = message || (upgradeStatus === 'success' ? 'Tier upgrade completed' : 'Tier upgrade failed');
-        usageWarning.classList.add(upgradeStatus === 'success' ? 'success' : 'error');
-        console.log(`[DEBUG] Post-payment status: upgrade=${upgradeStatus}, message=${message}, time=${new Date().toISOString()}`);
-        window.history.replaceState({}, document.title, '/ui');
-        await fetchTierData();
-        return;
-    }
-    if (audit === 'complete' && pendingId) {
-        pollPendingStatus(pendingId);
-        return;
-    }
-    if (sessionId && username) {
-        try {
-            let endpoint = '';
-            let query = '';
-            if (tempId) {
-                endpoint = '/complete-diamond-audit';
-                query = `session_id=${encodeURIComponent(sessionId)}&temp_id=${encodeURIComponent(tempId)}&username=${encodeURIComponent(username)}`;
-            } else if (tier) {
-                endpoint = '/complete-tier-checkout';
-                query = `session_id=${encodeURIComponent(sessionId)}&tier=${encodeURIComponent(tier)}&has_diamond=${hasDiamond}&username=${encodeURIComponent(username)}`;
-            } else {
-                console.error(`[ERROR] Invalid post-payment redirect: missing tier or temp_id, time=${new Date().toISOString()}`);
-                usageWarning.textContent = 'Error: Invalid payment redirect parameters';
-                usageWarning.classList.add('error');
+        // Section7: Payment Handling – now supports pending_id polling
+        const handlePostPaymentRedirect = async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const sessionId = urlParams.get('session_id');
+            const tier = urlParams.get('tier');
+            const hasDiamond = urlParams.get('has_diamond') === 'true';
+            const tempId = urlParams.get('temp_id');
+            const username = urlParams.get('username') || localStorage.getItem('username');
+            const upgradeStatus = urlParams.get('upgrade');
+            const message = urlParams.get('message');
+            const pendingId = urlParams.get('pending_id');   // <-- NEW
+
+            console.log(`[DEBUG] Post-payment redirect: session_id=${sessionId}, tier=${tier}, has_diamond=${hasDiamond}, temp_id=${tempId}, username=${username}, upgrade=${upgradeStatus}, message=${message}, pending_id=${pendingId}`);
+
+            // Preserve username on cancel
+            if (username) {
+                localStorage.setItem('username', username);
+            }
+
+            // Tier-upgrade success/failure message
+            if (upgradeStatus) {
+                usageWarning.textContent = message || (upgradeStatus === 'success' ? 'Tier upgrade completed' : 'Tier upgrade failed');
+                usageWarning.classList.add(upgradeStatus === 'success' ? 'success' : 'error');
+                window.history.replaceState({}, document.title, '/ui');
+                await fetchTierData();
                 return;
             }
-            console.log(`[DEBUG] Fetching ${endpoint}?${query}, time=${new Date().toISOString()}`);
-            const response = await fetch(`${endpoint}?${query}`, {
-                method: 'GET',
-                headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
-                credentials: 'include'
-            });
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || `Failed to complete ${tempId ? 'Diamond audit' : 'tier upgrade'}`);
+
+            // Diamond audit completed via pending_id
+            if (pendingId) {
+                pollPendingStatus(pendingId);
+                return;
             }
-            localStorage.setItem('username', username);
-            usageWarning.textContent = `Successfully completed ${tempId ? 'Diamond audit' : 'tier upgrade'}`;
-            usageWarning.classList.add('success');
-            console.log(`[DEBUG] Post-payment completed: endpoint=${endpoint}, time=${new Date().toISOString()}`);
-            await fetchTierData();
-            window.history.replaceState({}, document.title, '/ui');
-        } catch (error) {
-            console.error(`[ERROR] Post-payment redirect error: ${error.message}, endpoint=${endpoint}, time=${new Date().toISOString()}`);
-            usageWarning.textContent = `Error completing ${tempId ? 'Diamond audit' : 'tier upgrade'}: ${error.message}`;
-            usageWarning.classList.add('error');
-            if (error.message.includes('User not found') || error.message.includes('Please login')) {
-                console.log(`[DEBUG] Redirecting to /auth due to user not found, time=${new Date().toISOString()}`);
-                window.location.href = '/auth?redirect_reason=post_payment';
-            }
-        }
-    } else if (username) {
-        // CANCEL FLOW: Restore tier (ADDED)
-        console.log(`[DEBUG] Payment canceled. Restoring tier for ${username}, time=${new Date().toISOString()}`);
-        await fetchTierData();
-        window.history.replaceState({}, document.title, '/ui');
-    } else {
-        console.warn(`[DEBUG] No post-payment redirect params found: session_id=${sessionId}, username=${username}, time=${new Date().toISOString()}`);
-    }
-}
-handlePostPaymentRedirect();
-async function pollPendingStatus(pending_id) {
-    const pollInterval = 5000; // 5s
-    const maxPolls = 60; // 5 min
-    let polls = 0;
-    const interval = setInterval(async () => {
-        polls++;
-        try {
-            const response = await fetch(`/pending-status/${pending_id}`, {
-                method: 'GET',
-                headers: { 'Accept': 'application/json' },
-                credentials: 'include'
-            });
-            if (!response.ok) {
-                if (response.status === 404) {
-                    clearInterval(interval);
-                    usageWarning.textContent = 'Pending audit not found';
+
+            // Old flow (tier checkout or temp-file diamond audit)
+            if (sessionId && username) {
+                try {
+                    let endpoint = '';
+                    let query = '';
+                    if (tempId) {
+                        endpoint = '/complete-diamond-audit';
+                        query = `session_id=${encodeURIComponent(sessionId)}&temp_id=${encodeURIComponent(tempId)}&username=${encodeURIComponent(username)}`;
+                    } else if (tier) {
+                        endpoint = '/complete-tier-checkout';
+                        query = `session_id=${encodeURIComponent(sessionId)}&tier=${encodeURIComponent(tier)}&has_diamond=${hasDiamond}&username=${encodeURIComponent(username)}`;
+                    } else {
+                        throw new Error('Invalid payment redirect parameters');
+                    }
+
+                    const response = await fetch(`${endpoint}?${query}`, {
+                        method: 'GET',
+                        headers: { 'Accept': 'application/json' },
+                        credentials: 'include'
+                    });
+
+                    if (!response.ok) {
+                        const err = await response.json().catch(() => ({}));
+                        throw new Error(err.detail || 'Failed to complete action');
+                    }
+
+                    localStorage.setItem('username', username);
+                    usageWarning.textContent = `Successfully completed ${tempId ? 'Diamond audit' : 'tier upgrade'}`;
+                    usageWarning.classList.add('success');
+                    await fetchTierData();
+                    window.history.replaceState({}, document.title, '/ui');
+                } catch (error) {
+                    console.error(`[ERROR] Post-payment error: ${error.message}`);
+                    usageWarning.textContent = `Error: ${error.message}`;
                     usageWarning.classList.add('error');
-                    return;
                 }
-                throw new Error(`Failed to check pending status: ${response.status}`);
+            } else if (username) {
+                // Cancel flow – just refresh tier
+                await fetchTierData();
+                window.history.replaceState({}, document.title, '/ui');
             }
-            const data = await response.json();
-            if (data.status === 'complete') {
-                clearInterval(interval);
-                handleAuditResponse(data);
-                usageWarning.textContent = 'Diamond audit completed!';
-                usageWarning.classList.add('success');
-                console.log(`[DEBUG] Pending audit complete, results handled, time=${new Date().toISOString()}`);
-            } else if (data.status === 'processing') {
-                usageWarning.textContent = 'Processing Diamond audit...';
-                usageWarning.classList.add('warning');
-            } else {
-                usageWarning.textContent = `Audit status: ${data.status}`;
-            }
-            console.log(`[DEBUG] Poll ${polls}/${maxPolls} for pending_id=${pending_id}, status=${data.status || data}, time=${new Date().toISOString()}`);
-        } catch (error) {
-            console.error(`[ERROR] Poll error: ${error.message}, time=${new Date().toISOString()}`);
-            usageWarning.textContent = `Error checking audit status: ${error.message}`;
-            usageWarning.classList.add('error');
+        };
+        handlePostPaymentRedirect();
+
+        // Poll /pending-status/<id> until complete
+        async function pollPendingStatus(pending_id) {
+            const pollInterval = 5000;   // 5 seconds
+            const maxPolls = 60;         // 5 minutes max
+            let polls = 0;
+
+            const interval = setInterval(async () => {
+                polls++;
+                try {
+                    const response = await fetch(`/pending-status/${pending_id}`, {
+                        method: 'GET',
+                        headers: { 'Accept': 'application/json' },
+                        credentials: 'include'
+                    });
+
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            clearInterval(interval);
+                            usageWarning.textContent = 'Pending audit not found';
+                            usageWarning.classList.add('error');
+                            return;
+                        }
+                        throw new Error(`Status check failed: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+
+                    if (data.status === 'complete') {
+                        clearInterval(interval);
+                        handleAuditResponse(data);
+                        usageWarning.textContent = 'Diamond audit completed!';
+                        usageWarning.classList.add('success');
+                        console.log(`[DEBUG] Pending audit complete (id=${pending_id})`);
+                    } else if (data.status === 'processing') {
+                        usageWarning.textContent = 'Processing Diamond audit...';
+                        usageWarning.classList.add('warning');
+                    } else {
+                        usageWarning.textContent = `Status: ${data.status}`;
+                    }
+
+                    console.log(`[DEBUG] Poll ${polls}/${maxPolls} – id=${pending_id}, status=${data.status}`);
+
+                    if (polls >= maxPolls) {
+                        clearInterval(interval);
+                        usageWarning.textContent = 'Audit taking longer than expected. Please refresh.';
+                        usageWarning.classList.add('warning');
+                    }
+                } catch (error) {
+                    console.error(`[ERROR] Poll error: ${error.message}`);
+                    clearInterval(interval);
+                    usageWarning.textContent = `Error checking audit: ${error.message}`;
+                    usageWarning.classList.add('error');
+                }
+            }, pollInterval);
         }
-        if (polls >= maxPolls) {
-            clearInterval(interval);
-            usageWarning.textContent = 'Audit taking longer than expected. Please check back later.';
-            usageWarning.classList.add('warning');
-        }
-    }, pollInterval);
-}
         // Section8: Facet Preview
         const fetchFacetPreview = async (contractAddress, attempt = 1, maxAttempts = 3) => {
             if (!contractAddress || contractAddress === 'undefined') {

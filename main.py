@@ -157,6 +157,16 @@ class User(Base):
     audit_history = Column(String, default="[]")
     stripe_subscription_id = Column(String, nullable=True)
     stripe_subscription_item_id = Column(String, nullable=True)
+
+class PendingAudit(Base):
+    __tablename__ = "pending_audits"
+    id = Column(String, primary_key=True, index=True)
+    username = Column(String, index=True)
+    temp_path = Column(String)
+    status = Column(String, default="pending")
+    results = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
+    stripe_subscription_item_id = Column(String, nullable=True)
 class PendingAudit(Base):
     __tablename__ = "pending_audits"
     id = Column(String, primary_key=True, index=True)  # UUID as string
@@ -808,6 +818,48 @@ async def set_tier(username: str, tier: str, has_diamond: bool = Query(False), r
         if os.path.exists(lock_file):
             os.unlink(lock_file)
 @app.post("/create-tier-checkout")
+@app.post("/create-diamond-checkout")
+async def create_diamond_checkout(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    await verify_csrf_token(request)
+    username = request.session.get("username")
+    if not username:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user = db.query(User).filter(User.username == username).first()
+    if not user or not user.has_diamond:
+        raise HTTPException(status_code=403, detail="Diamond add-on required")
+
+    contents = await file.read()
+    file_size = len(contents)
+    if file_size <= 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File within Pro limits")
+
+    temp_file = NamedTemporaryFile(delete=False)
+    temp_file.write(contents)
+    temp_file.close()
+
+    pending_id = str(uuid.uuid4())
+    pending = PendingAudit(id=pending_id, username=username, temp_path=temp_file.name)
+    db.add(pending)
+    db.commit()
+
+    overage_mb = max(0, (file_size - 1024 * 1024) / (1024 * 1024))
+    session = stripe.checkout.Session.create(
+        payment_method_types=["card"],
+        line_items=[{
+            "price": os.getenv("STRIPE_METERED_PRICE_DIAMOND"),
+            "quantity": int(overage_mb) if overage_mb > 0 else 1
+        }],
+        mode="payment",
+        success_url=f"https://yourdomain.com/ui?pending_id={pending_id}",
+        cancel_url="https://yourdomain.com/ui",
+        metadata={"audit_type": "diamond_overage", "pending_id": pending_id}
+    )
+    return {"session_url": session.url}
 async def create_tier_checkout(tier_request: TierUpgradeRequest = Body(...), request: Request = None, db: Session = Depends(get_db)):
     await verify_csrf_token(request)
     session_username = request.session.get("username")
@@ -920,7 +972,8 @@ async def complete_tier_checkout(session_id: str = Query(...), tier: str = Query
     except Exception as e:
         logger.error(f"Unexpected error in complete-tier-checkout for {username}: {str(e)}")
         return RedirectResponse(url=f"/ui?upgrade=error&message=Unexpected%20error:%20{str(e)}")
-   ## Section 4.4: Webhook Endpoint
+   ### START REPLACEMENT WEBHOOK BLOCK
+## Section 4.4: Webhook Endpoint
 @app.post("/webhook")
 async def webhook(request: Request, db: Session = Depends(get_db)):
     payload = await request.body()
@@ -941,58 +994,66 @@ async def webhook(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Stripe webhook unexpected error: {str(e)}, payload={payload[:200]}")
         return Response(status_code=500, content=f"Webhook processing failed: {str(e)}")
+
     try:
         if event["type"] == "checkout.session.completed":
             session = event["data"]["object"]
             username = session["metadata"].get("username")
             pending_id = session["metadata"].get("pending_id")
             audit_type = session["metadata"].get("audit_type")
+
             if not username:
                 logger.warning(f"Webhook: Missing username in metadata, event_id={event['id']}")
                 return Response(status_code=200)
+
             user = db.query(User).filter(User.username == username).first()
             if not user:
                 logger.error(f"Webhook: User {username} not found")
                 return Response(status_code=200)
+
             # -------------------------------------------------
             # 1. DIAMOND OVERAGE AUDIT – run automatically if pending_id
             # -------------------------------------------------
             if pending_id and audit_type == "diamond_overage":
                 pending_audit = db.query(PendingAudit).filter(PendingAudit.id == pending_id).first()
-                if pending_audit:
+                if pending_audit and pending_audit.status == "pending":
                     pending_audit.status = "processing"
                     db.commit()
                     asyncio.create_task(process_pending_audit(db, pending_id))
                     logger.info(f"Webhook: Started background Diamond audit for {username}, pending_id={pending_id}")
+                else:
+                    logger.warning(f"Webhook: Pending audit {pending_id} not found or already processed")
+                return Response(status_code=200)
+
             # -------------------------------------------------
             # 2. TIER UPGRADE – existing logic (unchanged)
             # -------------------------------------------------
-            else:
-                tier = session["metadata"].get("tier")
-                has_diamond = session["metadata"].get("has_diamond") == "true"
-                if user and tier:
-                    user.stripe_subscription_id = session.subscription
-                    for item in stripe.Subscription.retrieve(session.subscription).get("items", {}).get("data", []):
-                        if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
-                            user.stripe_subscription_item_id = item.id
-                    current_tier = user.tier
-                    if tier == "pro" and current_tier in ["free", "beginner"]:
-                        user.tier = "pro"
-                        if not user.api_key:
-                            user.api_key = secrets.token_urlsafe(32)
-                    elif tier == "diamond" and current_tier == "pro":
-                        user.has_diamond = True
-                        user.last_reset = datetime.now() + timedelta(days=30)
-                    usage_tracker.set_tier(tier, has_diamond, username, db)
-                    usage_tracker.reset_usage(username, db)
-                    db.commit()
-                    logger.info(f"Webhook: Tier upgrade completed for {username} to {tier}")
+            tier = session["metadata"].get("tier")
+            has_diamond = session["metadata"].get("has_diamond") == "true"
+            if user and tier:
+                user.stripe_subscription_id = session.subscription
+                for item in stripe.Subscription.retrieve(session.subscription).get("items", {}).get("data", []):
+                    if item.price.id == STRIPE_METERED_PRICE_DIAMOND:
+                        user.stripe_subscription_item_id = item.id
+                current_tier = user.tier
+                if tier == "pro" and current_tier in ["free", "beginner"]:
+                    user.tier = "pro"
+                    if not user.api_key:
+                        user.api_key = secrets.token_urlsafe(32)
+                elif tier == "diamond" and current_tier == "pro":
+                    user.has_diamond = True
+                    user.last_reset = datetime.now() + timedelta(days=30)
+                usage_tracker.set_tier(tier, has_diamond, username, db)
+                usage_tracker.reset_usage(username, db)
+                db.commit()
+                logger.info(f"Webhook: Tier upgrade completed for {username} to {tier}")
         else:
             logger.debug(f"Webhook event ignored: unhandled type {event['type']}, event_id={event['id']}")
         return Response(status_code=200)
     except Exception as e:
         logger.error(f"Webhook processing error for event {event['id']}: {str(e)}")
         return Response(status_code=500, content=f"Webhook processing failed: {str(e)}")
+### END REPLACEMENT WEBHOOK BLOCK
 
 async def process_pending_audit(db: Session, pending_id: str):
     try:
