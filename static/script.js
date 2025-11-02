@@ -820,6 +820,7 @@ const handleAuditResponse = (data) => {
         recommendationsList.innerHTML = `<li>Error: ${errorMsg}</li>`;
         fuzzingList.innerHTML = `<li>Error: ${errorMsg}</li>`;
         remediationRoadmap.textContent = `Error: ${errorMsg}`;
+        loading.classList.remove('show');
         return;
     }
     riskScoreSpan.textContent = report.risk_score;
@@ -1085,8 +1086,7 @@ try {
     if (loading) loading.classList.remove('show');
     if (usageWarning) usageWarning.textContent = `Error initiating audit: ${error.message}`;
     if (usageWarning) usageWarning.classList.add('error');
-} finally {
-    loading.classList.remove('show');
+}
 }
         }, 0); // Queue fetch
     });
