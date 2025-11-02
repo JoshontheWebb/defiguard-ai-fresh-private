@@ -404,14 +404,13 @@ tierSwitchButton.addEventListener('click', () => {
             return;
         }
         const hasDiamond = selectedTier === 'diamond';
-        const effectiveTier = selectedTier; // Pass the selected tier directly
+        const effectiveTier = selectedTier;
         console.log(`[DEBUG] Initiating tier switch: username=${username}, tier=${effectiveTier}, has_diamond=${hasDiamond}, time=${new Date().toISOString()}`);
         try {
             const requestBody = JSON.stringify({
                 username: username,
                 tier: effectiveTier,
-                has_diamond: hasDiamond,
-                csrf_token: token
+                has_diamond: hasDiamond
             });
             console.log(`[DEBUG] Sending /create-tier-checkout request with body: ${requestBody}, time=${new Date().toISOString()}`);
             const response = await fetch('/create-tier-checkout', {
@@ -675,69 +674,6 @@ tierSwitchButton.addEventListener('click', () => {
                 facetWell.textContent = '';
             }
         });
-        tierSwitchButton.addEventListener('click', () => {
-    withCsrfToken(async (token) => {
-        if (!token) {
-            usageWarning.textContent = 'Unable to establish secure connection.';
-            usageWarning.classList.add('error');
-            console.error(`[ERROR] No CSRF token for tier switch, time=${new Date().toISOString()}`);
-            return;
-        }
-        const selectedTier = tierSelect.value;
-        if (!tierSelect) {
-            console.error(`[ERROR] tierSelect element not found, time=${new Date().toISOString()}`);
-            usageWarning.textContent = 'Error: Tier selection unavailable';
-            usageWarning.classList.add('error');
-            return;
-        }
-        if (!selectedTier || !['beginner', 'pro', 'diamond'].includes(selectedTier)) {
-            console.error(`[ERROR] Invalid or missing tier selected: ${selectedTier}, time=${new Date().toISOString()}`);
-            usageWarning.textContent = `Error: Invalid tier '${selectedTier || 'none'}'. Choose beginner, pro, or diamond`;
-            usageWarning.classList.add('error');
-            return;
-        }
-        const username = localStorage.getItem('username');
-        if (!username) {
-            console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
-            window.location.href = '/auth';
-            return;
-        }
-        const hasDiamond = selectedTier === 'diamond';
-        const effectiveTier = selectedTier; // Pass the selected tier directly
-        console.log(`[DEBUG] Initiating tier switch: username=${username}, tier=${effectiveTier}, has_diamond=${hasDiamond}, time=${new Date().toISOString()}`);
-        try {
-            const requestBody = JSON.stringify({
-                username: username,
-                tier: effectiveTier,
-                has_diamond: hasDiamond
-            });
-            console.log(`[DEBUG] Sending /create-tier-checkout request with body: ${requestBody}, time=${new Date().toISOString()}`);
-            const response = await fetch('/create-tier-checkout', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': token,
-                    'Accept': 'application/json'
-                },
-                credentials: 'include',
-                body: requestBody
-            });
-            console.log(`[DEBUG] /create-tier-checkout response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                console.error(`[ERROR] /create-tier-checkout failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
-                throw new Error(errorData.detail || `Failed to initiate tier upgrade: ${response.status}`);
-            }
-            const data = await response.json();
-            console.log(`[DEBUG] Stripe checkout session created: session_url=${data.session_url}, time=${new Date().toISOString()}`);
-            window.location.href = data.session_url;
-        } catch (error) {
-            console.error(`[ERROR] Tier switch error: ${error.message}, time=${new Date().toISOString()}`);
-            usageWarning.textContent = `Error initiating tier upgrade: ${error.message}`;
-            usageWarning.classList.add('error');
-        }
-    });
-});
         // Section10: Diamond Audit
 diamondAuditButton?.addEventListener('click', () => {
     withCsrfToken(async (token) => {
