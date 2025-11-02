@@ -223,8 +223,14 @@ level_map = {
 }
 class AuditResponse(BaseModel):
     report: dict
-    risk_score: str
+    risk_score: str = Field(..., description="Risk score as a string (e.g., '8.5')")
     overage_cost: Optional[float] = None
+
+    @validator("risk_score", pre=True)
+    def coerce_risk_score(cls, v):
+        if isinstance(v, (int, float)):
+            return str(v)
+        return v
 AUDIT_SCHEMA = {
     "type": "object",
     "properties": {
