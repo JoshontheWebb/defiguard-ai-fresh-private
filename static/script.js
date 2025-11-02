@@ -154,7 +154,7 @@ document.addEventListener('DOMContentLoaded', () => {
         apiKeySpan: '#api-key-value',
         logoutSidebar: '#logout-sidebar',
         authStatus: '#auth-status',
-        pendingMessage: '#pending-message' // Added for pending audit status
+        pendingMessage: '#pending-message'
     }, ({ auditForm, loading, resultsDiv, riskScoreSpan, issuesBody, predictionsList, recommendationsList, fuzzingList, remediationRoadmap, usageWarning, tierInfo, tierDescription, sizeLimit, features, upgradeLink, tierSelect, tierSwitchButton, contractAddressInput, facetWell, downloadReportButton, diamondAuditButton, customReportInput, apiKeySpan, logoutSidebar, authStatus, pendingMessage }) => {
         let maxFileSize = null;
         let auditCount = 0;
@@ -231,7 +231,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const isOver1MB = fileSizeMB > 1;
             const hasDiamond = localStorage.getItem('diamond_feature') === 'true';
             if (isOver1MB && !hasDiamond) {
-                // BLOCK "Audit Contract" for files >1MB without Diamond
                 AUDIT_CONTRACT_BUTTON.disabled = true;
                 AUDIT_CONTRACT_BUTTON.title = "Files >1MB require Diamond Audit with payment";
                 if (DIAMOND_AUDIT_BUTTON) DIAMOND_AUDIT_BUTTON.style.display = 'block';
@@ -242,7 +241,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     usageWarning.classList.remove('error');
                 }
             } else {
-                // ALLOW "Audit Contract" for files ≤1MB or with Diamond
                 AUDIT_CONTRACT_BUTTON.disabled = false;
                 AUDIT_CONTRACT_BUTTON.title = "";
                 if (DIAMOND_AUDIT_BUTTON) DIAMOND_AUDIT_BUTTON.style.display = 'none';
@@ -316,129 +314,129 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('[ERROR] #logout-sidebar not found in DOM');
         }
         // Section9: Tier Management
-const fetchTierData = async () => {
-    try {
-        const username = localStorage.getItem('username') || '';
-        const url = username ? `/tier?username=${encodeURIComponent(username)}` : '/tier';
-        console.log(`[DEBUG] Fetching tier data from ${url}, time=${new Date().toISOString()}`);
-        const response = await fetch(url, {
-            headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
-            credentials: 'include'
-        });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(`Failed to fetch tier data: ${response.status} ${errorData.detail || response.statusText}`);
-        }
-        const data = await response.json();
-        const { tier, size_limit, feature_flags, api_key, audit_count, audit_limit, has_diamond } = data;
-        auditCount = audit_count;
-        auditLimit = audit_limit;
-        localStorage.setItem('tier', tier);
-        localStorage.setItem('diamond_feature', has_diamond.toString());
-        localStorage.setItem('size_limit', size_limit);
-        if (tierInfo) tierInfo.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} (${size_limit === 'Unlimited' ? 'Unlimited audits' : `${auditCount}/${auditLimit} audits`})`;
-        if (tierDescription) tierDescription.textContent = `${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} Tier: ${has_diamond ? 'Unlimited file size, full Diamond audits, fuzzing, priority support, NFT rewards' : tier === 'pro' ? 'Unlimited audits, Diamond add-on access ($50/mo), fuzzing, priority support' : tier === 'beginner' ? `Up to 10 audits, 1MB file size (${auditCount}/${auditLimit} remaining), priority support` : `Up to 3 audits, 1MB file size (${auditCount}/${auditLimit} remaining)`}`;
-        if (sizeLimit) sizeLimit.textContent = `Max file size: ${size_limit}`;
-        if (features) features.textContent = `Features: ${has_diamond ? 'Diamond audits, Diamond Pattern previews, priority support, NFT rewards' : tier === 'pro' ? 'Diamond add-on access, standard audits, Diamond Pattern previews, fuzzing, priority support' : 'Standard audit features'}${feature_flags.predictions ? ', AI predictions' : ''}${feature_flags.onchain ? ', on-chain analysis' : ''}${feature_flags.reports ? ', exportable reports' : ''}${feature_flags.fuzzing ? ', fuzzing analysis' : ''}${feature_flags.priority_support ? ', priority support' : ''}${feature_flags.nft_rewards ? ', NFT rewards' : ''}`;
-        if (usageWarning) usageWarning.textContent = tier === 'free' || tier === 'beginner' ? `${tier.charAt(0).toUpperCase() + tier.slice(1)} tier: ${auditCount}/${auditLimit} audits remaining` : '';
-        if (usageWarning) usageWarning.classList.remove('error');
-        if (upgradeLink) upgradeLink.style.display = !has_diamond ? 'inline-block' : 'none';
-        maxFileSize = size_limit === 'Unlimited' ? Infinity : parseFloat(size_limit.replace('MB', '')) * 1024 * 1024;
-        if (document.querySelector('#file-help')) document.querySelector('#file-help').textContent = '';
-        document.querySelectorAll('.pro-diamond-only').forEach(el => el.style.display = tier === 'pro' || has_diamond ? 'block' : 'none');
-        if (customReportInput) customReportInput.style.display = tier === 'pro' || has_diamond ? 'block' : 'none';
-        if (downloadReportButton) downloadReportButton.style.display = feature_flags.reports ? 'block' : 'none';
-        document.querySelectorAll('.diamond-only').forEach(el => el.style.display = has_diamond ? 'block' : 'none');
-        if (document.querySelector('.remediation-placeholder')) document.querySelector('.remediation-placeholder').style.display = has_diamond ? 'block' : 'none';
-        if (document.querySelector('.fuzzing-placeholder')) document.querySelector('.fuzzing-placeholder').style.display = feature_flags.fuzzing ? 'block' : 'none';
-        if (document.querySelector('.priority-support')) document.querySelector('.priority-support').style.display = feature_flags.priority_support ? 'block' : 'none';
-        if (apiKeySpan) apiKeySpan.textContent = api_key || 'N/A';
-        if (document.getElementById('api-key')) document.getElementById('api-key').style.display = api_key ? 'block' : 'none';
-        // Update sidebar tier display
-        const sidebarTierDisplay = document.querySelector('.sidebar .tier-display');
-        if (sidebarTierDisplay) {
-            sidebarTierDisplay.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''}`;
-            console.log(`[DEBUG] Sidebar tier updated: ${sidebarTierDisplay.textContent}, time=${new Date().toISOString()}`);
-        } else {
-            console.warn('[DEBUG] .sidebar .tier-display not found, scheduling recheck');
-            setTimeout(() => {
-                const retryDisplay = document.querySelector('.sidebar .tier-display');
-                if (retryDisplay) {
-                    retryDisplay.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''}`;
-                    console.log(`[DEBUG] Sidebar tier updated after recheck: ${retryDisplay.textContent}, time=${new Date().toISOString()}`);
+        const fetchTierData = async () => {
+            try {
+                const username = localStorage.getItem('username') || '';
+                const url = username ? `/tier?username=${encodeURIComponent(username)}` : '/tier';
+                console.log(`[DEBUG] Fetching tier data from ${url}, time=${new Date().toISOString()}`);
+                const response = await fetch(url, {
+                    headers: { 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
+                    credentials: 'include'
+                });
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(`Failed to fetch tier data: ${response.status} ${errorData.detail || response.statusText}`);
                 }
-            }, 500);
-        }
-        console.log(`[DEBUG] Tier data fetched: tier=${tier}, has_diamond=${has_diamond}, auditCount=${auditCount}, auditLimit=${auditLimit}, time=${new Date().toISOString()}`);
-    } catch (error) {
-        console.error(`[ERROR] Tier fetch error: ${error.message}, time=${new Date().toISOString()}`);
-        if (usageWarning) usageWarning.textContent = `Error fetching tier data: ${error.message}`;
-        if (usageWarning) usageWarning.classList.add('error');
-    }
-};
-tierSwitchButton.addEventListener('click', () => {
-    withCsrfToken(async (token) => {
-        if (!token) {
-            usageWarning.textContent = 'Unable to establish secure connection.';
-            usageWarning.classList.add('error');
-            console.error(`[ERROR] No CSRF token for tier switch, time=${new Date().toISOString()}`);
-            return;
-        }
-        const selectedTier = tierSelect.value;
-        if (!tierSelect) {
-            console.error(`[ERROR] tierSelect element not found, time=${new Date().toISOString()}`);
-            usageWarning.textContent = 'Error: Tier selection unavailable';
-            usageWarning.classList.add('error');
-            return;
-        }
-        if (!selectedTier || !['beginner', 'pro', 'diamond'].includes(selectedTier)) {
-            console.error(`[ERROR] Invalid or missing tier selected: ${selectedTier}, time=${new Date().toISOString()}`);
-            usageWarning.textContent = `Error: Invalid tier '${selectedTier || 'none'}'. Choose beginner, pro, or diamond`;
-            usageWarning.classList.add('error');
-            return;
-        }
-        const username = localStorage.getItem('username');
-        if (!username) {
-            console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
-            window.location.href = '/auth';
-            return;
-        }
-        const hasDiamond = selectedTier === 'diamond';
-        const effectiveTier = selectedTier;
-        console.log(`[DEBUG] Initiating tier switch: username=${username}, tier=${effectiveTier}, has_diamond=${hasDiamond}, time=${new Date().toISOString()}`);
-        try {
-            const requestBody = JSON.stringify({
-                username: username,
-                tier: effectiveTier,
-                has_diamond: hasDiamond
-            });
-            console.log(`[DEBUG] Sending /create-tier-checkout request with body: ${requestBody}, time=${new Date().toISOString()}`);
-            const response = await fetch('/create-tier-checkout', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': token,
-                    'Accept': 'application/json'
-                },
-                credentials: 'include',
-                body: requestBody
-            });
-            console.log(`[DEBUG] /create-tier-checkout response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                console.error(`[ERROR] /create-tier-checkout failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
-                throw new Error(errorData.detail || `Failed to initiate tier upgrade: ${response.status}`);
+                const data = await response.json();
+                const { tier, size_limit, feature_flags, api_key, audit_count, audit_limit, has_diamond } = data;
+                auditCount = audit_count;
+                auditLimit = audit_limit;
+                localStorage.setItem('tier', tier);
+                localStorage.setItem('diamond_feature', has_diamond.toString());
+                localStorage.setItem('size_limit', size_limit);
+                if (tierInfo) tierInfo.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} (${size_limit === 'Unlimited' ? 'Unlimited audits' : `${auditCount}/${auditLimit} audits`})`;
+                if (tierDescription) tierDescription.textContent = `${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} Tier: ${has_diamond ? 'Unlimited file size, full Diamond audits, fuzzing, priority support, NFT rewards' : tier === 'pro' ? 'Unlimited audits, Diamond add-on access ($50/mo), fuzzing, priority support' : tier === 'beginner' ? `Up to 10 audits, 1MB file size (${auditCount}/${auditLimit} remaining), priority support` : `Up to 3 audits, 1MB file size (${auditCount}/${auditLimit} remaining)`}`;
+                if (sizeLimit) sizeLimit.textContent = `Max file size: ${size_limit}`;
+                if (features) features.textContent = `Features: ${has_diamond ? 'Diamond audits, Diamond Pattern previews, priority support, NFT rewards' : tier === 'pro' ? 'Diamond add-on access, standard audits, Diamond Pattern previews, fuzzing, priority support' : 'Standard audit features'}${feature_flags.predictions ? ', AI predictions' : ''}${feature_flags.onchain ? ', on-chain analysis' : ''}${feature_flags.reports ? ', exportable reports' : ''}${feature_flags.fuzzing ? ', fuzzing analysis' : ''}${feature_flags.priority_support ? ', priority support' : ''}${feature_flags.nft_rewards ? ', NFT rewards' : ''}`;
+                if (usageWarning) usageWarning.textContent = tier === 'free' || tier === 'beginner' ? `${tier.charAt(0).toUpperCase() + tier.slice(1)} tier: ${auditCount}/${auditLimit} audits remaining` : '';
+                if (usageWarning) usageWarning.classList.remove('error');
+                if (upgradeLink) upgradeLink.style.display = !has_diamond ? 'inline-block' : 'none';
+                maxFileSize = size_limit === 'Unlimited' ? Infinity : parseFloat(size_limit.replace('MB', '')) * 1024 * 1024;
+                if (document.querySelector('#file-help')) document.querySelector('#file-help').textContent = '';
+                document.querySelectorAll('.pro-diamond-only').forEach(el => el.style.display = tier === 'pro' || has_diamond ? 'block' : 'none');
+                if (customReportInput) customReportInput.style.display = tier === 'pro' || has_diamond ? 'block' : 'none';
+                if (downloadReportButton) downloadReportButton.style.display = feature_flags.reports ? 'block' : 'none';
+                document.querySelectorAll('.diamond-only').forEach(el => el.style.display = has_diamond ? 'block' : 'none');
+                if (document.querySelector('.remediation-placeholder')) document.querySelector('.remediation-placeholder').style.display = has_diamond ? 'block' : 'none';
+                if (document.querySelector('.fuzzing-placeholder')) document.querySelector('.fuzzing-placeholder').style.display = feature_flags.fuzzing ? 'block' : 'none';
+                if (document.querySelector('.priority-support')) document.querySelector('.priority-support').style.display = feature_flags.priority_support ? 'block' : 'none';
+                if (apiKeySpan) apiKeySpan.textContent = api_key || 'N/A';
+                if (document.getElementById('api-key')) document.getElementById('api-key').style.display = api_key ? 'block' : 'none';
+                // Update sidebar tier display
+                const sidebarTierDisplay = document.querySelector('.sidebar .tier-display');
+                if (sidebarTierDisplay) {
+                    sidebarTierDisplay.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''}`;
+                    console.log(`[DEBUG] Sidebar tier updated: ${sidebarTierDisplay.textContent}, time=${new Date().toISOString()}`);
+                } else {
+                    console.warn('[DEBUG] .sidebar .tier-display not found, scheduling recheck');
+                    setTimeout(() => {
+                        const retryDisplay = document.querySelector('.sidebar .tier-display');
+                        if (retryDisplay) {
+                            retryDisplay.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''}`;
+                            console.log(`[DEBUG] Sidebar tier updated after recheck: ${retryDisplay.textContent}, time=${new Date().toISOString()}`);
+                        }
+                    }, 500);
+                }
+                console.log(`[DEBUG] Tier data fetched: tier=${tier}, has_diamond=${has_diamond}, auditCount=${auditCount}, auditLimit=${auditLimit}, time=${new Date().toISOString()}`);
+            } catch (error) {
+                console.error(`[ERROR] Tier fetch error: ${error.message}, time=${new Date().toISOString()}`);
+                if (usageWarning) usageWarning.textContent = `Error fetching tier data: ${error.message}`;
+                if (usageWarning) usageWarning.classList.add('error');
             }
-            const data = await response.json();
-            console.log(`[DEBUG] Stripe checkout session created: session_url=${data.session_url}, time=${new Date().toISOString()}`);
-            window.location.href = data.session_url;
-        } catch (error) {
-            console.error(`[ERROR] Tier switch error: ${error.message}, time=${new Date().toISOString()}`);
-            usageWarning.textContent = `Error initiating tier upgrade: ${error.message}`;
-            usageWarning.classList.add('error');
-        }
-    });
-});
+        };
+        tierSwitchButton.addEventListener('click', () => {
+            withCsrfToken(async (token) => {
+                if (!token) {
+                    usageWarning.textContent = 'Unable to establish secure connection.';
+                    usageWarning.classList.add('error');
+                    console.error(`[ERROR] No CSRF token for tier switch, time=${new Date().toISOString()}`);
+                    return;
+                }
+                const selectedTier = tierSelect.value;
+                if (!tierSelect) {
+                    console.error(`[ERROR] tierSelect element not found, time=${new Date().toISOString()}`);
+                    usageWarning.textContent = 'Error: Tier selection unavailable';
+                    usageWarning.classList.add('error');
+                    return;
+                }
+                if (!selectedTier || !['beginner', 'pro', 'diamond'].includes(selectedTier)) {
+                    console.error(`[ERROR] Invalid or missing tier selected: ${selectedTier}, time=${new Date().toISOString()}`);
+                    usageWarning.textContent = `Error: Invalid tier '${selectedTier || 'none'}'. Choose beginner, pro, or diamond`;
+                    usageWarning.classList.add('error');
+                    return;
+                }
+                const username = localStorage.getItem('username');
+                if (!username) {
+                    console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
+                    window.location.href = '/auth';
+                    return;
+                }
+                const hasDiamond = selectedTier === 'diamond';
+                const effectiveTier = selectedTier;
+                console.log(`[DEBUG] Initiating tier switch: username=${username}, tier=${effectiveTier}, has_diamond=${hasDiamond}, time=${new Date().toISOString()}`);
+                try {
+                    const requestBody = JSON.stringify({
+                        username: username,
+                        tier: effectiveTier,
+                        has_diamond: hasDiamond
+                    });
+                    console.log(`[DEBUG] Sending /create-tier-checkout request with body: ${requestBody}, time=${new Date().toISOString()}`);
+                    const response = await fetch('/create-tier-checkout', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': token,
+                            'Accept': 'application/json'
+                        },
+                        credentials: 'include',
+                        body: requestBody
+                    });
+                    console.log(`[DEBUG] /create-tier-checkout response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        console.error(`[ERROR] /create-tier-checkout failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
+                        throw new Error(errorData.detail || `Failed to initiate tier upgrade: ${response.status}`);
+                    }
+                    const data = await response.json();
+                    console.log(`[DEBUG] Stripe checkout session created: session_url=${data.session_url}, time=${new Date().toISOString()}`);
+                    window.location.href = data.session_url;
+                } catch (error) {
+                    console.error(`[ERROR] Tier switch error: ${error.message}, time=${new Date().toISOString()}`);
+                    usageWarning.textContent = `Error initiating tier upgrade: ${error.message}`;
+                    usageWarning.classList.add('error');
+                }
+            });
+        });
         // Section7: Payment Handling – now supports pending_id polling
         const handlePostPaymentRedirect = async () => {
             const urlParams = new URLSearchParams(window.location.search);
@@ -449,16 +447,14 @@ tierSwitchButton.addEventListener('click', () => {
             const username = urlParams.get('username') || localStorage.getItem('username');
             const upgradeStatus = urlParams.get('upgrade');
             const message = urlParams.get('message');
-            const pendingId = urlParams.get('pending_id');   // <-- NEW
+            const pendingId = urlParams.get('pending_id');
 
             console.log(`[DEBUG] Post-payment redirect: session_id=${sessionId}, tier=${tier}, has_diamond=${hasDiamond}, temp_id=${tempId}, username=${username}, upgrade=${upgradeStatus}, message=${message}, pending_id=${pendingId}`);
 
-            // Preserve username on cancel
             if (username) {
                 localStorage.setItem('username', username);
             }
 
-            // Tier-upgrade success/failure message
             if (upgradeStatus) {
                 usageWarning.textContent = message || (upgradeStatus === 'success' ? 'Tier upgrade completed' : 'Tier upgrade failed');
                 usageWarning.classList.add(upgradeStatus === 'success' ? 'success' : 'error');
@@ -467,13 +463,11 @@ tierSwitchButton.addEventListener('click', () => {
                 return;
             }
 
-            // Diamond audit completed via pending_id
             if (pendingId) {
                 pollPendingStatus(pendingId);
                 return;
             }
 
-            // Old flow (tier checkout or temp-file diamond audit)
             if (sessionId && username) {
                 try {
                     let endpoint = '';
@@ -510,14 +504,12 @@ tierSwitchButton.addEventListener('click', () => {
                     usageWarning.classList.add('error');
                 }
             } else if (username) {
-                // Cancel flow – just refresh tier
                 await fetchTierData();
                 window.history.replaceState({}, document.title, '/ui');
             }
         };
         handlePostPaymentRedirect();
 
-        // Start polling if we returned from Stripe with a pending_id
         const urlParams = new URLSearchParams(window.location.search);
         const pendingId = urlParams.get('pending_id');
         if (pendingId) {
@@ -525,10 +517,9 @@ tierSwitchButton.addEventListener('click', () => {
             pollPendingStatus(pendingId);
         }
 
-        // Poll /pending-status/<id> until complete
         async function pollPendingStatus(pending_id) {
-            const pollInterval = 5000;   // 5 seconds
-            const maxPolls = 60;         // 5 minutes max
+            const pollInterval = 5000;
+            const maxPolls = 60;
             let polls = 0;
 
             const interval = setInterval(async () => {
@@ -675,359 +666,353 @@ tierSwitchButton.addEventListener('click', () => {
             }
         });
         // Section10: Diamond Audit
-diamondAuditButton?.addEventListener('click', () => {
-    withCsrfToken(async (token) => {
-        if (!token) {
-            usageWarning.textContent = 'Unable to establish secure connection.';
-            usageWarning.classList.add('error');
-            console.error(`[ERROR] No CSRF token for diamond audit, time=${new Date().toISOString()}`);
-            return;
-        }
-        const fileInput = document.querySelector('#file');
-        const file = fileInput.files[0];
-        if (!file) {
-            usageWarning.textContent = 'Please select a file for Diamond audit';
-            usageWarning.classList.add('error');
-            console.error(`[ERROR] No file selected for diamond audit, time=${new Date().toISOString()}`);
-            return;
-        }
-        const username = localStorage.getItem('username');
-        if (!username) {
-            console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
-            window.location.href = '/auth';
-            return;
-        }
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('csrf_token', token);
-        try {
-            console.log(`[DEBUG] Sending /diamond-audit request for username=${username}, time=${new Date().toISOString()}`);
-            const response = await fetch(`/diamond-audit?username=${encodeURIComponent(username)}`, {
-                method: 'POST',
-                headers: { 'X-CSRF-Token': token },
-                body: formData,
-                credentials: 'include'
+        diamondAuditButton?.addEventListener('click', () => {
+            withCsrfToken(async (token) => {
+                if (!token) {
+                    usageWarning.textContent = 'Unable to establish secure connection.';
+                    usageWarning.classList.add('error');
+                    console.error(`[ERROR] No CSRF token for diamond audit, time=${new Date().toISOString()}`);
+                    return;
+                }
+                const fileInput = document.querySelector('#file');
+                const file = fileInput.files[0];
+                if (!file) {
+                    usageWarning.textContent = 'Please select a file for Diamond audit';
+                    usageWarning.classList.add('error');
+                    console.error(`[ERROR] No file selected for diamond audit, time=${new Date().toISOString()}`);
+                    return;
+                }
+                const username = localStorage.getItem('username');
+                if (!username) {
+                    console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
+                    window.location.href = '/auth';
+                    return;
+                }
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('csrf_token', token);
+                try {
+                    console.log(`[DEBUG] Sending /diamond-audit request for username=${username}, time=${new Date().toISOString()}`);
+                    const response = await fetch(`/diamond-audit?username=${encodeURIComponent(username)}`, {
+                        method: 'POST',
+                        headers: { 'X-CSRF-Token': token },
+                        body: formData,
+                        credentials: 'include'
+                    });
+                    console.log(`[DEBUG] /diamond-audit response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        console.error(`[ERROR] /diamond-audit failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
+                        throw new Error(errorData.detail || 'Diamond audit request failed');
+                    }
+                    const data = await response.json();
+                    if (data.session_url) {
+                        console.log(`[DEBUG] Redirecting to Stripe for Diamond audit, session_url=${data.session_url}, time=${new Date().toISOString()}`);
+                        window.location.href = data.session_url;
+                    } else {
+                        handleAuditResponse(data);
+                        console.log(`[DEBUG] Direct Diamond audit response handled, time=${new Date().toISOString()}`);
+                    }
+                } catch (error) {
+                    console.error(`[ERROR] Diamond audit error: ${error.message}, time=${new Date().toISOString()}`);
+                    usageWarning.textContent = `Error initiating Diamond audit: ${error.message}`;
+                    usageWarning.classList.add('error');
+                }
             });
-            console.log(`[DEBUG] /diamond-audit response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                console.error(`[ERROR] /diamond-audit failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
-                throw new Error(errorData.detail || 'Diamond audit request failed');
-            }
-            const data = await response.json();
-            if (data.session_url) {
-                console.log(`[DEBUG] Redirecting to Stripe for Diamond audit, session_url=${data.session_url}, time=${new Date().toISOString()}`);
-                window.location.href = data.session_url;
-            } else {
-                handleAuditResponse(data);
-                console.log(`[DEBUG] Direct Diamond audit response handled, time=${new Date().toISOString()}`);
-            }
-        } catch (error) {
-            console.error(`[ERROR] Diamond audit error: ${error.message}, time=${new Date().toISOString()}`);
-            usageWarning.textContent = `Error initiating Diamond audit: ${error.message}`;
-            usageWarning.classList.add('error');
-        }
-    });
-});
+        });
         // Section11: Audit Handling
-// Create spinner once after DOM is ready
-if (loading && !loading.querySelector('.spinner')) {
-    const spinner = document.createElement('div');
-    spinner.className = 'spinner';
-    const loadingText = document.createElement('p');
-    loadingText.textContent = 'Analyzing contract...';
-    loading.appendChild(spinner);
-    loading.appendChild(loadingText);
-    console.log('[DEBUG] Audit spinner created once in DOM, time=' + new Date().toISOString());
-}
-const handleAuditResponse = (data) => {
-    console.log('[DEBUG] handleAuditResponse called with data:', data);
-    const report = data.report;
-    const overageCost = data.overage_cost;
-    if (report.error) {
-        const errorMsg = report.error;
-        console.error(`Audit failed: ${errorMsg}`);
-        console.log(`Error: ${errorMsg}`);
-        usageWarning.textContent = `Error: ${errorMsg}`;
-        usageWarning.classList.add('error');
-        // Display in results dashboard
-        issuesBody.innerHTML = `<tr><td colspan="4">Error: ${errorMsg}</td></tr>`;
-        predictionsList.innerHTML = `<li>Error: ${errorMsg}</li>`;
-        recommendationsList.innerHTML = `<li>Error: ${errorMsg}</li>`;
-        fuzzingList.innerHTML = `<li>Error: ${errorMsg}</li>`;
-        remediationRoadmap.textContent = `Error: ${errorMsg}`;
-        loading.classList.remove('show');
-        return;
-    }
-    riskScoreSpan.textContent = report.risk_score;
-    riskScoreSpan.parentElement.setAttribute('aria-live', 'polite');
-    issuesBody.innerHTML = '';
-    if (report.issues.length === 0) {
-        issuesBody.innerHTML = '<tr><td colspan="4">No issues found.</td></tr>';
-    } else {
-        report.issues.forEach((issue, index) => {
-            const row = document.createElement('tr');
-            row.setAttribute('tabindex', '0');
-            row.innerHTML = `
-                <td>${issue.type}</td>
-                <td>${issue.severity}</td>
-                <td>${issue.description || 'N/A'}</td>
-                <td>${issue.fix}</td>
-            `;
-            issuesBody.appendChild(row);
-        });
-    }
-    predictionsList.innerHTML = '';
-    if (report.predictions.length === 0) {
-        predictionsList.innerHTML = '<li>No predictions available.</li>';
-    } else {
-        report.predictions.forEach(prediction => {
-            const li = document.createElement('li');
-            li.textContent = `Scenario: ${prediction.scenario} | Impact: ${prediction.impact}`;
-            li.setAttribute('tabindex', '0');
-            predictionsList.appendChild(li);
-        });
-    }
-    recommendationsList.innerHTML = '';
-    if (report.recommendations.length === 0) {
-        recommendationsList.innerHTML = '<li>No recommendations available.</li>';
-    } else {
-        report.recommendations.forEach(rec => {
-            const li = document.createElement('li');
-            li.textContent = rec;
-            li.setAttribute('tabindex', '0');
-            recommendationsList.appendChild(li);
-        });
-    }
-    fuzzingList.innerHTML = '';
-    if (report.fuzzing_results.length === 0) {
-        fuzzingList.innerHTML = '<li>No fuzzing results available.</li>';
-    } else {
-        report.fuzzing_results.forEach(result => {
-            const li = document.createElement('li');
-            li.textContent = `Vulnerability: ${result.vulnerability} | Description: ${result.description}`;
-            li.setAttribute('tabindex', '0');
-            fuzzingList.appendChild(li);
-        });
-    }
-    if (remediationRoadmap && report.remediation_roadmap) {
-        remediationRoadmap.textContent = report.remediation_roadmap;
-    }
-    if (overageCost) {
-        usageWarning.textContent = `Diamond audit completed with $${overageCost.toFixed(2)} overage charged.`;
-        usageWarning.classList.add('success');
-    }
-    loading.classList.remove('show');
-    resultsDiv.classList.add('show');
-    loading.setAttribute('aria-hidden', 'true');
-    resultsDiv.setAttribute('aria-hidden', 'false');
-    resultsDiv.focus();
-    resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    console.log(`[DEBUG] Audit results displayed and scrolled to, risk_score=${report.risk_score}, overage_cost=${overageCost}, time=${new Date().toISOString()}`);
-};
-const handleSubmit = (event) => {
-    event.preventDefault();
-    withCsrfToken(async (token) => {
-        console.log('[DEBUG] withCsrfToken called, token:', token);
-        if (!token) {
+        if (loading && !loading.querySelector('.spinner')) {
+            const spinner = document.createElement('div');
+            spinner.className = 'spinner';
+            const loadingText = document.createElement('p');
+            loadingText.textContent = 'Analyzing contract...';
+            loading.appendChild(spinner);
+            loading.appendChild(loadingText);
+            console.log('[DEBUG] Audit spinner created once in DOM, time=' + new Date().toISOString());
+        }
+        const handleAuditResponse = (data) => {
+            console.log('[DEBUG] handleAuditResponse called with data:', data);
+            const report = data.report;
+            const overageCost = data.overage_cost;
+            if (report.error) {
+                const errorMsg = report.error;
+                console.error(`Audit failed: ${errorMsg}`);
+                console.log(`Error: ${errorMsg}`);
+                usageWarning.textContent = `Error: ${errorMsg}`;
+                usageWarning.classList.add('error');
+                issuesBody.innerHTML = `<tr><td colspan="4">Error: ${errorMsg}</td></tr>`;
+                predictionsList.innerHTML = `<li>Error: ${errorMsg}</li>`;
+                recommendationsList.innerHTML = `<li>Error: ${errorMsg}</li>`;
+                fuzzingList.innerHTML = `<li>Error: ${errorMsg}</li>`;
+                remediationRoadmap.textContent = `Error: ${errorMsg}`;
+                loading.classList.remove('show');
+                return;
+            }
+            riskScoreSpan.textContent = report.risk_score;
+            riskScoreSpan.parentElement.setAttribute('aria-live', 'polite');
+            issuesBody.innerHTML = '';
+            if (report.issues.length === 0) {
+                issuesBody.innerHTML = '<tr><td colspan="4">No issues found.</td></tr>';
+            } else {
+                report.issues.forEach((issue, index) => {
+                    const row = document.createElement('tr');
+                    row.setAttribute('tabindex', '0');
+                    row.innerHTML = `
+                        <td>${issue.type}</td>
+                        <td>${issue.severity}</td>
+                        <td>${issue.description || 'N/A'}</td>
+                        <td>${issue.fix}</td>
+                    `;
+                    issuesBody.appendChild(row);
+                });
+            }
+            predictionsList.innerHTML = '';
+            if (report.predictions.length === 0) {
+                predictionsList.innerHTML = '<li>No predictions available.</li>';
+            } else {
+                report.predictions.forEach(prediction => {
+                    const li = document.createElement('li');
+                    li.textContent = `Scenario: ${prediction.scenario} | Impact: ${prediction.impact}`;
+                    li.setAttribute('tabindex', '0');
+                    predictionsList.appendChild(li);
+                });
+            }
+            recommendationsList.innerHTML = '';
+            if (report.recommendations.length === 0) {
+                recommendationsList.innerHTML = '<li>No recommendations available.</li>';
+            } else {
+                report.recommendations.forEach(rec => {
+                    const li = document.createElement('li');
+                    li.textContent = rec;
+                    li.setAttribute('tabindex', '0');
+                    recommendationsList.appendChild(li);
+                });
+            }
+            fuzzingList.innerHTML = '';
+            if (report.fuzzing_results.length === 0) {
+                fuzzingList.innerHTML = '<li>No fuzzing results available.</li>';
+            } else {
+                report.fuzzing_results.forEach(result => {
+                    const li = document.createElement('li');
+                    li.textContent = `Vulnerability: ${result.vulnerability} | Description: ${result.description}`;
+                    li.setAttribute('tabindex', '0');
+                    fuzzingList.appendChild(li);
+                });
+            }
+            if (remediationRoadmap && report.remediation_roadmap) {
+                remediationRoadmap.textContent = report.remediation_roadmap;
+            }
+            if (overageCost) {
+                usageWarning.textContent = `Diamond audit completed with $${overageCost.toFixed(2)} overage charged.`;
+                usageWarning.classList.add('success');
+            }
             loading.classList.remove('show');
-            usageWarning.textContent = 'Unable to establish secure connection.';
-            usageWarning.classList.add('error');
-            console.error(`[ERROR] No CSRF token for audit, time=${new Date().toISOString()}`);
-            return;
-        }
-        // SHOW SPINNER
-        loading.classList.add('show');
-        console.log('[DEBUG] Spinner .show class added');
-        void loading.offsetHeight;
-        console.log('[DEBUG] Spinner repaint forced, visibility=' + getComputedStyle(loading).visibility);
-        resultsDiv.classList.remove('show');
-        usageWarning.textContent = '';
-        usageWarning.classList.remove('error', 'success');
-        loading.setAttribute('aria-hidden', 'false');
-        resultsDiv.setAttribute('aria-hidden', 'true');
-        // Queue fetch to allow repaint
-        setTimeout(async () => {
-            console.log('[DEBUG] Spinner fetch queued');
-            const fileInput = auditForm.querySelector('#file');
-            const file = fileInput.files[0];
-            if (!file) {
-                loading.classList.remove('show');
-                usageWarning.textContent = 'Please select a file to audit';
-                usageWarning.classList.add('error');
-                console.error(`[ERROR] No file selected for audit, time=${new Date().toISOString()}`);
-                return;
-            }
-            const username = localStorage.getItem('username');
-            console.log('[DEBUG] Username from localStorage:', username);
-            if (!username) {
-                console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
-                window.location.href = '/auth';
-                loading.classList.remove('show');
-                usageWarning.textContent = 'Please sign in to perform an audit';
-                usageWarning.classList.add('error');
-                return;
-            }
-            const fileSizeMB = file.size / (1024 * 1024);
-            if (fileSizeMB > 1 && maxFileSize !== null && file.size > maxFileSize) {
-                loading.classList.remove('show');
-                usageWarning.textContent = 'File too large, Upgrade to Diamond tier in order to utilize Diamond features.';
-                usageWarning.classList.add('error');
-                return;
-            } else if (maxFileSize !== null && file.size > maxFileSize) {
-                loading.classList.remove('show');
-                const overageCost = calculateDiamondOverage(file);
-                usageWarning.textContent = `File size (${fileSizeMB.toFixed(2)}MB) exceeds ${maxFileSize === Infinity ? 'unlimited' : (maxFileSize / 1024 / 1024) + 'MB'} limit for your tier. Upgrade to Diamond add-on ($50/mo + $${overageCost.toFixed(2)} overage).`;
-                usageWarning.classList.add('error');
-                const upgradeButton = document.createElement('button');
-                upgradeButton.textContent = 'Upgrade to Pro + Diamond';
-                upgradeButton.className = 'upgrade-button';
-                upgradeButton.addEventListener('click', () => {
-                    withCsrfToken(async (token) => {
-                        if (!token) {
-                            usageWarning.textContent = 'Unable to establish secure connection.';
-                            usageWarning.classList.add('error');
-                            console.error(`[ERROR] No CSRF token for upgrade, time=${new Date().toISOString()}`);
-                            return;
-                        }
-                        try {
-                            const requestBody = JSON.stringify({
-                                username: username,
-                                tier: 'pro',
-                                has_diamond: true
+            resultsDiv.classList.add('show');
+            loading.setAttribute('aria-hidden', 'true');
+            resultsDiv.setAttribute('aria-hidden', 'false');
+            resultsDiv.focus();
+            resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            console.log(`[DEBUG] Audit results displayed and scrolled to, risk_score=${report.risk_score}, overage_cost=${overageCost}, time=${new Date().toISOString()}`);
+        };
+        const handleSubmit = (event) => {
+            event.preventDefault();
+            withCsrfToken(async (token) => {
+                console.log('[DEBUG] withCsrfToken called, token:', token);
+                if (!token) {
+                    loading.classList.remove('show');
+                    usageWarning.textContent = 'Unable to establish secure connection.';
+                    usageWarning.classList.add('error');
+                    console.error(`[ERROR] No CSRF token for audit, time=${new Date().toISOString()}`);
+                    return;
+                }
+                loading.classList.add('show');
+                console.log('[DEBUG] Spinner .show class added');
+                void loading.offsetHeight;
+                console.log('[DEBUG] Spinner repaint forced, visibility=' + getComputedStyle(loading).visibility);
+                resultsDiv.classList.remove('show');
+                usageWarning.textContent = '';
+                usageWarning.classList.remove('error', 'success');
+                loading.setAttribute('aria-hidden', 'false');
+                resultsDiv.setAttribute('aria-hidden', 'true');
+                setTimeout(async () => {
+                    console.log('[DEBUG] Spinner fetch queued');
+                    const fileInput = auditForm.querySelector('#file');
+                    const file = fileInput.files[0];
+                    if (!file) {
+                        loading.classList.remove('show');
+                        usageWarning.textContent = 'Please select a file to audit';
+                        usageWarning.classList.add('error');
+                        console.error(`[ERROR] No file selected for audit, time=${new Date().toISOString()}`);
+                        return;
+                    }
+                    const username = localStorage.getItem('username');
+                    console.log('[DEBUG] Username from localStorage:', username);
+                    if (!username) {
+                        console.error(`[ERROR] No username found, redirecting to /auth, time=${new Date().toISOString()}`);
+                        window.location.href = '/auth';
+                        loading.classList.remove('show');
+                        usageWarning.textContent = 'Please sign in to perform an audit';
+                        usageWarning.classList.add('error');
+                        return;
+                    }
+                    const fileSizeMB = file.size / (1024 * 1024);
+                    if (fileSizeMB > 1 && maxFileSize !== null && file.size > maxFileSize) {
+                        loading.classList.remove('show');
+                        usageWarning.textContent = 'File too large, Upgrade to Diamond tier in order to utilize Diamond features.';
+                        usageWarning.classList.add('error');
+                        return;
+                    } else if (maxFileSize !== null && file.size > maxFileSize) {
+                        loading.classList.remove('show');
+                        const overageCost = calculateDiamondOverage(file);
+                        usageWarning.textContent = `File size (${fileSizeMB.toFixed(2)}MB) exceeds ${maxFileSize === Infinity ? 'unlimited' : (maxFileSize / 1024 / 1024) + 'MB'} limit for your tier. Upgrade to Diamond add-on ($50/mo + $${overageCost.toFixed(2)} overage).`;
+                        usageWarning.classList.add('error');
+                        const upgradeButton = document.createElement('button');
+                        upgradeButton.textContent = 'Upgrade to Pro + Diamond';
+                        upgradeButton.className = 'upgrade-button';
+                        upgradeButton.addEventListener('click', () => {
+                            withCsrfToken(async (token) => {
+                                if (!token) {
+                                    usageWarning.textContent = 'Unable to establish secure connection.';
+                                    usageWarning.classList.add('error');
+                                    console.error(`[ERROR] No CSRF token for upgrade, time=${new Date().toISOString()}`);
+                                    return;
+                                }
+                                try {
+                                    const requestBody = JSON.stringify({
+                                        username: username,
+                                        tier: 'pro',
+                                        has_diamond: true
+                                    });
+                                    console.log(`[DEBUG] Sending /create-tier-checkout request with body: ${requestBody}, time=${new Date().toISOString()}`);
+                                    const response = await fetch('/create-tier-checkout', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'X-CSRF-Token': token,
+                                            'Accept': 'application/json'
+                                        },
+                                        credentials: 'include',
+                                        body: requestBody
+                                    });
+                                    console.log(`[DEBUG] /create-tier-checkout response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
+                                    if (!response.ok) {
+                                        const errorData = await response.json().catch(() => ({}));
+                                        console.error(`[ERROR] /create-tier-checkout failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
+                                        throw new Error(errorData.detail || 'Failed to initiate tier upgrade');
+                                    }
+                                    const data = await response.json();
+                                    console.log(`[DEBUG] Redirecting to Stripe for Pro + Diamond upgrade due to file size, session_url=${data.session_url}, time=${new Date().toISOString()}`);
+                                    window.location.href = data.session_url;
+                                } catch (error) {
+                                    console.error(`[ERROR] Upgrade error: ${error.message}, time=${new Date().toISOString()}`);
+                                    usageWarning.textContent = `Error initiating upgrade: ${error.message}`;
+                                    usageWarning.classList.add('error');
+                                }
                             });
-                            console.log(`[DEBUG] Sending /create-tier-checkout request with body: ${requestBody}, time=${new Date().toISOString()}`);
-                            const response = await fetch('/create-tier-checkout', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-CSRF-Token': token,
-                                    'Accept': 'application/json'
-                                },
-                                credentials: 'include',
-                                body: requestBody
+                        });
+                        usageWarning.appendChild(upgradeButton);
+                        return;
+                    }
+                    if (auditCount >= auditLimit) {
+                        loading.classList.remove('show');
+                        usageWarning.textContent = `Usage limit exceeded (${auditCount}/${auditLimit} audits). Upgrade your tier.`;
+                        usageWarning.classList.add('error');
+                        const upgradeButton = document.createElement('button');
+                        upgradeButton.textContent = 'Upgrade to Beginner';
+                        upgradeButton.className = 'upgrade-button';
+                        upgradeButton.addEventListener('click', () => {
+                            withCsrfToken(async (token) => {
+                                if (!token) {
+                                    usageWarning.textContent = 'Unable to establish secure connection.';
+                                    usageWarning.classList.add('error');
+                                    console.error(`[ERROR] No CSRF token for upgrade, time=${new Date().toISOString()}`);
+                                    return;
+                                }
+                                try {
+                                    const requestBody = JSON.stringify({
+                                        username: username,
+                                        tier: 'beginner',
+                                        has_diamond: false
+                                    });
+                                    console.log(`[DEBUG] Sending /create-tier-checkout request with body: ${requestBody}, time=${new Date().toISOString()}`);
+                                    const response = await fetch('/create-tier-checkout', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'X-CSRF-Token': token,
+                                            'Accept': 'application/json'
+                                        },
+                                        credentials: 'include',
+                                        body: requestBody
+                                    });
+                                    console.log(`[DEBUG] /create-tier-checkout response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
+                                    if (!response.ok) {
+                                        const errorData = await response.json().catch(() => ({}));
+                                        console.error(`[ERROR] /create-tier-checkout failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
+                                        throw new Error(errorData.detail || 'Failed to initiate tier upgrade');
+                                    }
+                                    const data = await response.json();
+                                    console.log(`[DEBUG] Redirecting to Stripe for Beginner upgrade due to audit limit, session_url=${data.session_url}, time=${new Date().toISOString()}`);
+                                    window.location.href = data.session_url;
+                                } catch (error) {
+                                    console.error(`[ERROR] Upgrade error: ${error.message}, time=${new Date().toISOString()}`);
+                                    usageWarning.textContent = `Error initiating upgrade: ${error.message}`;
+                                    usageWarning.classList.add('error');
+                                }
                             });
-                            console.log(`[DEBUG] /create-tier-checkout response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
-                            if (!response.ok) {
-                                const errorData = await response.json().catch(() => ({}));
-                                console.error(`[ERROR] /create-tier-checkout failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
-                                throw new Error(errorData.detail || 'Failed to initiate tier upgrade');
+                        });
+                        usageWarning.appendChild(upgradeButton);
+                        return;
+                    }
+                    const formData = new FormData(auditForm);
+                    formData.append('csrf_token', token);
+                    try {
+                        console.log(`[DEBUG] Sending /audit request for username=${username}, time=${new Date().toISOString()}`);
+                        const response = await fetch(`/audit?username=${encodeURIComponent(username)}`, {
+                            method: 'POST',
+                            headers: { 'X-CSRF-Token': token },
+                            body: formData,
+                            credentials: 'include'
+                        });
+                        console.log(`[DEBUG] /audit response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
+                        if (!response.ok) {
+                            const text = await response.text();
+                            console.error(`[ERROR] /audit failed: status=${response.status}, response_text=${text}, time=${new Date().toISOString()}`);
+                            let errorData;
+                            try {
+                                errorData = JSON.parse(text);
+                            } catch {
+                                errorData = { detail: text };
                             }
-                            const data = await response.json();
-                            console.log(`[DEBUG] Redirecting to Stripe for Pro + Diamond upgrade due to file size, session_url=${data.session_url}, time=${new Date().toISOString()}`);
-                            window.location.href = data.session_url;
-                        } catch (error) {
-                            console.error(`[ERROR] Upgrade error: ${error.message}, time=${new Date().toISOString()}`);
-                            usageWarning.textContent = `Error initiating upgrade: ${error.message}`;
-                            usageWarning.classList.add('error');
-                        }
-                    });
-                });
-                usageWarning.appendChild(upgradeButton);
-                return;
-            }
-            if (auditCount >= auditLimit) {
-                loading.classList.remove('show');
-                usageWarning.textContent = `Usage limit exceeded (${auditCount}/${auditLimit} audits). Upgrade your tier.`;
-                usageWarning.classList.add('error');
-                const upgradeButton = document.createElement('button');
-                upgradeButton.textContent = 'Upgrade to Beginner';
-                upgradeButton.className = 'upgrade-button';
-                upgradeButton.addEventListener('click', () => {
-                    withCsrfToken(async (token) => {
-                        if (!token) {
-                            usageWarning.textContent = 'Unable to establish secure connection.';
-                            usageWarning.classList.add('error');
-                            console.error(`[ERROR] No CSRF token for upgrade, time=${new Date().toISOString()}`);
-                            return;
-                        }
-                        try {
-                            const requestBody = JSON.stringify({
-                                username: username,
-                                tier: 'beginner',
-                                has_diamond: false
-                            });
-                            console.log(`[DEBUG] Sending /create-tier-checkout request with body: ${requestBody}, time=${new Date().toISOString()}`);
-                            const response = await fetch('/create-tier-checkout', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-CSRF-Token': token,
-                                    'Accept': 'application/json'
-                                },
-                                credentials: 'include',
-                                body: requestBody
-                            });
-                            console.log(`[DEBUG] /create-tier-checkout response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
-                            if (!response.ok) {
-                                const errorData = await response.json().catch(() => ({}));
-                                console.error(`[ERROR] /create-tier-checkout failed: status=${response.status}, detail=${errorData.detail || 'Unknown error'}, response_body=${JSON.stringify(errorData)}, time=${new Date().toISOString()}`);
-                                throw new Error(errorData.detail || 'Failed to initiate tier upgrade');
+                            if (errorData.session_url) {
+                                console.log(`[DEBUG] Redirecting to Stripe for audit limit/file size upgrade, session_url=${errorData.session_url}, time=${new Date().toISOString()}`);
+                                window.location.href = errorData.session_url;
+                                return;
                             }
-                            const data = await response.json();
-                            console.log(`[DEBUG] Redirecting to Stripe for Beginner upgrade due to audit limit, session_url=${data.session_url}, time=${new Date().toISOString()}`);
-                            window.location.href = data.session_url;
-                        } catch (error) {
-                            console.error(`[ERROR] Upgrade error: ${error.message}, time=${new Date().toISOString()}`);
-                            usageWarning.textContent = `Error initiating upgrade: ${error.message}`;
-                            usageWarning.classList.add('error');
+                            throw new Error(errorData.detail || `Audit request failed: ${response.status}`);
                         }
-                    });
-                });
-                usageWarning.appendChild(upgradeButton);
-                return;
-            }
-            const formData = new FormData(auditForm);
-            formData.append('csrf_token', token);
-            // Inside the setTimeout in handleSubmit
-try {
-    console.log(`[DEBUG] Sending /audit request for username=${username}, time=${new Date().toISOString()}`);
-    const response = await fetch(`/audit?username=${encodeURIComponent(username)}`, {
-        method: 'POST',
-        headers: { 'X-CSRF-Token': token },
-        body: formData,
-        credentials: 'include'
-    });
-    console.log(`[DEBUG] /audit response status: ${response.status}, ok: ${response.ok}, headers: ${JSON.stringify([...response.headers])}, time=${new Date().toISOString()}`);
-    if (!response.ok) {
-        const text = await response.text();
-        console.error(`[ERROR] /audit failed: status=${response.status}, response_text=${text}, time=${new Date().toISOString()}`);
-        let errorData;
-        try {
-            errorData = JSON.parse(text);
-        } catch {
-            errorData = { detail: text };
-        }
-        if (errorData.session_url) {
-            console.log(`[DEBUG] Redirecting to Stripe for audit limit/file size upgrade, session_url=${errorData.session_url}, time=${new Date().toISOString()}`);
-            window.location.href = errorData.session_url;
-            return;
-        }
-        throw new Error(errorData.detail || `Audit request failed: ${response.status}`);
-    }
-    const text = await response.text();
-    console.log('[DEBUG] /audit raw response:', text);
-    let data;
-    try {
-        data = JSON.parse(text);
-    } catch (parseError) {
-        console.error('[ERROR] Failed to parse /audit response as JSON:', parseError.message, 'raw:', text);
-        throw new Error('Invalid response from server');
-    }
-    console.log('[DEBUG] Parsed audit response:', data);
-    handleAuditResponse(data);
-    await fetchTierData();
-} catch (error) {
-    console.error(`[ERROR] Audit error: ${error.message}, time=${new Date().toISOString()}`);
-    if (loading) loading.classList.remove('show');
-    if (usageWarning) usageWarning.textContent = `Error initiating audit: ${error.message}`;
-    if (usageWarning) usageWarning.classList.add('error');
-}
-}
-        }, 0); // Queue fetch
-    });
-};
-auditForm?.addEventListener('submit', handleSubmit);
+                        const text = await response.text();
+                        console.log('[DEBUG] /audit raw response:', text);
+                        let data;
+                        try {
+                            data = JSON.parse(text);
+                        } catch (parseError) {
+                            console.error('[ERROR] Failed to parse /audit response as JSON:', parseError.message, 'raw:', text);
+                            throw new Error('Invalid response from server');
+                        }
+                        console.log('[DEBUG] Parsed audit response:', data);
+                        handleAuditResponse(data);
+                        await fetchTierData();
+                    } catch (error) {
+                        console.error(`[ERROR] Audit error: ${error.message}, time=${new Date().toISOString()}`);
+                        if (loading) loading.classList.remove('show');
+                        if (usageWarning) usageWarning.textContent = `Error initiating audit: ${error.message}`;
+                        if (usageWarning) usageWarning.classList.add('error');
+                    }
+                }, 0);
+            });
+        };
+        auditForm?.addEventListener('submit', handleSubmit);
         // Section12: Report Download
         downloadReportButton?.addEventListener('click', () => {
             const reportData = {
