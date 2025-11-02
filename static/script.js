@@ -72,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     initHamburger();
+    console.log('[DEBUG] Hamburger initialized');
 
     // Section2: CSRF Token Management
     const fetchCsrfToken = async (attempt = 1, maxAttempts = 3) => {
@@ -107,14 +108,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const withCsrfToken = async (fetchFn) => {
         await new Promise(resolve => setTimeout(resolve, 100));
-        let token;
-        try {
-            token = await fetchCsrfToken();
-            console.log(`[DEBUG] Using CSRF token for POST: ${token}, type=${typeof token}, time=${new Date().toISOString()}`);
-        } catch (error) {
-            console.error(`[ERROR] Failed to fetch CSRF token for POST: ${error.message}, proceeding with null`);
-            return fetchFn(null);
+        let token = localStorage.getItem('csrfToken');
+        if (!token) {
+            console.error('[ERROR] No CSRF token in localStorage, fetching new');
+            try {
+                token = await fetchCsrfToken();
+            } catch (error) {
+                console.error(`[ERROR] Failed to fetch CSRF token: ${error.message}, proceeding with null`);
+                return fetchFn(null);
+            }
         }
+        console.log(`[DEBUG] Using CSRF token for POST: ${token}, type=${typeof token}, time=${new Date().toISOString()}`);
         return fetchFn(token);
     };
 
@@ -338,8 +342,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 localStorage.setItem('size_limit', size_limit);
                 if (tierInfo) tierInfo.textContent = `Tier: ${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} (${size_limit === 'Unlimited' ? 'Unlimited audits' : `${auditCount}/${auditLimit} audits`})`;
                 if (tierDescription) tierDescription.textContent = `${tier.charAt(0).toUpperCase() + tier.slice(1)}${has_diamond ? ' + Diamond' : ''} Tier: ${has_diamond ? 'Unlimited file size, full Diamond audits, fuzzing, priority support, NFT rewards' : tier === 'pro' ? 'Unlimited audits, Diamond add-on access ($50/mo), fuzzing, priority support' : tier === 'beginner' ? `Up to 10 audits, 1MB file size (${auditCount}/${auditLimit} remaining), priority support` : `Up to 3 audits, 1MB file size (${auditCount}/${auditLimit} remaining)`}`;
-                if (sizeLimit) sizeLimit.textContent = `Max file size: ${size_limit}`;
-                if (features) features.textContent = `Features: ${has_diamond ? 'Diamond audits, Diamond Pattern previews, priority support, NFT rewards' : tier === 'pro' ? 'Diamond add-on access, standard audits, Diamond Pattern previews, fuzzing, priority support' : 'Standard audit features'}${feature_flags.predictions ? ', AI predictions' : ''}${feature_flags.onchain ? ', on-chain analysis' : ''}${feature_flags.reports ? ', exportable reports' : ''}${feature_flags.fuzzing ? ', fuzzing analysis' : ''}${feature_flags.priority_support ? ', priority support' : ''}${feature_flags.nft_rewards ? ', NFT rewards' : ''}`;
+                if (sizeLimit) sizeLimit.textContent = `Max file size: ${size_limit}`;                if (features) features.textContent = `Features: ${has_diamond ? 'Diamond audits, Diamond Pattern previews, priority support, NFT rewards' : tier === 'pro' ? 'Diamond add-on access, standard audits, Diamond Pattern previews, fuzzing, priority support' : 'Standard audit features'}${feature_flags.predictions ? ', AI predictions' : ''}${feature_flags.onchain ? ', on-chain analysis' : ''}${feature_flags.reports ? ', exportable reports' : ''}${feature_flags.fuzzing ? ', fuzzing analysis' : ''}${feature_flags.priority_support ? ', priority support' : ''}${feature_flags.nft_rewards ? ', NFT rewards' : ''}`;
+
                 if (usageWarning) usageWarning.textContent = tier === 'free' || tier === 'beginner' ? `${tier.charAt(0).toUpperCase() + tier.slice(1)} tier: ${auditCount}/${auditLimit} audits remaining` : '';
                 if (usageWarning) usageWarning.classList.remove('error');
                 if (upgradeLink) upgradeLink.style.display = !has_diamond ? 'inline-block' : 'none';
