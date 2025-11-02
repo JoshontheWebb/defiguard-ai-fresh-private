@@ -1636,6 +1636,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         except Exception as e:
             logger.error(f"Grok analysis failed for {effective_username}: {str(e)}")
             report["error"] = f"Grok analysis failed: {str(e)}"
+            return {"report": report, "risk_score": "N/A", "overage_cost": overage_cost}
     except Exception as e:
         logger.error(f"Audit processing error for {effective_username}: {str(e)}")
         report["error"] = f"Audit failed: {str(e)}"
@@ -1682,7 +1683,9 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         if (datetime.now() - audit_start_time).total_seconds() > 6 * 3600:
             logger.warning(f"Audit exceeded 6 hours for {effective_username} — resetting usage")
             usage_tracker.reset_usage(effective_username, db)
-        return {"report": report, "risk_score": report["risk_score"], "overage_cost": overage_cost}
+        # Ensure risk_score is always a string for the Pydantic model
+        risk_score_str = str(report.get("risk_score", "N/A"))
+        return {"report": report, "risk_score": risk_score_str, "overage_cost": overage_cost}
 ## Section 4.6: Main Entry Point
 if __name__ == "__main__":
     import uvicorn
