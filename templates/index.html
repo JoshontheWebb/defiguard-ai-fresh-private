@@ -147,7 +147,14 @@
             <div class="loading" aria-live="assertive"></div>
 
             <div class="usage-warning is-hidden" aria-live="assertive"></div>
-            <div id="pending-message" class="loading" style="display:none;">Audit pending post-upgrade...</div>  <!-- Added for pending audit status -->
+<div class="loading" aria-hidden="true">
+    <div class="spinner"></div>
+    <p>Analyzing contract...</p>
+</div>
+<div id="pending-message" class="loading" style="display:none;" aria-hidden="true">
+    <div class="spinner"></div>
+    <p>Audit pending post-upgrade...</p>
+</div>
             <div class="upgrade-prompt" aria-live="polite">
                 <h3>Subscription Tiers</h3>
                 <table class="pricing-table">
