@@ -1703,4 +1703,4 @@ def summarize_context(context):
 ## Section 4.6: Main Entry Point
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)"# DEPLOY TRIGGER: $(date)" 
+    uvicorn.run(app, host="0.0.0.0", port=8000)
