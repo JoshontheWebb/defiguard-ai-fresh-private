@@ -12,3 +12,4 @@ itsdangerous==2.2.0
 python-multipart==0.0.12
 stripe==10.5.0
 redis==5.1.1
+reportlab==4.2.5
