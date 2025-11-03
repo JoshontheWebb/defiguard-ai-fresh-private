@@ -33,7 +33,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             sidebar.classList.toggle('open');
             hamburger.classList.toggle('open');
-            mainContent.style.marginLeft = sidebar.classList.contains('open') ? '270px' : '0';
+    // Use CSS class for smooth animation + mobile support
+    document.body.classList.toggle('sidebar-open');
             console.log(`[DEBUG] Hamburger menu toggled: open=${sidebar.classList.contains('open')}, margin=${mainContent.style.marginLeft}, time=${new Date().toISOString()}`);
         } catch (error) {
             console.error(`[ERROR] Hamburger toggle failed: ${error.message}, time=${new Date().toISOString()}`);

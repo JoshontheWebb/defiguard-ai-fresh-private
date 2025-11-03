@@ -915,3 +915,18 @@ footer a:focus-visible {
         font-size: clamp(0.8rem, 1.2vw, 0.9rem);
     }
 }
+/* Sync JS toggle with CSS */
+body.sidebar-open .sidebar {
+    transform: translateX(0) !important;
+    visibility: visible !important;
+}
+
+body.sidebar-open .main-content {
+    margin-left: clamp(200px, 25vw, 270px) !important;
+}
+
+/* Ensure sidebar starts hidden */
+body:not(.sidebar-open) .sidebar {
+    transform: translateX(-100%) !important;
+    visibility: hidden !important;
+}
