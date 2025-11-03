@@ -32,6 +32,10 @@ from eth_account.messages import encode_defunct
 from pydantic import BaseModel, Field, validator
 from dotenv import load_dotenv
 import asyncio
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from celery import Celery
 # Global clients — initialized in startup
 client = None
 w3 = None
@@ -105,12 +109,15 @@ async def log_routes():
 async def get_csrf_token(request: Request) -> str:
     try:
         token = request.session.get("csrf_token")
-        if not token:
+        last_refresh = request.session.get("csrf_last_refresh")
+        now = datetime.utcnow()
+        if not token or not last_refresh or (now - datetime.fromisoformat(last_refresh)) > timedelta(minutes=15):
             token = secrets.token_urlsafe(32)
             request.session["csrf_token"] = token
-            logger.debug(f"Generated new CSRF token: {token}, session: {request.session}")
+            request.session["csrf_last_refresh"] = now.isoformat()
+            logger.debug(f"Generated/Refreshed CSRF token: {token}, session: {request.session}")
         else:
-            logger.debug(f"Reusing existing CSRF token: {token}, session: {request.session}")
+            logger.debug(f"Reusing valid CSRF token: {token}, age: {(now - datetime.fromisoformat(last_refresh)).seconds}s")
         return token
     except Exception as e:
         logger.error(f"Failed to get CSRF token: {str(e)}")
@@ -543,6 +550,59 @@ def run_echidna(temp_path):
             os.unlink(config_path)
         if 'output_path' in locals() and output_path and os.path.exists(output_path):
             os.unlink(output_path)
+def run_mythril(temp_path):
+    """Run Mythril analysis on the Solidity file and return results."""
+    try:
+        import subprocess
+        subprocess.run(["myth", "--version"], check=True, capture_output=True, text=True)
+        logger.info("Mythril is available, analyzing contract")
+        cmd = ["myth", "analyze", temp_path, "--json"]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode == 0:
+            mythril_results = json.loads(result.stdout)
+            issues = []
+            for issue in mythril_results.get("issues", []):
+                issues.append({
+                    "vulnerability": issue.get("title", "Unknown"),
+                    "description": issue.get("description", "No description")
+                })
+            logger.info("Mythril analysis completed successfully")
+            return issues or [{"vulnerability": "No issues", "description": "Mythril found no vulnerabilities"}]
+        else:
+            logger.warning(f"Mythril exited with code {result.returncode}: {result.stderr}")
+            return [{"vulnerability": "Mythril warning", "description": result.stderr[:500]}]
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Mythril subprocess error: {str(e)}")
+        return [{"vulnerability": "Mythril error", "description": str(e)}]
+    except Exception as e:
+        logger.error(f"Mythril analysis failed: {str(e)}")
+        return [{"vulnerability": "Mythril failed", "description": str(e)}]
+def generate_compliance_pdf(report, username, file_size):
+    """Generate MiCA/FIT21 compliance PDF report."""
+    try:
+        pdf_path = os.path.join(DATA_DIR, f"compliance_report_{username}_{int(time.time())}.pdf")
+        doc = SimpleDocTemplate(pdf_path, pagesize=letter)
+        styles = getSampleStyleSheet()
+        story = []
+        story.append(Paragraph(f"<b>DeFiGuard AI Compliance Report</b>", styles['Title']))
+        story.append(Spacer(1, 12))
+        story.append(Paragraph(f"<b>User:</b> {username}", styles['Normal']))
+        story.append(Paragraph(f"<b>File Size:</b> {file_size / 1024 / 1024:.2f} MB", styles['Normal']))
+        story.append(Paragraph(f"<b>Date:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles['Normal']))
+        story.append(Spacer(1, 12))
+        story.append(Paragraph("<b>MiCA/SEC FIT21 Compliance Summary:</b>", styles['Heading2']))
+        story.append(Paragraph("• Custody: High-severity reentrancy risks must be mitigated.", styles['Normal']))
+        story.append(Paragraph("• Transparency: All findings disclosed in audit report.", styles['Normal']))
+        story.append(Paragraph("• Risk Score: Below 30/100 recommended for production.", styles['Normal']))
+        story.append(Spacer(1, 12))
+        story.append(Paragraph(f"<b>Risk Score:</b> {report['risk_score']}/100", styles['Normal']))
+        story.append(Paragraph(f"<b>Issues Found:</b> {len(report['issues'])}", styles['Normal']))
+        doc.build(story)
+        logger.info(f"Compliance PDF generated: {pdf_path}")
+        return pdf_path
+    except Exception as e:
+        logger.error(f"PDF generation failed: {str(e)}")
+        return None
 
 def handle_tool_call(tool_call):
     if tool_call.function.name == "fetch_reg":
@@ -1321,7 +1381,9 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
     temp_path = None
     context = ""
     fuzzing_results = []
+    mythril_results = []
     audit_start_time = datetime.now() # For failsafe
+    pdf_path = None
     # File reading block with size pre-check and button logic adjustment
     try:
         if file.size > 100 * 1024 * 1024: # 100MB limit
@@ -1447,7 +1509,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
     except Exception as e:
         logger.error(f"Tier or usage check error for {effective_username}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Tier or usage check failed: {str(e)}")
-    # Audit processing block — NO db.begin()
+    # Audit processing block — PARALLEL ANALYSIS
     report = {
         "risk_score": "N/A",
         "issues": [],
@@ -1455,6 +1517,8 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         "recommendations": [],
         "remediation_roadmap": None,
         "fuzzing_results": [],
+        "mythril_results": [],
+        "compliance_pdf": None,
         "error": None
     }
     overage_cost = None
@@ -1486,67 +1550,35 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         if not os.path.exists(temp_path):
             report["error"] = "Audit failed: Temporary file not found"
             return {"report": report, "risk_score": "N/A", "overage_cost": None}
-                                # Slither analysis with API validation and Docker fallback
+        # PARALLEL: Slither + Mythril
         try:
-            logger.info(f"Starting Slither analysis for {effective_username}")
-            @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
-            def analyze_slither(temp_path, chunk_size=500000, attempt_number=1):
-                logger.debug(f"Slither retry attempt {attempt_number} for {effective_username}")
-                try:
-                    with open(temp_path, "r", encoding="utf-8") as f:
-                        code = f.read()
-                        if len(code) > chunk_size:
-                            chunks = [code[i:i + 80000] for i in range(0, len(code), 80000)]
-                            findings = []
-                            for i, chunk in enumerate(chunks):
-                                if len(chunk.strip()) == 0:
-                                    continue # Skip empty chunks to prevent syntax errors
-                                chunk_file_path = os.path.join(temp_dir, f"chunk_{i}.sol")
-                                with open(chunk_file_path, "wb") as chunk_file:
-                                    chunk_file.write(chunk.encode("utf-8"))
-                                slither = Slither(chunk_file_path)
-                                if not hasattr(slither, 'detectors'):
-                                    raise Exception("Slither API mismatch")
-                                for contract in slither.contracts:
-                                    findings.extend(detector.detect() for detector in slither.detectors)
-                                os.unlink(chunk_file_path)
-                            return findings
-                        else:
-                            slither = Slither(temp_path)
-                            if not hasattr(slither, 'detectors'):
-                                raise Exception("Slither API mismatch")
-                            return [finding for contract in slither.contracts for detector in slither.detectors for finding in detector.detect()]
-                except SlitherError as e:
-                    logger.error(f"Slither analysis failed on attempt {attempt_number}: {str(e)}")
-                    if attempt_number < 3:
-                        raise
-                    return []
-                except Exception as e:
-                    logger.error(f"Unexpected Slither error on attempt {attempt_number}: {str(e)}")
-                    if attempt_number < 3:
-                        raise
-                    return []
-            findings = analyze_slither(temp_path)
-            context = json.dumps([finding.to_json() for finding in findings]).replace('"', '\"') if findings else "No static issues found"
-            logger.debug(f"Slither findings for {effective_username}: {context[:200]}")
+            slither_task = asyncio.create_task(asyncio.to_thread(analyze_slither, temp_path))
+            mythril_task = asyncio.create_task(asyncio.to_thread(run_mythril, temp_path))
+            slither_findings, mythril_results = await asyncio.gather(slither_task, mythril_task, return_exceptions=True)
+            if isinstance(slither_findings, Exception):
+                logger.error(f"Slither failed: {str(slither_findings)}")
+                slither_findings = []
+            if isinstance(mythril_results, Exception):
+                logger.error(f"Mythril failed: {str(mythril_results)}")
+                mythril_results = []
+            context = json.dumps([finding.to_json() for finding in slither_findings]).replace('"', '\"') if slither_findings else "No static issues found"
+            logger.debug(f"Slither + Mythril completed for {effective_username}")
         except Exception as e:
-            context = f"Slither analysis failed: {str(e)}"
-            logger.error(f"Slither processing failed for {effective_username}: {str(e)}")
-
+            logger.error(f"Parallel analysis failed for {effective_username}: {str(e)}")
+            context = f"Static analysis failed: {str(e)}"
         context = summarize_context(context)
-        # Echidna fuzzing with Docker fallback
-        ECHIDNA_TIMEOUT = 600 # Configurable timeout in seconds
+        # Echidna fuzzing
         if usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["fuzzing"]:
             logger.info(f"Starting Echidna fuzzing for {effective_username}")
             try:
-                fuzzing_results = run_echidna(temp_path)
+                fuzzing_results = await asyncio.to_thread(run_echidna, temp_path)
             except Exception as e:
                 fuzzing_results = [{"vulnerability": "Fuzzing failed", "description": str(e)}]
                 logger.error(f"Echidna processing failed for {effective_username}: {str(e)}")
         else:
             logger.info(f"Fuzzing skipped for {current_tier} tier for {effective_username}")
             fuzzing_results = []
-        # On-chain analysis if enabled
+        # On-chain analysis
         if contract_address and not usage_tracker.feature_flags["diamond" if user.has_diamond else current_tier]["onchain"]:
             logger.warning(f"On-chain analysis denied for {effective_username} (tier: {current_tier}, has_diamond: {user.has_diamond})")
             raise HTTPException(status_code=403, detail="On-chain analysis requires Beginner tier or higher.")
@@ -1614,7 +1646,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         logger.error(f"Audit processing error for {effective_username}: {str(e)}")
         report["error"] = f"Audit failed: {str(e)}"
     finally:
-        # Overage, history, commit, delete, increment, reset—try/except log continue
+        # Overage, history, commit, delete, increment, reset
         try:
             overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
             overage_cost = usage_tracker.calculate_diamond_overage(file_size) / 100 if overage_mb > 0 else None
@@ -1659,6 +1691,15 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
         # Ensure risk_score is always a string for the Pydantic model
         risk_score_str = str(report.get("risk_score", "N/A"))
         return {"report": report, "risk_score": risk_score_str, "overage_cost": overage_cost}
+        response = {"report": report, "risk_score": report["risk_score"], "overage_cost": overage_cost}
+        if pdf_path:
+            response["compliance_pdf"] = os.path.basename(pdf_path)
+        return response
+
+def summarize_context(context):
+    if len(context) > 5000:
+        return context[:5000] + " ... (summarized top findings)"
+    return context
 ## Section 4.6: Main Entry Point
 if __name__ == "__main__":
     import uvicorn
