@@ -34,8 +34,13 @@ body {
     line-height: 1.6;
     font-size: clamp(16px, 4vw, 18px);
     transition: background-color 0.3s ease;
-    height: 200vh;
+    min-height: 100vh;
     overflow-x: hidden;
+}
+.dark-mode {
+    --bg-light: #121212;
+    --text-dark: #e0e0e0;
+    --bg-section: hsl(210, 20%, 10%);
 }
 
 header {
@@ -79,6 +84,10 @@ header {
         to { opacity: 1; }
     }
 }
+/* Polyfill fallback for @scroll-timeline */
+@supports not (animation-timeline: works) {
+    /* Existing not supports rules */
+}
 
 @supports not (animation-timeline: works) {
     header {
@@ -91,6 +100,7 @@ header {
         opacity: 1;
     }
 }
+/* Polyfill fallback for @scroll-timeline */
 
 @keyframes gradientFlow {
     0% { background: linear-gradient(45deg, #1a252f, #0d47a1); }
@@ -107,7 +117,7 @@ header .logo-container {
 }
 
 header .logo-container .logo-image {
-    height: 60%; /* Increased to make logo prominent */
+    height: 100%; /* Enlarged for much larger logo */
     object-fit: contain;
     margin-right: 0; /* Remove any default margin */
 }
@@ -458,6 +468,11 @@ header .logo-container:hover {
     transition: transform 0.2s ease, box-shadow 0.3s ease;
     box-shadow: 0 4px 10px rgba(0, 209, 178, 0.3);
     pointer-events: auto;
+}
+
+.wallet-button, .nft-button, .alerts-button {
+    background: linear-gradient(45deg, #ff4081, #00d1b2);
+    margin-top: 10px;
 }
 
 .audit-section button:hover,

@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DeFiGuard AI - Predictive DeFi Compliance Auditor</title>
     <meta name="description" content="Advanced AI-powered smart contract audits for DeFi protocols, outperforming industry standards with real-time insights and 2025 regulatory compliance.">
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="stylesheet" href="/static/styles.css?_=${Date.now()}">
     <style>
         .upgrade-button {
@@ -110,7 +112,7 @@
         }
     </style>
 </head>
-<body>
+<body {% if session %}class="logged-in"{% endif %}>
     <!-- Hamburger Menu -->
     <div class="hamburger" id="hamburger">
         <div class="bar1"></div>
@@ -122,7 +124,13 @@
     <header>
         <div class="logo-container">
             <img src="/static/images/defiguard-logo.png" alt="DeFiGuard Logo" class="logo-image">
-            <span class="logo-text">DeFiGuard</span>
+            {% if session %}
+            <p>Welcome, {{ session.userinfo.name or session.userinfo.email }}!</p>
+            <a href="/logout" class="logout-link">Logout</a>
+            {% else %}
+            <a href="/login" class="cta-button">Login</a>
+            <a href="/login?screen_hint=signup" class="cta-button">Signup</a>
+            {% endif %}
         </div>
     </header>
 
@@ -175,6 +183,7 @@
                 <input type="file" id="file" name="file" accept=".sol" required aria-describedby="file-help">
                 <small id="file-help">Max size: Loading...</small>
 
+                <button id="wallet-connect" type="button">Connect Wallet</button>
                 <label for="contract_address" class="pro-diamond-only" style="display: none;">Ethereum Contract Address (Optional):</label>
                 <input type="text" id="contract_address" name="contract_address" placeholder="0x..." pattern="^0x[a-fA-F0-9]{40}$" style="display: none;">
                 <small>Pro/Diamond tiers only</small>
@@ -204,37 +213,18 @@
 </div>
             <div class="upgrade-prompt" aria-live="polite">
                 <h3>Subscription Tiers</h3>
-                <table class="pricing-table">
-                    <thead>
-                        <tr>
-                            <th>Tier</th>
-                            <th>Price</th>
-                            <th>Features</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>Free</td>
-                            <td>$0</td>
-                            <td>3 audits/day, 100KB file limit</td>
-                        </tr>
-                        <tr>
-                            <td>Beginner</td>
-                            <td>$50/month</td>
-                            <td>10 audits/day, 500KB file limit, contract address analysis</td>
-                        </tr>
-                        <tr>
-                            <td>Pro</td>
-                            <td>$200/month</td>
-                            <td>Unlimited audits, 1MB file limit, Diamond add-on access, fuzzing, API key, priority support</td>
-                        </tr>
-                        <tr>
-                            <td>Diamond Add-on</td>
-                            <td>$50/month (with Pro) + Overage: $0.50/MB (1-10MB), $1.00/MB (11-50MB), $2.00/MB (51-52MB), $5.00/MB (53+MB)</td>
-                            <td>Unlimited file size, formal verification, exploit simulation, threat modeling, NFT rewards</td>
-                        </tr>
-                    </tbody>
-                </table>
+                <table class="pricing-table" id="pricing-table">
+    <thead>
+        <tr>
+            <th>Tier</th>
+            <th>Price</th>
+            <th>Features</th>
+        </tr>
+    </thead>
+    <tbody>
+        <!-- Dynamic rows from JS -->
+    </tbody>
+</table>
                 <select id="tier-select" aria-label="Select subscription tier">
                     <option value="beginner">Beginner ($50/mo)</option>
                     <option value="pro">Pro ($200/mo)</option>
@@ -253,6 +243,8 @@
             <div class="results">
                 <button id="download-report" class="loading" style="display: none;">Download Report (Beginner/Pro)</button>
                 <button id="pdf-download">Download Compliance PDF (Diamond)</button>
+                <button id="mint-nft" style="display: none;">Mint NFT Reward (Diamond)</button>
+                <button id="x-alerts">Check X Alerts</button>
             </div>
         </section>
 
@@ -284,7 +276,7 @@
             <div class="predictions-placeholder">
                 <h4>Risk Predictions</h4>
                 <ul id="predictions-list">
-                   ://<li>No predictions yet.</li>
+                    <li>No predictions yet.</li>
                 </ul>
             </div>
 
