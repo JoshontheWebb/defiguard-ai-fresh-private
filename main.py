@@ -1691,45 +1691,51 @@ finally:
     except Exception as e:
         logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
     try:
-        history = json.loads(user.audit_history)
-        history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": report["risk_score"]})
+        history = json.loads(user.audit_history or "[]")
+        history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": report.get("risk_score", "N/A")})
         user.audit_history = json.dumps(history)
     except Exception as e:
-        logger.error(f"Failed to update audit history for {effective_username}: {str(e)}")
+        logger.error(f"Failed to update audit history: {str(e)}")
     try:
         db.commit()
     except Exception as e:
-        logger.error(f"Failed to commit DB for {effective_username}: {str(e)}")
+        logger.error(f"DB commit failed: {str(e)}")
     try:
         if temp_path and os.path.exists(temp_path):
             os.unlink(temp_path)
-            logger.debug(f"Temporary file deleted: {temp_path} for {effective_username}")
+            logger.debug(f"Temp file deleted: {temp_path}")
     except Exception as e:
-        logger.error(f"Failed to delete temp file for {effective_username}: {str(e)}")
+        logger.error(f"Failed to delete temp file: {str(e)}")
     try:
         usage_tracker.increment(file_size, effective_username, db, commit=True)
     except Exception as e:
-        logger.error(f"Failed to increment usage for {effective_username}: {str(e)}")
+        logger.error(f"Failed to increment usage: {str(e)}")
     try:
         user.last_reset = datetime.now()
         db.commit()
     except Exception as e:
-        logger.error(f"Failed to update last_reset for {effective_username}: {str(e)}")
+        logger.error(f"Failed to update last_reset: {str(e)}")
     if (datetime.now() - audit_start_time).total_seconds() > 6 * 3600:
-        logger.warning(f"Audit exceeded 6 hours for {effective_username} — resetting usage")
+        logger.warning(f"Audit timeout for {effective_username} — resetting usage")
         usage_tracker.reset_usage(effective_username, db)
-    # Ensure risk_score is always a string for the Pydantic model
-    risk_score_str = str(report.get("risk_score", "N/A"))
-    return {"report": report, "risk_score": risk_score_str, "overage_cost": overage_cost}
-    response = {"report": report, "risk_score": report["risk_score"], "overage_cost": overage_cost}
+
+    # Final response
+    response = {
+        "report": report,
+        "risk_score": str(report.get("risk_score", "N/A")),
+        "overage_cost": overage_cost
+    }
     if pdf_path:
         response["compliance_pdf"] = os.path.basename(pdf_path)
     return response
-def summarize_context(context):
+
+def summarize_context(context: str) -> str:
+    """Summarize long Slither output to fit Grok prompt."""
     if len(context) > 5000:
-        return context[:5000] + " ... (summarized top findings")
+        return context[:5000] + " ... summarized top findings"
     return context
+
 ## Section 4.6: Main Entry Point
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
