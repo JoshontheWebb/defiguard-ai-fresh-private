@@ -1622,7 +1622,7 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
                 logger.error(f"On-chain code fetch failed for {effective_username}: {str(e)}")
                 details += f" No deployed code found at {contract_address}."
         # Grok API processing — NO db.begin()
-        GROK_TIMEOUT = 600 # 10 minutes
+     GROK_TIMEOUT = 600 # 10 minutes
 try:
     logger.info(f"Calling Grok API for {effective_username} with tier {current_tier}")
     if not os.getenv("GROK_API_KEY"):
@@ -1632,7 +1632,7 @@ try:
     response = await asyncio.wait_for(
         asyncio.to_thread(
             client.chat.completions.create,
-            model="grok-5",
+            model="grok-5", # Upgrade to Grok-5 for trends
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
             response_format={
