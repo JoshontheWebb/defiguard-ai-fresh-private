@@ -1668,66 +1668,66 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             else:
                 logger.error(f"No Grok API response for {effective_username}")
                 raise Exception("No response from Grok API")
-            except Exception as e:
-                logger.error(f"Grok analysis failed for {effective_username}: {str(e)}")
-                report["error"] = f"Grok analysis failed: {str(e)}"
-                return {"report": report, "risk_score": "N/A", "overage_cost": overage_cost}
-        except Exception as e:
-            logger.error(f"Audit processing error for {effective_username}: {str(e)}")
-            report["error"] = f"Audit failed: {str(e)}"
-    finally:
-        # Overage, history, commit, delete, increment, reset
-        try:
-            overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
-            overage_cost = usage_tracker.calculate_diamond_overage(file_size) / 100 if overage_mb > 0 else None
-            if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
-                stripe.SubscriptionItem.create_usage_record(
-                    user.stripe_subscription_item_id,
-                    quantity=int(overage_mb),
-                    timestamp=int(time.time()),
-                    action="increment"
-                )
-                logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
-        except Exception as e:
-            logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
-        try:
-            history = json.loads(user.audit_history)
-            history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": report["risk_score"]})
-            user.audit_history = json.dumps(history)
-        except Exception as e:
-            logger.error(f"Failed to update audit history for {effective_username}: {str(e)}")
-        try:
-            db.commit()
-        except Exception as e:
-            logger.error(f"Failed to commit DB for {effective_username}: {str(e)}")
-        try:
-            if temp_path and os.path.exists(temp_path):
-                os.unlink(temp_path)
-                logger.debug(f"Temporary file deleted: {temp_path} for {effective_username}")
-        except Exception as e:
-            logger.error(f"Failed to delete temp file for {effective_username}: {str(e)}")
-        try:
-            usage_tracker.increment(file_size, effective_username, db, commit=True)
-        except Exception as e:
-            logger.error(f"Failed to increment usage for {effective_username}: {str(e)}")
-        try:
-            user.last_reset = datetime.now()
-            db.commit()
-        except Exception as e:
-            logger.error(f"Failed to update last_reset for {effective_username}: {str(e)}")
-        if (datetime.now() - audit_start_time).total_seconds() > 6 * 3600:
-            logger.warning(f"Audit exceeded 6 hours for {effective_username} — resetting usage")
-            usage_tracker.reset_usage(effective_username, db)
-        # Ensure risk_score is always a string for the Pydantic model
-        risk_score_str = str(report.get("risk_score", "N/A"))
-        return {"report": report, "risk_score": risk_score_str, "overage_cost": overage_cost}
-        response = {"report": report, "risk_score": report["risk_score"], "overage_cost": overage_cost}
-        if pdf_path:
-            response["compliance_pdf"] = os.path.basename(pdf_path)
-        return response
+except Exception as e:
+    logger.error(f"Grok analysis failed for {effective_username}: {str(e)}")
+    report["error"] = f"Grok analysis failed: {str(e)}"
+    return {"report": report, "risk_score": "N/A", "overage_cost": overage_cost}
+except Exception as e:
+    logger.error(f"Audit processing error for {effective_username}: {str(e)}")
+    report["error"] = f"Audit failed: {str(e)}"
+finally:
+    # Overage, history, commit, delete, increment, reset
+    try:
+        overage_mb = (file_size - 1024 * 1024) / (1024 * 1024)
+        overage_cost = usage_tracker.calculate_diamond_overage(file_size) / 100 if overage_mb > 0 else None
+        if overage_mb > 0 and user.stripe_subscription_id and user.stripe_subscription_item_id:
+            stripe.SubscriptionItem.create_usage_record(
+                user.stripe_subscription_item_id,
+                quantity=int(overage_mb),
+                timestamp=int(time.time()),
+                action="increment"
+            )
+            logger.info(f"Reported {overage_mb:.2f}MB overage for {effective_username} to Stripe")
+    except Exception as e:
+        logger.error(f"Failed to report overage for {effective_username}: {str(e)}")
+    try:
+        history = json.loads(user.audit_history)
+        history.append({"contract": contract_address or "uploaded", "timestamp": datetime.now().isoformat(), "risk_score": report["risk_score"]})
+        user.audit_history = json.dumps(history)
+    except Exception as e:
+        logger.error(f"Failed to update audit history for {effective_username}: {str(e)}")
+    try:
+        db.commit()
+    except Exception as e:
+        logger.error(f"Failed to commit DB for {effective_username}: {str(e)}")
+    try:
+        if temp_path and os.path.exists(temp_path):
+            os.unlink(temp_path)
+            logger.debug(f"Temporary file deleted: {temp_path} for {effective_username}")
+    except Exception as e:
+        logger.error(f"Failed to delete temp file for {effective_username}: {str(e)}")
+    try:
+        usage_tracker.increment(file_size, effective_username, db, commit=True)
+    except Exception as e:
+        logger.error(f"Failed to increment usage for {effective_username}: {str(e)}")
+    try:
+        user.last_reset = datetime.now()
+        db.commit()
+    except Exception as e:
+        logger.error(f"Failed to update last_reset for {effective_username}: {str(e)}")
+    if (datetime.now() - audit_start_time).total_seconds() > 6 * 3600:
+        logger.warning(f"Audit exceeded 6 hours for {effective_username} — resetting usage")
+        usage_tracker.reset_usage(effective_username, db)
+    # Ensure risk_score is always a string for the Pydantic model
+    risk_score_str = str(report.get("risk_score", "N/A"))
+    return {"report": report, "risk_score": risk_score_str, "overage_cost": overage_cost}
+    response = {"report": report, "risk_score": report["risk_score"], "overage_cost": overage_cost}
+    if pdf_path:
+        response["compliance_pdf"] = os.path.basename(pdf_path)
+    return response
 def summarize_context(context):
     if len(context) > 5000:
-        return context[:5000] + " ... (summarized top findings)"
+        return context[:5000] + " ... (summarized top findings")
     return context
 ## Section 4.6: Main Entry Point
 if __name__ == "__main__":
