@@ -38,39 +38,53 @@ function togglePassword(inputId, toggleId) {
 
 document.addEventListener('DOMContentLoaded', () => {
     // Fetch CSRF token with retry
-    const fetchCsrfToken = async (attempt = 1, maxAttempts = 3) => {
-        try {
-            const response = await fetch(`/csrf-token?_=${Date.now()}`, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'Cache-Control': 'no-cache'
-                },
-                credentials: 'include'
-            });
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(`Failed to fetch CSRF token: ${response.status} ${errorData.detail || response.statusText}`);
-            }
-            const data = await response.json();
-            console.log(`[DEBUG] CSRF response data: ${JSON.stringify(data)}, type=${typeof data.csrf_token}, time=${new Date().toISOString()}`);
-            if (typeof data.csrf_token !== 'string' || !data.csrf_token || data.csrf_token === 'undefined') {
-                throw new Error('Invalid CSRF token received');
-            }
-            localStorage.setItem('csrfToken', data.csrf_token);
-            console.log(`[DEBUG] CSRF token fetched and stored: ${data.csrf_token}, time=${new Date().toISOString()}`);
-            return data.csrf_token;
-        } catch (error) {
-            console.error(`CSRF token fetch error (attempt ${attempt}/${maxAttempts}): ${error.message}`);
-            if (attempt < maxAttempts) {
-                console.log(`Retrying CSRF token fetch in 1s...`);
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                return fetchCsrfToken(attempt + 1, maxAttempts);
-            }
-            console.error('Max CSRF fetch attempts reached.');
-            return null;
+    const fetchCsrfToken = async (attempt = 1, maxAttempts = 5) => {
+    try {
+        const response = await fetch(`/csrf-token?_=${Date.now()}`, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'Cache-Control': 'no-cache'
+            },
+            credentials: 'include'
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(`Failed to fetch CSRF token: ${response.status} ${errorData.detail || response.statusText}`);
         }
+        const data = await response.json();
+        console.log(`[DEBUG] CSRF response data: ${JSON.stringify(data)}, type=${typeof data.csrf_token}, time=${new Date().toISOString()}`);
+        if (typeof data.csrf_token !== 'string' || !data.csrf_token || data.csrf_token === 'undefined') {
+            throw new Error('Invalid CSRF token received');
+        }
+        localStorage.setItem('csrfToken', data.csrf_token);
+        console.log(`[DEBUG] CSRF token fetched and stored: ${data.csrf_token}, time=${new Date().toISOString()}`);
+        return data.csrf_token;
+    } catch (error) {
+        console.error(`CSRF token fetch error (attempt ${attempt}/${maxAttempts}): ${error.message}`);
+        if (attempt < maxAttempts) {
+            console.log(`Retrying CSRF token fetch in 1s...`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            return fetchCsrfToken(attempt + 1, maxAttempts);
+        }
+        console.error('Max CSRF fetch attempts reached.');
+        return null;
+    }
+};
+    const toggleDarkMode = () => {
+        document.body.classList.toggle('dark-mode');
+        localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
     };
+    const darkToggle = document.getElementById('dark-toggle');
+    if (darkToggle) darkToggle.addEventListener('click', toggleDarkMode);
+    if (localStorage.getItem('darkMode') === 'true') toggleDarkMode();
+    const toggleDarkMode = () => {
+        document.body.classList.toggle('dark-mode');
+        localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
+    };
+    const darkToggle = document.getElementById('dark-toggle');
+    if (darkToggle) darkToggle.addEventListener('click', toggleDarkMode);
+    if (localStorage.getItem('darkMode') === 'true') toggleDarkMode();
 
     // Wrapper to ensure fresh CSRF token for POST requests
     const withCsrfToken = async (fetchFn) => {
@@ -97,15 +111,24 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     waitForDOM({
-        authToggle: '#auth-toggle',
-        authForms: '#auth-forms',
-        messageDiv: '.auth-message',
-        logoutSection: '#logout-section',
-        logoutButton: '#logout-button',
-        tabs: '.tabs',
-        signinForm: '#signin-form',
-        signupForm: '#signup-form'
-    }, ({ authToggle, authForms, messageDiv, logoutSection, logoutButton, tabs, signinForm, signupForm }) => {
+    authToggle: '#auth-toggle',
+    authForms: '#auth-forms',
+    messageDiv: '.auth-message',
+    logoutSection: '#logout-section',
+    logoutButton: '#logout-button',
+    tabs: '.tabs',
+    signinForm: '#signin-form',
+    signupForm: '#signup-form'
+}, ({ authToggle, authForms, messageDiv, logoutSection, logoutButton, tabs, signinForm, signupForm }) => {
+    const toggleDarkMode = () => {
+        document.body.classList.toggle('dark-mode');
+        localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
+    };
+    const darkToggle = document.createElement('button');
+    darkToggle.textContent = 'Toggle Dark Mode';
+    document.body.appendChild(darkToggle);
+    darkToggle.addEventListener('click', toggleDarkMode);
+    if (localStorage.getItem('darkMode') === 'true') toggleDarkMode();
         // Set CSRF token in forms
         const setCsrfToken = async () => {
             try {
@@ -160,51 +183,58 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Signin form
         signinForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const username = document.getElementById('signin-username')?.value.trim();
-            const password = document.getElementById('signin-password')?.value;
-            if (!username || !password) {
-                messageDiv.classList.remove('is-hidden', 'is-success');
-                messageDiv.classList.add('is-danger');
-                messageDiv.textContent = 'Please fill all fields.';
-                return;
-            }
-            await withCsrfToken(async (token) => {
-                try {
-                    const response = await fetch(`/signin/${encodeURIComponent(username)}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
-                        body: JSON.stringify({ password, csrf_token: token }),
-                        credentials: 'include'
-                    });
-                    let data;
-                    try {
-                        data = await response.json();
-                    } catch (jsonError) {
-                        const text = await response.text();
-                        console.error('Non-JSON response:', text);
-                        throw new Error(text || 'Sign-in failed');
-                    }
-                    if (response.ok) {
-                        localStorage.setItem('username', username);
-                        localStorage.setItem('tier', data.tier || 'free');
-                        console.log(`[DEBUG] Sign-in success, setting username=${username}, tier=${data.tier}, time=${new Date().toISOString()}`);
-                        window.dispatchEvent(new Event('authUpdate'));
-                        messageDiv.classList.remove('is-hidden', 'is-danger');
-                        messageDiv.classList.add('is-success');
-                        messageDiv.textContent = 'Sign-in successful!';
-                        setTimeout(() => window.location.href = '/ui', 1000);
-                    } else {
-                        throw new Error(data.detail || 'Sign-in failed');
-                    }
-                } catch (error) {
-                    console.error('Sign-in error:', error.message);
-                    messageDiv.classList.remove('is-hidden', 'is-success');
-                    messageDiv.classList.add('is-danger');
-                    messageDiv.textContent = error.message;
-                }
+    e.preventDefault();
+    const username = document.getElementById('signin-username')?.value.trim();
+    const password = document.getElementById('signin-password')?.value;
+    if (!username || !password) {
+        messageDiv.classList.remove('is-hidden', 'is-success');
+        messageDiv.classList.add('is-danger');
+        messageDiv.textContent = 'Please fill all fields.';
+        return;
+    }
+    await withCsrfToken(async (token) => {
+        try {
+            const response = await fetch(`/signin/${encodeURIComponent(username)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token },
+                body: JSON.stringify({ password, csrf_token: token }),
+                credentials: 'include'
             });
-        });
+            let data;
+            try {
+                data = await response.json();
+            } catch (jsonError) {
+                const text = await response.text();
+                console.error('Non-JSON response:', text);
+                throw new Error(text || 'Sign-in failed');
+            }
+            if (response.ok) {
+                localStorage.setItem('username', username);
+                localStorage.setItem('tier', data.tier || 'free');
+                console.log(`[DEBUG] Sign-in success, setting username=${username}, tier=${data.tier}, time=${new Date().toISOString()}`);
+                window.dispatchEvent(new Event('authUpdate'));
+                messageDiv.classList.remove('is-hidden', 'is-danger');
+                messageDiv.classList.add('is-success');
+                messageDiv.textContent = 'Sign-in successful!';
+                setTimeout(() => window.location.href = '/ui', 1000);
+            } else {
+                throw new Error(data.detail || 'Sign-in failed');
+            }
+        } catch (error) {
+            console.error('Sign-in error:', error.message);
+            messageDiv.classList.remove('is-hidden', 'is-success');
+            messageDiv.classList.add('is-danger');
+            messageDiv.textContent = error.message;
+        }
+    });
+});
+const oauthGoogle = document.getElementById('oauth-google');
+const oauthGoogle = document.getElementById('oauth-google');
+if (oauthGoogle) {
+    oauthGoogle.addEventListener('click', async () => {
+        window.location.href = '/oauth-google';
+    });
+}
 
         // Signup form
         signupForm.addEventListener('submit', async (e) => {

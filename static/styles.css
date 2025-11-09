@@ -22,7 +22,6 @@
     --warning: #f59e0b;
     --glass-bg: rgba(255, 255, 255, 0.1);
     --glass-border: rgba(255, 255, 255, 0.2);
-    --overlay-dark: rgba(26, 37, 47, 0.7);
     --glow-teal: rgba(0, 209, 178, 0.7);
     --glow-pink: rgba(255, 64, 129, 0.7);
 }
@@ -86,10 +85,6 @@ header {
 }
 /* Polyfill fallback for @scroll-timeline */
 @supports not (animation-timeline: works) {
-    /* Existing not supports rules */
-}
-
-@supports not (animation-timeline: works) {
     header {
         transition: opacity 0.3s ease;
     }
@@ -100,7 +95,6 @@ header {
         opacity: 1;
     }
 }
-/* Polyfill fallback for @scroll-timeline */
 
 @keyframes gradientFlow {
     0% { background: linear-gradient(45deg, #1a252f, #0d47a1); }
@@ -251,10 +245,10 @@ header .logo-container:hover {
 }
 
 .sidebar:not(.open) {
+    display: none; /* Fixed: use display:none instead of visibility:hidden for ARIA */
     width: 0;
     transform: translateX(-100%);
     overflow: hidden;
-    visibility: hidden;
 }
 
 .sidebar ul {
@@ -932,6 +926,7 @@ footer a:focus-visible {
 }
 /* Sync JS toggle with CSS */
 body.sidebar-open .sidebar {
+    display: block !important; /* Override display:none */
     transform: translateX(0) !important;
     visibility: visible !important;
 }
@@ -942,6 +937,7 @@ body.sidebar-open .main-content {
 
 /* Ensure sidebar starts hidden */
 body:not(.sidebar-open) .sidebar {
+    display: none !important;
     transform: translateX(-100%) !important;
     visibility: hidden !important;
 }
