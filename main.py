@@ -1645,32 +1645,29 @@ async def audit_contract(file: UploadFile = File(...), contract_address: str = N
             )
             logger.info(f"Grok API response received for {effective_username}")
             if response.choices and response.choices[0].message.content:
-                raw_response = response.choices[0].message.content
-                logger.debug(f"Raw Grok Response for {effective_username}: {raw_response[:200]}")
-                with open(os.path.join(DATA_DIR, "debug.log"), "a") as f:
-                    f.write(f"[{timestamp}] DEBUG: Raw Grok Response: {raw_response}\n")
-                    f.flush()
-                try:
-                    audit_json = json.loads(raw_response)
-                except json.JSONDecodeError as e:
-                    logger.error(f"Invalid Grok response format for {effective_username}: {str(e)}")
-                    raise Exception(f"Invalid Grok response format: {str(e)}")
-                if user.has_diamond:
-                    audit_json["remediation_roadmap"] = audit_json.get("remediation_roadmap", "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review.")
-                    audit_json["fuzzing_results"] = fuzzing_results
-                    # Add Certora stub for formal verification
-                    try:
-                        certora_result = await asyncio.to_thread(run_certora, temp_path)
-                        audit_json["formal_verification"] = certora_result
-                    except Exception as e:
-                        audit_json["formal_verification"] = "Certora failed: " + str(e)
-                    report = audit_json
-                def run_certora(temp_path):
-                    # Stub Certora call
-                    return "Formal verification: No issues found." # Replace with actual
-                else:
-                    logger.error(f"No Grok API response for {effective_username}")
-                    raise Exception("No response from Grok API")
+    raw_response = response.choices[0].message.content
+    logger.debug(f"Raw Grok Response for {effective_username}: {raw_response[:200]}")
+    with open(os.path.join(DATA_DIR, "debug.log"), "a") as f:
+        f.write(f"[{timestamp}] DEBUG: Raw Grok Response: {raw_response}\n")
+        f.flush()
+    try:
+        audit_json = json.loads(raw_response)
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid Grok response format for {effective_username}: {str(e)}")
+        raise Exception(f"Invalid Grok response format: {str(e)}")
+    if user.has_diamond:
+        audit_json["remediation_roadmap"] = audit_json.get("remediation_roadmap", "Detailed plan: Prioritize high-severity issues, implement fixes, and schedule manual review.")
+        audit_json["fuzzing_results"] = fuzzing_results
+        # Add Certora stub for formal verification
+        try:
+            certora_result = await asyncio.to_thread(run_certora, temp_path)
+            audit_json["formal_verification"] = certora_result
+        except Exception as e:
+            audit_json["formal_verification"] = "Certora failed: " + str(e)
+    report = audit_json
+else:
+    logger.error(f"No Grok API response for {effective_username}")
+    raise Exception("No response from Grok API")
             except Exception as e:
                 logger.error(f"Grok analysis failed for {effective_username}: {str(e)}")
                 report["error"] = f"Grok analysis failed: {str(e)}"
